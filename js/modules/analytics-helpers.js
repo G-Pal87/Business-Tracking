@@ -2,9 +2,61 @@
 // Import these instead of copy-pasting the equivalent mkExp* functions
 // into every analytics module.
 import { el, openModal } from '../core/ui.js';
-import { state } from '../core/state.js';
-import { formatEUR, byId, toEUR } from '../core/data.js';
+import { state, subscribe } from '../core/state.js';
+import { formatEUR, byId, toEUR, dataStamp, sameDataStamp } from '../core/data.js';
 import { todayYmd, addDaysYmd, diffDaysYmd } from '../core/dates.js';
+
+// ── View-data memo ────────────────────────────────────────────────────────────
+
+/**
+ * memoView(key, deps, compute, collections?) — the dashboards' tab switching
+ * rebuilds the whole view, which used to recompute every aggregate before
+ * branching on the tab. memoView returns the previous result for `key` when
+ * nothing it can depend on has changed, so a tab switch only rebuilds DOM:
+ *   - `deps`: the view's own inputs (filter state, scope, local toggles…) —
+ *     anything compute() reads that isn't db data. Compared by value
+ *     (Sets/Maps/Dates included), so pass the state, not derived objects.
+ *   - the db: by default the stamp covers EVERY collection (plus the db,
+ *     settings and their revisions — see data.js dataStamp), so any edit,
+ *     sync or settings change recomputes. Pass `collections` only when the
+ *     full list read through every helper is certain.
+ *   - today's date (period ranges like YTD / "this month" move with it).
+ * One entry is kept per key (the latest), and every entry is dropped when a
+ * new db loads. Callers must treat the returned value as read-only (copy
+ * before sorting/pushing) — it is shared between renders.
+ */
+const _viewMemo = new Map();
+subscribe(evt => { if (evt === 'data-loaded') _viewMemo.clear(); });
+
+function allCollections() {
+  const db = state.db || {};
+  return Object.keys(db).filter(k => Array.isArray(db[k])).sort();
+}
+
+function depsKey(deps) {
+  return JSON.stringify(deps, (_k, v) => {
+    if (v instanceof Set) return { __set: [...v] };
+    if (v instanceof Map) return { __map: [...v] };
+    if (v instanceof Date) return { __date: v.getTime() };
+    if (v === undefined) return { __undef: 1 };
+    if (typeof v === 'function') return { __fn: String(v) };
+    return v;
+  });
+}
+
+export function memoView(key, deps, compute, collections = null) {
+  const stamp = dataStamp(collections || allCollections());
+  stamp.push(todayYmd());
+  const dk = depsKey(deps);
+  const slot = _viewMemo.get(key);
+  if (slot && slot.dk === dk && sameDataStamp(slot.stamp, stamp)) return slot.value;
+  const value = compute();
+  _viewMemo.set(key, { stamp, dk, value });
+  return value;
+}
+
+// Exposed for tests.
+export function _clearViewMemo() { _viewMemo.clear(); }
 
 // ── Section label ─────────────────────────────────────────────────────────────
 

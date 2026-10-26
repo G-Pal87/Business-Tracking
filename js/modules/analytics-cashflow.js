@@ -10,7 +10,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine, resolveStream
 } from './analytics-filters.js';
-import { mkSectionLabel, mkCollapsibleCard, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, expStream, safePct, fmtK, mkInsightsBanner, mkDashboardTabs, loadDashboardTab, mkTh, mkDrillValue, groupByMonthKey } from './analytics-helpers.js';
+import { mkSectionLabel, mkCollapsibleCard, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, expStream, safePct, fmtK, mkInsightsBanner, mkDashboardTabs, loadDashboardTab, memoView, mkTh, mkDrillValue, groupByMonthKey } from './analytics-helpers.js';
 
 // Per-stream bucket for a cash-in record: the single stream resolver
 // (record.stream → linked property's type), else 'other' — so a payment
@@ -957,8 +957,12 @@ function buildView() {
   const cmpRange = getComparisonRange(gF, curRange);
   const { start, end } = curRange;
 
-  const curData = getData(start, end);
-  const cmpData = cmpRange ? getData(cmpRange.start, cmpRange.end) : null;
+  // Memoised (see memoView): a tab switch reuses these instead of
+  // recomputing; any data edit, filter/scope change or new day recomputes.
+  const { curData, cmpData } = memoView('analytics-cashflow', { gF, gScope, curRange, cmpRange }, () => ({
+    curData: getData(start, end),
+    cmpData: cmpRange ? getData(cmpRange.start, cmpRange.end) : null
+  }));
 
   const {
     payments, invoices, opExpenses, capExpenses, expenses,

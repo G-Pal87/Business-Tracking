@@ -11,7 +11,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js';
-import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkKpiCard, mkCmpGrid, mkEmptyState, expStream, safePct, mkInsightsBanner, mkDashboardTabs, loadDashboardTab, mkTh, mkDrillValue, invoiceNetEUR } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkKpiCard, mkCmpGrid, mkEmptyState, expStream, safePct, mkInsightsBanner, mkDashboardTabs, loadDashboardTab, memoView, mkTh, mkDrillValue, invoiceNetEUR } from './analytics-helpers.js';
 import { daysInMonth } from '../core/dates.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
@@ -563,10 +563,15 @@ function buildView() {
   wrap.appendChild(buildComparisonLine(curRange, cmpRange));
 
   // Data
-  const cur = getData(curRange.start, curRange.end);
-  const cmp = cmpRange ? getData(cmpRange.start, cmpRange.end) : null;
-  const revenueData    = getRevenue(curRange.start, curRange.end);
-  const cmpRevenueData = cmpRange ? getRevenue(cmpRange.start, cmpRange.end) : null;
+  // Memoised (see memoView): a tab switch reuses these instead of
+  // recomputing; any data edit, filter/scope change or new day recomputes.
+  const { cur, cmp, revenueData, cmpRevenueData } = memoView('analytics-expenses',
+    { gF, gScope, gExpFilters, curRange, cmpRange }, () => ({
+      cur: getData(curRange.start, curRange.end),
+      cmp: cmpRange ? getData(cmpRange.start, cmpRange.end) : null,
+      revenueData: getRevenue(curRange.start, curRange.end),
+      cmpRevenueData: cmpRange ? getRevenue(cmpRange.start, cmpRange.end) : null
+    }));
   const revenue    = revenueData.total;
   const cmpRevenue = cmpRevenueData ? cmpRevenueData.total : 0;
   const { allExp, opEx, capEx, opTotal, capTotal, total } = cur;

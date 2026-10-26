@@ -17,7 +17,7 @@ import {
   getMonthKeysForRange, makeMatchers, resolveStream,
   buildFilterBar, buildComparisonLine
 } from './analytics-filters.js';
-import { mkSectionLabel, mkCollapsibleCard, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, mkDashboardTabs, loadDashboardTab, safePct, mkTh, mkDrillValue, groupByMonthKey } from './analytics-helpers.js';
+import { mkSectionLabel, mkCollapsibleCard, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, mkDashboardTabs, loadDashboardTab, memoView, safePct, mkTh, mkDrillValue, groupByMonthKey } from './analytics-helpers.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CHART_IDS = [
@@ -1914,11 +1914,14 @@ function mkViewToggle(options, current, onPick) {
   return toggle;
 }
 
+// `content` is a node or a builder function. A builder runs only when the
+// card is first opened, so a collapsed card (e.g. Pending Airbnb
+// Reservations) costs nothing until it's shown.
 function cardSection(title, content, { open = true } = {}) {
   return mkCollapsibleCard({
     title,
     open,
-    build: body => body.appendChild(el('div', { style: 'padding:0 16px 16px' }, content))
+    build: body => body.appendChild(el('div', { style: 'padding:0 16px 16px' }, typeof content === 'function' ? content() : content))
   });
 }
 
@@ -2961,8 +2964,12 @@ function buildView() {
   const curRange = getCurrentPeriodRange(gF);
   const cmpRange = getComparisonRange(gF, curRange);
 
-  const data    = calculateDashboardData(curRange);
-  const cmpData = cmpRange ? calculateDashboardData(cmpRange) : null;
+  // Memoised (see memoView): a tab switch reuses these instead of
+  // recomputing; any data edit, filter/scope change or new day recomputes.
+  const { data, cmpData } = memoView('analytics-forecast', { gF, gScope, curRange, cmpRange }, () => ({
+    data: calculateDashboardData(curRange),
+    cmpData: cmpRange ? calculateDashboardData(cmpRange) : null
+  }));
 
   if (!data) {
     wrap.appendChild(el('p', { style: 'color:var(--text-muted)' }, 'Unable to compute forecast data for the selected period.'));
@@ -2998,7 +3005,7 @@ function buildView() {
     wrap.appendChild(chartCard(titles[gMonthlyView], 'anf-monthly',
       mkViewToggle([['revenue', 'Revenue'], ['variance', 'Variance %'], ['net', 'Net']], gMonthlyView, v => { gMonthlyView = v; })));
     wrap.appendChild(chartCard('Forecast Accuracy Trend', 'anf-accuracy-trend'));
-    wrap.appendChild(cardSection('Monthly Forecast Breakdown', buildMonthlyTable(data)));
+    wrap.appendChild(cardSection('Monthly Forecast Breakdown', () => buildMonthlyTable(data)));
     setTimeout(() => renderMonthlyCharts(data), 0);
   }
 
@@ -3009,7 +3016,7 @@ function buildView() {
         mkViewToggle([['compare', 'Actual vs Forecast'], ['mix', 'Forecast Mix']], gStreamView, v => { gStreamView = v; })),
       chartCard('Actual vs Forecast by Property', 'anf-prop-compare')
     ));
-    wrap.appendChild(cardSection('Property Breakdown', buildPropertyTable(data)));
+    wrap.appendChild(cardSection('Property Breakdown', () => buildPropertyTable(data)));
     setTimeout(() => renderBreakdownCharts(data), 0);
   }
 
@@ -3018,7 +3025,7 @@ function buildView() {
       ['STR Pending Pipeline by Month',    'anf-pending-pipeline'],
       ['STR Pending Pipeline by Property', 'anf-pending-by-prop']
     ]));
-    wrap.appendChild(cardSection('Pending Airbnb Reservations', buildPendingTable(data), { open: false }));
+    wrap.appendChild(cardSection('Pending Airbnb Reservations', () => buildPendingTable(data), { open: false }));
     setTimeout(() => renderPipelineCharts(data), 0);
   }
 

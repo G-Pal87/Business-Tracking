@@ -12,7 +12,7 @@ import {
   derivedCache, memoGet,
   getPersonName, drillRevRows, drillExpRows, drillNetRows, drillRevRowsPnL, drillNetRowsPnL
 } from '../core/data.js';
-import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkExplainButton, mkDrillValue, recordOwner, invoiceOwner, ownerShare, groupByMonthKey, loadDashboardTab, mkDashboardTabs } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkExplainButton, mkDrillValue, recordOwner, invoiceOwner, ownerShare, groupByMonthKey, loadDashboardTab, mkDashboardTabs, memoView } from './analytics-helpers.js';
 import {
   getCyprusTaxYearConfig, setCyprusTaxYear, persistCyprusTaxYearConfig,
   daysLabel, monthRemainingFraction, isCoRec, getActualsForYear,
@@ -81,7 +81,10 @@ function rebuildView() {
 
 // ── Main view (tab shell) ──────────────────────────────────────────────────────
 function buildView() {
-  const years = getDataYears();
+  // Tab content is already built per tab; only the year scan is shared —
+  // memoised (memoView) so a tab switch doesn't rescan every record. A copy:
+  // the memoised array is shared between renders.
+  const years = [...memoView('analytics-tax:years', {}, getDataYears)];
   if (!gYear || !years.includes(gYear)) gYear = defaultYear();
 
   const wrap = el('div', { class: 'view active' });

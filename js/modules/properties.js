@@ -10,10 +10,9 @@ import {
 import { PROPERTY_TYPES, PROPERTY_STATUSES, CURRENCIES, OWNERS, VENDOR_ROLES, PROPERTY_CHANNELS, EXPENSE_CATEGORIES, VALUATION_SOURCES } from '../core/config.js';
 import { openExpenseForm } from './expenses.js';
 import { navigate } from '../core/router.js';
-import { uploadGithubFileEncrypted, deleteGithubFile, fetchGithubFileEncrypted } from '../core/github.js';
-import { isUnlocked } from '../core/crypto.js';
+import { uploadGithubFileEncrypted, uploadGithubBytesEncrypted, deleteGithubFile, fetchGithubFileEncrypted } from '../core/github.js';
 import { todayYmd, thisMonthYm, addMonthsYmd, addDaysYmd } from '../core/dates.js';
-import { openFileSafely, base64ToBytes, prepareUploadFiles } from '../core/files.js';
+import { openFileSafely, base64ToBytes, prepareUploadFiles, prepTrackerForButton, storagePathWithExt } from '../core/files.js';
 
 let selectedId = null;
 let _propRebuildTimer = null;
@@ -63,15 +62,6 @@ function fmtSize(bytes) {
   return (bytes / 1048576).toFixed(1) + ' MB';
 }
 
-function readFileAsBase64(file) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(r.result.split(',')[1]);
-    r.onerror = reject;
-    r.readAsDataURL(file);
-  });
-}
-
 async function previewDoc(doc) {
   try {
     let b64;
@@ -87,11 +77,6 @@ async function previewDoc(doc) {
   } catch (e) {
     toast('Could not open document: ' + e.message, 'danger');
   }
-}
-
-function sanitizeName(str) {
-  // Only strip path-separator characters; encodeURIComponent in uploadGithubFile handles the rest
-  return str.replace(/[/\\:*?"<>|]/g, '-').trim();
 }
 
 // ── Background migration: move legacy embedded document blobs → GitHub files ──
@@ -124,10 +109,10 @@ async function migrateEmbeddedDocuments(pending) {
     const doc = p?.documents?.find(x => x.id === docId);
     if (!doc || doc.path || !doc.data) continue; // already migrated/removed
     try {
-      const ext = (doc.name.match(/\.[^.]+$/) || [''])[0];
-      const repoPath = isUnlocked()
-        ? `Properties/${p.id}/${doc.id}${ext}`
-        : `Properties/${sanitizeName(p.name)}/${sanitizeName(doc.name)}`;
+      // Only the ids and a plain extension reach the public path (core/files.js).
+      // Encrypted uploads refuse to run while locked, so there is no
+      // name-based path for the locked case any more.
+      const repoPath = storagePathWithExt(`Properties/${p.id}/${doc.id}`, doc.name, doc.type);
       await uploadGithubFileEncrypted(repoPath, doc.data, 'Update file');
       const newDocs = p.documents.map(x => {
         if (x.id !== docId) return x;
@@ -1338,12 +1323,16 @@ function openForm(existing) {
   renderDocList();
   // Over-limit files are refused here and photos shrunk (core/files.js),
   // before anything is listed for upload.
-  const addPendingFiles = async files => {
+  // Preparation is async (photos are resized) — the tracker lets Save wait
+  // for files still being prepared instead of saving without them. It is
+  // bound to the Save button below, once that exists.
+  let prep = null;
+  const addPendingFiles = files => prep.track((async () => {
     for (const file of await prepareUploadFiles(files, (msg, kind) => toast(msg, kind, 6000))) {
       pendingDocs.push({ id: newId('doc'), name: file.name, type: file.type, size: file.size, uploadedAt: new Date().toISOString(), _file: file });
     }
     renderDocList();
-  };
+  })());
   const dropZone = el('div', { class: 'doc-drop-zone' }, 'Drop files here or click to browse');
   dropZone.onclick = () => fileInput.click();
   dropZone.ondragover = e => { e.preventDefault(); dropZone.classList.add('dragover'); };
@@ -1372,6 +1361,15 @@ function openForm(existing) {
   updateStatusFields();
 
   const saveBtn = button('Save', { variant: 'primary', onClick: async () => {
+    if (saveBtn.dataset.saving) return; // a second click while uploading
+    saveBtn.dataset.saving = '1';
+    try { await doSave(); } finally { delete saveBtn.dataset.saving; }
+  }});
+  prep = prepTrackerForButton(saveBtn);
+
+  async function doSave() {
+    // Files picked just before Save are still being prepared — wait for them.
+    await prep.idle();
     if (!nameI.value.trim()) { toast('Name is required', 'danger'); return; }
     const propName = nameI.value.trim();
 
@@ -1393,11 +1391,13 @@ function openForm(existing) {
     const docsToSave = [];
     for (const d of pendingDocs) {
       if (d._file) {
-        const ext = (d.name.match(/\.[^.]+$/) || [''])[0];
-        const repoPath = isUnlocked() ? `Properties/${p.id}/${d.id}${ext}` : `Properties/${sanitizeName(propName)}/${sanitizeName(d.name)}`;
+        // Only the ids and a plain extension reach the public path
+        // (core/files.js). Encrypted uploads refuse to run while locked.
+        const repoPath = storagePathWithExt(`Properties/${p.id}/${d.id}`, d.name, d.type);
         try {
-          const b64 = await readFileAsBase64(d._file);
-          await uploadGithubFileEncrypted(repoPath, b64, 'Update file');
+          // Raw bytes straight to the encrypting upload — no data: URL /
+          // base64 round trips holding the file in memory several times over.
+          await uploadGithubBytesEncrypted(repoPath, new Uint8Array(await d._file.arrayBuffer()), 'Update file');
           docsToSave.push({ id: d.id, name: d.name, type: d.type, size: d.size, uploadedAt: d.uploadedAt, path: repoPath, propertyId: p.id });
         } catch (e) {
           toast(`Failed to upload ${d.name}: ${e.message}`, 'danger', 6000);
@@ -1461,7 +1461,7 @@ function openForm(existing) {
     toast(existing ? 'Property updated' : 'Property added', 'success');
     closeModal();
     setTimeout(() => navigate('properties'),200);
-  }});
+  }
   const cancelBtn = button('Cancel', { onClick: closeModal });
 
   openModal({ title: existing ? 'Edit Property' : 'New Property', body, footer: [cancelBtn, saveBtn], large: true });

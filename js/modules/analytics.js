@@ -15,7 +15,7 @@ import {
 import {
   mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid,
   safePct, fmtK, mkDrillValue, groupByMonthKey, invoiceNetEUR, invoiceGrossEUR, invoiceBuckets, invoiceDueDate, expStream,
-  loadDashboardTab, mkDashboardTabs
+  loadDashboardTab, mkDashboardTabs, memoView
 } from './analytics-helpers.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -1385,8 +1385,12 @@ function buildView() {
 
   const curRange = getCurrentPeriodRange(gF);
   const cmpRange = getComparisonRange(gF, curRange);
-  const curData  = getData(curRange.start, curRange.end);
-  const cmpData  = cmpRange ? getData(cmpRange.start, cmpRange.end) : null;
+  // Memoised (see memoView): a tab switch reuses these instead of
+  // recomputing; any data edit, filter/scope change or new day recomputes.
+  const { curData, cmpData } = memoView('analytics', { gF, gScope, curRange, cmpRange }, () => ({
+    curData: getData(curRange.start, curRange.end),
+    cmpData: cmpRange ? getData(cmpRange.start, cmpRange.end) : null
+  }));
 
   wrap.appendChild(buildComparisonLine(curRange, cmpRange));
 

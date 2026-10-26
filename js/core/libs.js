@@ -7,9 +7,11 @@
 // Integrity: the main scripts load with SRI. Web workers can't take an
 // `integrity` attribute, so their scripts are fetched here with fetch()'s own
 // `integrity` option (the browser rejects a mismatching response), then started
-// from a blob: URL (CSP worker-src allows blob:). Only the Tesseract core
-// (importScripts'ed inside its worker) and its language data (fetched by the
-// worker) can't be integrity-checked; both are pinned to exact versions.
+// from a blob: URL (CSP worker-src allows blob:). The OCR worker goes one step
+// further: the Tesseract core and the worker script are both fetched with
+// integrity checks and joined into one blob (so the worker never
+// importScripts anything), and its language-data download is integrity-checked
+// too (see buildOcrWorkerUrl).
 const LIBS = {
   // Charts (core/charts.js starts this download at import and queues chart
   // creation until it's in). chart.js has no pre-built .min.js in the npm
@@ -54,10 +56,34 @@ const TESSERACT_WORKER = {
   integrity: 'sha384-zxn+VqofFzXpH99dUb3fa4ywoSBQJPy6/6oEaJHPlblZXr53a0g1Jl6720vgSzB7'
 };
 // Exact versions (tesseract.js 5.1.1 depends on tesseract.js-core ^5.1.1).
-const TESSERACT_CORE = 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1/tesseract-core-simd-lstm.wasm.js';
-const TESSERACT_LANG = 'https://tessdata.projectnaptha.com/4.0.0';
+// The .wasm.js build embeds the WebAssembly binary, so this one file is the
+// whole core. Hash = sha384 of the file in the npm package
+// (npm pack tesseract.js-core@5.1.1), which jsdelivr serves byte-for-byte.
+const TESSERACT_CORE = {
+  src: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1/tesseract-core-simd-lstm.wasm.js',
+  integrity: 'sha384-YM1G+zaWYy9VSRP2C101LCgzh7n3Hqb6OEm9qDoZYgCADsni3nnECskC3WialQB7'
+};
+// Language data: the standard tessdata 4.0.0 English model (the same model
+// set the app used from tessdata.projectnaptha.com/4.0.0), from the pinned
+// npm package @tesseract.js-data/eng@1.0.0, file 4.0.0/eng.traineddata.gz.
+// The worker requests `${TESSERACT_LANG}/eng.traineddata.gz`.
+const TESSERACT_LANG = 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng@1.0.0/4.0.0';
+const TESSERACT_LANG_FILES = {
+  [`${TESSERACT_LANG}/eng.traineddata.gz`]: 'sha384-bU4PcJLjEjKdIn7s09uKX4NpMPH2ZyApTe8VWX+c5jNGCk3bumt+lhZtlOA7ujK1'
+};
 
 const _blobUrls = new Map();
+
+// Fetches a file with an integrity check; resolves to its text.
+async function verifiedText({ src, integrity }) {
+  try {
+    const res = await fetch(src, { integrity, credentials: 'omit', cache: 'force-cache' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.text();
+  } catch (err) {
+    throw new Error(`Could not load a verified copy of ${src.split('/npm/')[1] || src} (${err.message})`);
+  }
+}
 
 // Fetches a script with an integrity check and returns a blob: URL for it.
 function verifiedScriptUrl({ src, integrity }) {
@@ -85,23 +111,80 @@ async function setupPdfjs(lib) {
   lib.GlobalWorkerOptions.workerPort = new Worker(url);
 }
 
-// Every OCR worker gets the pinned, integrity-checked worker script and the
-// pinned core/language data, whatever paths the caller passes.
+// Runs inside the OCR worker before tesseract's own code: language data may
+// only come from the pinned URLs, fetched with their integrity hashes (the
+// browser rejects a mismatching response); any other .traineddata request is
+// refused. Other requests pass through unchanged.
+function ocrFetchGuard(files) {
+  return `;(function () {
+  var pinned = ${JSON.stringify(files)};
+  var origFetch = self.fetch.bind(self);
+  self.fetch = function (input, init) {
+    var url = String(input && input.url ? input.url : input);
+    if (Object.prototype.hasOwnProperty.call(pinned, url)) {
+      return origFetch(url, { integrity: pinned[url], credentials: 'omit', cache: 'force-cache' });
+    }
+    if (/\\.traineddata(\\.gz)?(\\?|#|$)/.test(url)) {
+      return Promise.reject(new Error('Language data not pinned: ' + url));
+    }
+    return origFetch(input, init);
+  };
+})();
+`;
+}
+
+// One blob: integrity-checked core (defines TesseractCore, so tesseract's
+// getCore never importScripts a core URL), then the fetch guard, then the
+// integrity-checked worker script.
+let _ocrWorkerUrl = null;
+function buildOcrWorkerUrl() {
+  if (_ocrWorkerUrl) return _ocrWorkerUrl;
+  _ocrWorkerUrl = Promise.all([verifiedText(TESSERACT_CORE), verifiedText(TESSERACT_WORKER)])
+    .then(([core, worker]) => URL.createObjectURL(new Blob(
+      [core, '\n;\n', ocrFetchGuard(TESSERACT_LANG_FILES), '\n;\n', worker],
+      { type: 'text/javascript' })))
+    .catch(err => { _ocrWorkerUrl = null; throw err; });
+  return _ocrWorkerUrl;
+}
+
+// Every OCR worker gets the pinned, integrity-checked worker script, core and
+// language data, whatever paths the caller passes. cacheMethod 'none': the
+// worker would otherwise read language data from its own IndexedDB cache,
+// which isn't integrity-checked (the browser's HTTP cache, used instead via
+// force-cache, is re-verified on every load).
 async function setupTesseract(T) {
   if (T.__btPinned) return;
   const createWorker = T.createWorker;
   T.createWorker = async (langs, oem, options = {}, config) => {
-    const workerPath = await verifiedScriptUrl(TESSERACT_WORKER);
-    return createWorker(langs, oem, {
+    const workerPath = await buildOcrWorkerUrl();
+    // tesseract.js 5.1.1's createWorker never settles when loading the
+    // language data fails (a network error, or the integrity check above
+    // rejecting it) — it only throws inside its message handler. An
+    // errorHandler turns that into a rejection here instead of a hung OCR.
+    let fail;
+    const failed = new Promise((_, reject) => { fail = reject; });
+    failed.catch(() => {});
+    const userErrorHandler = options.errorHandler;
+    const ready = createWorker(langs, oem, {
       ...options,
       workerPath,
       workerBlobURL: false, // start the verified blob directly (no importScripts wrapper)
-      corePath: TESSERACT_CORE,
-      langPath: TESSERACT_LANG
+      corePath: TESSERACT_CORE.src, // never loaded: the blob already defines TesseractCore
+      langPath: TESSERACT_LANG,
+      cacheMethod: 'none',
+      gzip: true,
+      errorHandler: err => {
+        try { userErrorHandler?.(err); } catch { /* caller's handler */ }
+        fail(new Error(`OCR could not start: ${err}`));
+      }
     }, config);
+    return Promise.race([ready, failed]);
   };
   T.__btPinned = true;
 }
+
+// Exposed for tests only.
+export const _ocrInternals = { ocrFetchGuard, TESSERACT_LANG_FILES, TESSERACT_CORE };
 
 const _loading = new Map();
 

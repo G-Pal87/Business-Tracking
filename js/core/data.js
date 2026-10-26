@@ -634,26 +634,77 @@ export function propertyValueAt(prop, ymd) {
   return { value: Number(prop.purchasePrice), date: prop.purchaseDate || '', source: 'purchase', isPurchase: true };
 }
 
+// Per-property inputs of propertyValueMetrics, built once per data version:
+// each property's dated expenses and paid payments, IN listActive ORDER, with
+// the EUR amount already converted (same toEUR(amount, currency, date) call
+// the scan used). Rebuilt when expenses, payments or properties change (and,
+// like every derivedCache, on settings/FX-rate changes).
+//
+// The sums stay in listActive order on purpose: floating-point addition isn't
+// associative, so date-ordered prefix sums would drift from the original
+// totals in the last bits. Walking only one property's own records (no
+// toEUR, no other properties) keeps the result bit-identical while removing
+// the full scan per call; whole results are memoised per (property, asOf,
+// scope) on top.
+const _pvIdxCache = derivedCache(['expenses', 'payments', 'properties']);
+function propertyValueIndex() {
+  return memoGet(_pvIdxCache(), 'idx', () => {
+    const byProp = new Map();
+    const slot = id => {
+      let s = byProp.get(id);
+      if (!s) { s = { exp: [], pay: [] }; byProp.set(id, s); }
+      return s;
+    };
+    for (const e of listActive('expenses')) {
+      if (!e.propertyId || !e.date) continue;
+      slot(e.propertyId).exp.push({ date: e.date, personal: !!e.personal, capex: isCapEx(e), amt: toEUR(e.amount, e.currency, e.date) });
+    }
+    for (const p of listActivePayments()) {
+      if (!p.propertyId || p.status !== 'paid' || !p.date) continue;
+      slot(p.propertyId).pay.push({ date: p.date, personal: !!p.personal, amt: toEUR(p.amount, p.currency, p.date) });
+    }
+    return byProp;
+  });
+}
+const _NO_PV_RECORDS = Object.freeze({ exp: Object.freeze([]), pay: Object.freeze([]) });
+
 // Value-based metrics for one property as of `asOf` (EUR). Gain is measured
 // against total invested (purchase + CapEx up to asOf), so renovation spend
 // isn't counted as appreciation. Total return adds the lifetime operating net
 // (paid rental revenue − non-CapEx expenses) up to asOf. `excludePersonal`
 // mirrors the dashboards' Company-only scope.
 export function propertyValueMetrics(prop, asOf = today(), { excludePersonal = false } = {}) {
+  if (!prop) return null;
+  // Memoised per property object (an edit replaces/bumps it and the
+  // properties revision, which drops the whole cache) and (asOf, scope).
+  const memo = _pvIdxCache();
+  let perProp = memo.get(prop);
+  if (!perProp) { perProp = new Map(); memo.set(prop, perProp); }
+  const key = `${asOf}|${excludePersonal ? 1 : 0}`;
+  if (perProp.has(key)) {
+    const hit = perProp.get(key);
+    return hit ? { ...hit } : null; // a copy: callers may annotate the result
+  }
+  const m = computePropertyValueMetrics(prop, asOf, excludePersonal);
+  perProp.set(key, m);
+  return m ? { ...m } : null;
+}
+
+function computePropertyValueMetrics(prop, asOf, excludePersonal) {
   const at = propertyValueAt(prop, asOf);
   if (!at) return null;
   const cur = prop.currency || 'EUR';
   const valueEUR    = toEUR(at.value, cur, asOf);
   const purchaseEUR = prop.purchasePrice ? toEUR(prop.purchasePrice, cur, prop.purchaseDate) : 0;
+  const recs = propertyValueIndex().get(prop.id) || _NO_PV_RECORDS;
   let capexEUR = 0, netIncomeEUR = 0;
-  for (const e of listActive('expenses')) {
-    if (e.propertyId !== prop.id || !e.date || e.date > asOf || (excludePersonal && e.personal)) continue;
-    const amt = toEUR(e.amount, e.currency, e.date);
-    if (isCapEx(e)) capexEUR += amt; else netIncomeEUR -= amt;
+  for (const e of recs.exp) {
+    if (e.date > asOf || (excludePersonal && e.personal)) continue;
+    if (e.capex) capexEUR += e.amt; else netIncomeEUR -= e.amt;
   }
-  for (const p of listActivePayments()) {
-    if (p.propertyId !== prop.id || p.status !== 'paid' || !p.date || p.date > asOf || (excludePersonal && p.personal)) continue;
-    netIncomeEUR += toEUR(p.amount, p.currency, p.date);
+  for (const p of recs.pay) {
+    if (p.date > asOf || (excludePersonal && p.personal)) continue;
+    netIncomeEUR += p.amt;
   }
   const investedEUR = purchaseEUR + capexEUR;
   const gainEUR = valueEUR - investedEUR;

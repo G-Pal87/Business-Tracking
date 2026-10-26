@@ -10,7 +10,7 @@ import {
 import { todayYmd, diffDaysYmd, addDaysYmd } from '../core/dates.js';
 import { openDetail as openPropertyDetail } from './properties.js';
 import { createFilterState, getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine } from './analytics-filters.js';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkInsightsBanner, mkDashboardTabs, loadDashboardTab, safePct, mkTh, mkExplainButton, mkDrillValue, periodDays, DAYS_PER_YEAR } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkInsightsBanner, mkDashboardTabs, loadDashboardTab, memoView, safePct, mkTh, mkExplainButton, mkDrillValue, periodDays, DAYS_PER_YEAR } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -1577,8 +1577,18 @@ function buildView() {
   const cmpRange = getComparisonRange(gF, curRange);
   const { start, end } = curRange;
 
-  const curData = getData(start, end, curRange.isIncomplete);
-  const cmpData = cmpRange ? getData(cmpRange.start, cmpRange.end, cmpRange.isIncomplete) : null;
+  // Everything below that doesn't depend on the tab is memoised (see
+  // memoView): switching tabs only rebuilds the DOM. Recomputed on any data
+  // edit, filter/scope/status change or new day.
+  const viewDeps = { gF, gScope, gStatusFilter, curRange, cmpRange };
+  const base = memoView('analytics-properties', viewDeps, () => {
+    const cur = getData(start, end, curRange.isIncomplete);
+    const cmp = cmpRange ? getData(cmpRange.start, cmpRange.end, cmpRange.isIncomplete) : null;
+    const op  = getOperationalData({ propData: cur.propData, payments: cur.payments, start, end, isIncomplete: curRange.isIncomplete });
+    const fin = getFinancingData(cur.allProps);
+    return { curData: cur, cmpData: cmp, opData: op, finData: fin, insights: computePropertyInsights(cur) };
+  });
+  const { curData, cmpData } = base;
 
   const { allProps, propData, payments, opExpenses, capExpenses, totals, avgROI, best, worst } = curData;
 
@@ -1661,7 +1671,7 @@ function buildView() {
   }));
 
   // ── Section 3: Operational KPIs ───────────────────────────────────────────
-  const opData  = getOperationalData({ propData, payments, start, end, isIncomplete: curRange.isIncomplete });
+  const opData  = base.opData;
   const opKpiRow = el('div', { class: 'grid grid-4 mb-16' });
 
   // Occupancy Rate and Avg Nightly Rate (ADR) KPIs intentionally live only in
@@ -1754,8 +1764,8 @@ function buildView() {
 
 
   // Property insights (Overview tab), plus mortgages ending within a year
-  const finData = getFinancingData(allProps);
-  const signals = computePropertyInsights(curData);
+  const finData = base.finData;
+  const signals = [...base.insights]; // copy: the memoised list is shared
   for (const d of finData.finData) {
     if (!d.financed || d.paidOff || d.yearsLeft == null || d.yearsLeft > 1) continue;
     signals.push({
@@ -1778,7 +1788,8 @@ function buildView() {
 
   if (gTab === 'overview') {
     if (compLine) wrap.appendChild(compLine);
-    const mvData = getMarketValueData(allProps);
+    // Overview shows only today's figures — no timeline.
+    const mvData = memoView('analytics-properties:mv-now', viewDeps, () => getMarketValueData(allProps, { timeline: false }));
     wrap.appendChild(buildMarketValueKpis(mvData));
     wrap.appendChild(el('div', { class: 'grid grid-4 mb-16' }, revCard, profitCard, yieldCard, vacancyCard));
     if (banner) wrap.appendChild(banner);
@@ -1817,7 +1828,7 @@ function buildView() {
   }
 
   if (gTab === 'value') {
-    const mvData = getMarketValueData(allProps);
+    const mvData = memoView('analytics-properties:mv-full', { ...viewDeps, gMvInterval }, () => getMarketValueData(allProps));
     // KPI cards lead the tab: portfolio units + the four market value tiles in one row.
     wrap.appendChild(el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px' },
       unitsCard, ...buildMarketValueKpis(mvData).children));
@@ -1913,7 +1924,8 @@ function renderMonthBar({ payments, opExpenses }, monthKeys) {
 // propertyValueAt in core/data.js): the latest valuation on/before a date,
 // else the purchase price. Property / Stream / Owner / Status / Scope filters
 // apply; the period filters don't — values are point-in-time.
-function getMarketValueData(allProps) {
+// `timeline: false` skips the per-year points (only the Value tab charts them).
+function getMarketValueData(allProps, { timeline: withTimeline = true } = {}) {
   const now = todayYmd();
   const excludePersonal = gScope !== 'all';
   const current = allProps
@@ -1934,6 +1946,7 @@ function getMarketValueData(allProps) {
   // Same holdings one year ago, for the year-on-year change
   const yearAgo = `${Number(now.slice(0, 4)) - 1}${now.slice(4)}`;
   const valueYearAgo = allProps.reduce((s, prop) => s + (propertyValueMetrics(prop, yearAgo, { excludePersonal })?.valueEUR || 0), 0);
+  if (!withTimeline) return { current, totals, valueYearAgo, timeline: [] };
 
   // Year-end (or half-year-end) points from the first purchase year, plus today
   const years = allProps.map(p => p.purchaseDate?.slice(0, 4)).filter(Boolean).map(Number);

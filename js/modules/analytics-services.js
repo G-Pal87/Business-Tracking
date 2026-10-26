@@ -1,5 +1,5 @@
 // Services Analytics Dashboard — track CS + Marketing invoice revenue
-import { el, buildMultiSelect, button, fmtDate, drillDownModal, attachSortFilter, openModal } from '../core/ui.js';
+import { el, buildMultiSelect, button, fmtDate, drillDownModal, attachDataTable, openModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS, INVOICE_STATUSES, SERVICE_STREAMS } from '../core/config.js';
 import {
@@ -1549,8 +1549,10 @@ function buildInvoiceTable(container, { base }) {
   TABLE_COLS.forEach(col => htr.appendChild(mkTh(col)));
   table.appendChild(el('thead', {}, htr));
 
-  const tbody = el('tbody');
-  for (const r of rows) {
+  // Only the first page of rows becomes DOM (attachDataTable, 200 per page —
+  // "Show more" adds the rest); search and sort still cover every row, and
+  // the totals below cover every row as before.
+  const renderRow = r => {
     const tr = el('tr');
     TABLE_COLS.forEach(col => {
       const td = el('td', { class: col.right ? 'right num' : '' });
@@ -1561,14 +1563,16 @@ function buildInvoiceTable(container, { base }) {
       }
       tr.appendChild(td);
     });
-    tbody.appendChild(tr);
-  }
-  table.appendChild(tbody);
+    return tr;
+  };
+  // Each cell's text exactly as renderRow writes it (sort keys + search).
+  const cells = r => TABLE_COLS.map(col => col.badge ? r[col.key] : (r[col.key] ?? '—'));
+  table.appendChild(el('tbody'));
 
   const tableWrap = el('div', { class: 'table-wrap' });
   tableWrap.appendChild(table);
   container.appendChild(tableWrap);
-  attachSortFilter(tableWrap, { initialCol: _invoiceTableSortCol, initialDir: _invoiceTableSortDir, initialSearch: _invoiceTableSearch, onSortChange: (c, d) => { _invoiceTableSortCol = c; _invoiceTableSortDir = d; }, onSearchChange: v => { _invoiceTableSearch = v; } });
+  attachDataTable(tableWrap, { rows, cells, renderRow, initialCol: _invoiceTableSortCol, initialDir: _invoiceTableSortDir, initialSearch: _invoiceTableSearch, onSortChange: (c, d) => { _invoiceTableSortCol = c; _invoiceTableSortDir = d; }, onSearchChange: v => { _invoiceTableSearch = v; }, pageSize: 200 });
 
   const totalEUR = rows.reduce((s, r) => s + r._eur, 0);
   container.appendChild(el('div', {

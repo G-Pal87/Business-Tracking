@@ -12,7 +12,7 @@ import {
 import {
   mkKpiCard, mkSummaryGrid, mkSummaryBox, mkModalTable, mkSectionLabel,
   mkEmptyState, mkVarianceBadge, mkProgressBar, fmtK, safePct, mkTh, mkDrillValue,
-  mkCmpGrid, loadDashboardTab, mkDashboardTabs
+  mkCmpGrid, loadDashboardTab, mkDashboardTabs, memoView
 } from './analytics-helpers.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -582,7 +582,9 @@ function buildView() {
   gF.streams = new Set(['short_term_rental']);
   const curRange = getCurrentPeriodRange(gF);
   const cmpRange = getComparisonRange(gF, curRange);
-  const data = getPortfolioData(curRange, cmpRange);
+  // Memoised (see memoView): a tab switch reuses this instead of
+  // recomputing; any data edit, filter/scope change or new day recomputes.
+  const data = memoView('analytics-str', { gF, gScope, curRange, cmpRange }, () => getPortfolioData(curRange, cmpRange));
 
   // ── Page header
   const header = el('div', { style: 'display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px' });

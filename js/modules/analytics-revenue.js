@@ -11,7 +11,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine, resolveStream
 } from './analytics-filters.js';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, mkDashboardTabs, loadDashboardTab, safePct, fmtK, groupByMonthKey, mkTh, mkDrillValue, invoiceNetEUR, invoiceGrossEUR, invoiceBuckets, invoiceOwner } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, mkDashboardTabs, loadDashboardTab, memoView, safePct, fmtK, groupByMonthKey, mkTh, mkDrillValue, invoiceNetEUR, invoiceGrossEUR, invoiceBuckets, invoiceOwner } from './analytics-helpers.js';
 import { buildServicesSection, destroyServiceCharts, resetServiceStatusFilter } from './analytics-services.js';
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -1416,8 +1416,12 @@ function buildView() {
 
   const curRange = getCurrentPeriodRange(gF);
   const cmpRange = getComparisonRange(gF, curRange);
-  const curData  = getData(curRange.start, curRange.end);
-  const cmpData  = cmpRange ? getData(cmpRange.start, cmpRange.end) : null;
+  // Memoised (see memoView): a tab switch reuses these instead of
+  // recomputing; any data edit, filter/scope change or new day recomputes.
+  const { curData, cmpData } = memoView('analytics-revenue', { gF, gScope, curRange, cmpRange }, () => ({
+    curData: getData(curRange.start, curRange.end),
+    cmpData: cmpRange ? getData(cmpRange.start, cmpRange.end) : null
+  }));
 
   // ── Tabs ───────────────────────────────────────────────────────────────────
   // One tab is built per render (switching rebuilds the view), so each chart

@@ -8,7 +8,7 @@ import {
 } from './analytics-filters.js';
 import {
   mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, mkExplainButton, mkDrillValue,
-  mkDashboardTabs, loadDashboardTab,
+  mkDashboardTabs, loadDashboardTab, memoView,
   invoiceOwner, invoiceNetEUR, recordOwner, partnerKey, groupByMonthKey
 } from './analytics-helpers.js';
 import { SERVICE_STREAMS, STREAMS, PROPERTY_STREAMS } from '../core/config.js';
@@ -1318,9 +1318,14 @@ function buildView() {
   const cmpRange = getComparisonRange(gF, curRange);
   const { keys: months } = getMonthKeysForRange(curRange.start, curRange.end);
 
-  const data      = getData(curRange.start, curRange.end);
-  const cmpData   = cmpRange ? getData(cmpRange.start, cmpRange.end) : null;
-  const propsData = getPropertiesData(gF);
+  // Memoised (see memoView): a tab switch reuses these instead of
+  // recomputing; any data edit, filter/scope change or new day recomputes.
+  const { data, cmpData, propsData } = memoView('analytics-owner',
+    { gF, gScope, curRange, cmpRange, YOU_LABEL, RITA_LABEL }, () => ({
+      data:      getData(curRange.start, curRange.end),
+      cmpData:   cmpRange ? getData(cmpRange.start, cmpRange.end) : null,
+      propsData: getPropertiesData(gF)
+    }));
 
   const compLine = buildComparisonLine(curRange, cmpRange);
 

@@ -6,18 +6,10 @@ import * as charts from '../core/charts.js';
 import { CURRENCIES, EXPENSE_CATEGORIES, EXPENSE_CATEGORY_GROUPS, ACCOUNTING_TYPES, COST_CATEGORIES, RECURRENCE_TYPES, STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
 import { addDaysYmd, addMonthsYmd, addYearsYmd } from '../core/dates.js';
-import { uploadGithubFileEncrypted, deleteGithubFile, fetchGithubFileEncrypted } from '../core/github.js';
-import { openFileSafely, base64ToBytes, prepareUploadFiles } from '../core/files.js';
+import { uploadGithubFileEncrypted, uploadGithubBytesEncrypted, deleteGithubFile, fetchGithubFileEncrypted } from '../core/github.js';
+import { openFileSafely, base64ToBytes, prepareUploadFiles, prepTrackerForButton, storagePathWithExt } from '../core/files.js';
+import { bytesToBase64 } from '../core/crypto.js';
 import { openAddYearForm } from './settings.js';
-
-function readFileAsBase64(file) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(r.result.split(',')[1]);
-    r.onerror = reject;
-    r.readAsDataURL(file);
-  });
-}
 
 async function openReceipt(receipt) {
   let b64;
@@ -32,9 +24,10 @@ async function openReceipt(receipt) {
   if (how === 'download') toast('This file type can’t be previewed safely, so it was downloaded instead.', 'info');
 }
 
-function receiptRepoPath(expenseId, filename) {
-  const ext = filename.split('.').pop().toLowerCase();
-  return `expenses/receipts/${expenseId}.${ext}`;
+// Only the expense id and a plain extension reach the public path — never
+// text from the file name (core/files.js safeStorageExt).
+function receiptRepoPath(expenseId, filename, mime) {
+  return storagePathWithExt(`expenses/receipts/${expenseId}`, filename, mime);
 }
 
 // ── Background migration: move embedded receipt blobs → GitHub files ─────────
@@ -58,7 +51,7 @@ async function migrateEmbeddedReceipts(pending) {
   let done = 0;
   for (const exp of pending) {
     try {
-      const repoPath = receiptRepoPath(exp.id, exp.receipt.name);
+      const repoPath = receiptRepoPath(exp.id, exp.receipt.name, exp.receipt.type);
       await uploadGithubFileEncrypted(repoPath, exp.receipt.data, 'Update file');
       const { data, ...rest } = exp.receipt;
       upsert('expenses', { ...exp, receipt: { ...rest, path: repoPath } });
@@ -903,16 +896,27 @@ function openForm(existing, defaults = {}, onSave = null) {
   };
 
   chooseBtn.onclick = () => fileInput.click();
-  fileInput.onchange = async () => {
+  // Preparation is async (photos are resized) — the tracker lets Save wait
+  // for a receipt still being prepared instead of saving without it. It is
+  // bound to the Save button below, once that exists.
+  let prep = null;
+  fileInput.onchange = () => {
     const picked = fileInput.files[0];
     fileInput.value = '';
     if (!picked) return;
-    // Over-limit files are refused and photos shrunk (core/files.js)
-    const [ready] = await prepareUploadFiles([picked], (msg, kind) => toast(msg, kind, 6000));
-    if (!ready) return;
-    pendingReceiptFile = ready;
-    removeExistingReceipt = false;
-    syncReceiptUI();
+    receiptStatus.textContent = `📎 ${picked.name} (preparing…)`;
+    prep.track((async () => {
+      try {
+        // Over-limit files are refused and photos shrunk (core/files.js)
+        const [ready] = await prepareUploadFiles([picked], (msg, kind) => toast(msg, kind, 6000));
+        if (ready) {
+          pendingReceiptFile = ready;
+          removeExistingReceipt = false;
+        }
+      } finally {
+        syncReceiptUI(); // never leave the status on "(preparing…)"
+      }
+    })());
   };
   viewBtn.onclick = async () => {
     try { await openReceipt(r.receipt); } catch (e) { toast('Could not open receipt: ' + e.message, 'danger'); }
@@ -1039,16 +1043,24 @@ function openForm(existing, defaults = {}, onSave = null) {
   invQtyI.oninput   = syncInventoryAmount;
 
   const save = button('Save', { variant: 'primary', onClick: async () => {
-    if (save.disabled) return; // guard against a second click firing before the button visually disables
+    // dataset.saving (not just disabled): the file-preparation tracker
+    // re-enables the button when a file finishes preparing, and must not do
+    // that while a save is running.
+    if (save.disabled || save.dataset.saving) return;
+    save.dataset.saving = '1';
     save.disabled = true;
     try {
       await doSave();
     } finally {
-      save.disabled = false;
+      delete save.dataset.saving;
+      save.disabled = !!save.dataset.preparing;
     }
   }});
+  prep = prepTrackerForButton(save);
 
   async function doSave() {
+    // A receipt picked just before Save is still being prepared — wait for it.
+    await prep.idle();
     if (!allocS.value) { toast('Select what this expense is allocated to', 'danger'); return; }
     if (!dateI.value) { toast('Date required', 'danger'); return; }
 
@@ -1110,8 +1122,10 @@ function openForm(existing, defaults = {}, onSave = null) {
       delete r.receipt;
     }
     if (pendingReceiptFile) {
-      const b64 = await readFileAsBase64(pendingReceiptFile);
-      const repoPath = receiptRepoPath(r.id, pendingReceiptFile.name);
+      // Raw bytes; base64 is only built when the receipt has to be kept
+      // locally (no GitHub, or the upload failed).
+      const bytes = new Uint8Array(await pendingReceiptFile.arrayBuffer());
+      const repoPath = receiptRepoPath(r.id, pendingReceiptFile.name, pendingReceiptFile.type);
       const { token, owner, repo } = state.github;
       if (token && owner && repo) {
         // Delete old receipt file if replacing
@@ -1119,15 +1133,15 @@ function openForm(existing, defaults = {}, onSave = null) {
           try { await deleteGithubFile(r.receipt.path, null, 'Delete file'); } catch { /* ignore */ }
         }
         try {
-          await uploadGithubFileEncrypted(repoPath, b64, 'Update file');
+          await uploadGithubBytesEncrypted(repoPath, bytes, 'Update file');
           r.receipt = { name: pendingReceiptFile.name, type: pendingReceiptFile.type, size: pendingReceiptFile.size, path: repoPath };
         } catch (err) {
           console.error('Receipt upload failed:', err);
-          r.receipt = { name: pendingReceiptFile.name, type: pendingReceiptFile.type, data: b64 };
+          r.receipt = { name: pendingReceiptFile.name, type: pendingReceiptFile.type, data: bytesToBase64(bytes) };
           toast(`Receipt "${pendingReceiptFile.name}" could not be uploaded to the repo — kept locally instead.`, 'danger', 6000);
         }
       } else {
-        r.receipt = { name: pendingReceiptFile.name, type: pendingReceiptFile.type, data: b64 };
+        r.receipt = { name: pendingReceiptFile.name, type: pendingReceiptFile.type, data: bytesToBase64(bytes) };
       }
     } else if (removeExistingReceipt) {
       delete r.receipt;

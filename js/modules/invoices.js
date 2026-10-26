@@ -7,7 +7,7 @@ const _pdfMod = () => import(`../core/pdf.js?v=${window._appV || ''}`);
 const downloadInvoicePDF  = (...a) => _pdfMod().then(m => m.downloadInvoicePDF(...a));
 const generateInvoicePDF  = (...a) => _pdfMod().then(m => m.generateInvoicePDF(...a));
 import { navigate } from '../core/router.js';
-import { uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFile, fetchGithubFileEncrypted, deleteGithubFile } from '../core/github.js';
+import { uploadGithubFile, uploadGithubFileEncrypted, uploadGithubBytesEncrypted, fetchGithubFile, fetchGithubFileEncrypted, deleteGithubFile } from '../core/github.js';
 import { encryptFilename, decryptFilename, isUnlocked } from '../core/crypto.js';
 import { toLocalYmd } from '../core/dates.js';
 import { loadLib } from '../core/libs.js';
@@ -1253,16 +1253,11 @@ function previewInvoice(inv, clientId) {
       const replBtn = attachWrap.querySelector('.btn-replace');
       if (replBtn) { replBtn.disabled = true; replBtn.textContent = 'Uploading…'; }
       try {
-        const b64 = await new Promise((res, rej) => {
-          const r = new FileReader();
-          r.onload  = () => res(r.result.split(',')[1]);
-          r.onerror = rej;
-          r.readAsDataURL(file);
-        });
+        const bytes = new Uint8Array(await file.arrayBuffer());
         // Upload the new file FIRST — deleting the old one up front meant a
         // failed upload left the invoice with no PDF at all.
         const newPath = await invoicePdfPath(inv);
-        await uploadGithubFileEncrypted(newPath, b64, 'Update file');
+        await uploadGithubBytesEncrypted(newPath, bytes, 'Update file');
         const oldPath = inv.pdfPath;
         const updated = { ...inv, pdfPath: newPath };
         delete updated.pdfData;
@@ -1558,14 +1553,9 @@ function openPDFImport() {
       importBtn.disabled = true;
       importBtn.textContent = 'Uploading…';
       try {
-        const b64 = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload  = () => resolve(reader.result.split(',')[1]);
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
+        const bytes = new Uint8Array(await file.arrayBuffer());
         const pdfPath = await invoicePdfPath(inv);
-        await uploadGithubFileEncrypted(pdfPath, b64, 'Update file');
+        await uploadGithubBytesEncrypted(pdfPath, bytes, 'Update file');
         inv.pdfPath = pdfPath;
       } catch (err) {
         // GitHub not configured or upload failed — warn but still save the record.
@@ -1615,9 +1605,8 @@ async function extractPDFLines(arrayBuffer, onStatus) {
 async function extractPDFLinesOCR(pdf, onStatus) {
   const Tesseract = await loadLib('tesseract');
   const worker = await Tesseract.createWorker('eng', 1, {
-    workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
-    langPath: 'https://tessdata.projectnaptha.com/4.0.0',
-    corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1/tesseract-core-simd-lstm.wasm.js',
+    // Worker, core and language data are pinned and integrity-checked by
+    // core/libs.js (setupTesseract), whatever paths are passed here.
     logger: m => {
       if (onStatus && m.status === 'recognizing text') {
         onStatus(`OCR: ${Math.round((m.progress || 0) * 100)}%`);

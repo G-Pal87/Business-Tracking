@@ -9,7 +9,7 @@ import {
 } from './analytics-filters.js';
 import {
   mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge,
-  mkEmptyState, mkKpiCard, mkCmpGrid, mkInsightsBanner, mkDashboardTabs, loadDashboardTab, safePct, fmtK, mkDrillValue,
+  mkEmptyState, mkKpiCard, mkCmpGrid, mkInsightsBanner, mkDashboardTabs, loadDashboardTab, memoView, safePct, fmtK, mkDrillValue,
   GHS_RATE, ghsByDividend, sdcForDividend, periodDays, DAYS_PER_MONTH, DAYS_PER_YEAR, groupByMonthKey, partnerKey
 } from './analytics-helpers.js';
 import { EXPENSE_CATEGORIES } from '../core/config.js';
@@ -2162,10 +2162,16 @@ function buildView() {
     ? getMonthKeysForRange(cmpRange.start, cmpRange.end)
     : { keys: [] };
 
-  const youData  = getPersonData('you',  curRange.start, curRange.end, months);
-  const ritaData = getPersonData('rita', curRange.start, curRange.end, months);
-  const youCmp   = cmpRange ? getPersonData('you',  cmpRange.start, cmpRange.end, cmpMonths) : null;
-  const ritaCmp  = cmpRange ? getPersonData('rita', cmpRange.start, cmpRange.end, cmpMonths) : null;
+  // Memoised (see memoView): a tab switch reuses these instead of
+  // recomputing; any data edit, filter/scope change or new day recomputes.
+  // (gGhsById, read through ghsOf, is derived from the dividends above.)
+  const { youData, ritaData, youCmp, ritaCmp } = memoView('analytics-personal',
+    { gF, gScope, curRange, cmpRange, months, cmpMonths }, () => ({
+      youData:  getPersonData('you',  curRange.start, curRange.end, months),
+      ritaData: getPersonData('rita', curRange.start, curRange.end, months),
+      youCmp:   cmpRange ? getPersonData('you',  cmpRange.start, cmpRange.end, cmpMonths) : null,
+      ritaCmp:  cmpRange ? getPersonData('rita', cmpRange.start, cmpRange.end, cmpMonths) : null
+    }));
 
   const compLine = buildComparisonLine(curRange, cmpRange);
   if (compLine) wrap.appendChild(compLine);

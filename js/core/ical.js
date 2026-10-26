@@ -212,11 +212,16 @@ function looksLikeICal(body) {
 // Fetches an iCal URL. Airbnb blocks direct cross-origin browser requests,
 // so the direct attempt is expected to fail (the browser logs that CORS block
 // regardless of this try/catch — that's normal). Airbnb calendar links carry
-// an access token, so:
+// an access token, so third-party proxies only see it when there is no
+// alternative or the user explicitly allowed it:
 //   - with a private proxy configured (Settings → STR / Airbnb, see
-//     docs/ical-proxy.md) the link is sent ONLY there, in a POST body;
-//   - otherwise the public CORS proxies are tried in turn — unless that is
-//     switched off, in which case this fails with a clear message.
+//     docs/ical-proxy.md) the link is sent there, in a POST body, and ONLY
+//     there — unless public proxies are explicitly allowed
+//     (icalPublicFallback === true), in which case they are a fallback
+//     when the private proxy fails;
+//   - with no private proxy, the public CORS proxies are tried in turn —
+//     unless they are explicitly switched off (=== false), in which case this
+//     fails with a clear message.
 export async function fetchICal(url) {
   try {
     const res = await fetch(url);
@@ -227,18 +232,26 @@ export async function fetchICal(url) {
   } catch (e) { /* CORS — expected, fall through to proxies */ }
 
   const af = state.db?.settings?.airbnb || {};
+  // icalPublicFallback, not allowPublicIcalProxies: the old settings screen
+  // saved allowPublicIcalProxies=true by default, so only the new field
+  // records a deliberate opt-in to public proxies next to an own proxy.
+  const publicOptIn = af.icalPublicFallback === true;
   if (af.icalProxyUrl) {
-    const res = await fetch(af.icalProxyUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url })
-    });
-    if (!res.ok) throw new Error(`Calendar proxy returned ${res.status} — check the proxy URL in Settings → STR / Airbnb`);
-    const body = await res.text();
-    if (!looksLikeICal(body)) throw new Error('Calendar proxy did not return a calendar');
-    return body;
-  }
-  if (af.allowPublicIcalProxies === false) {
+    try {
+      const res = await fetch(af.icalProxyUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+      if (!res.ok) throw new Error(`Calendar proxy returned ${res.status} — check the proxy URL in Settings → STR / Airbnb`);
+      const body = await res.text();
+      if (!looksLikeICal(body)) throw new Error('Calendar proxy did not return a calendar');
+      return body;
+    } catch (err) {
+      if (!publicOptIn) throw err;
+      if (typeof console !== 'undefined') console.warn(`[ical] private proxy failed (${err.message}) — trying public proxies (allowed in settings)`);
+    }
+  } else if (af.allowPublicIcalProxies === false) {
     throw new Error('Calendar could not be fetched: public proxies are switched off and no own proxy is set (Settings → STR / Airbnb).');
   }
 
