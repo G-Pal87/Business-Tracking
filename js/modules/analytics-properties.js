@@ -1818,9 +1818,11 @@ function buildView() {
 
   if (gTab === 'value') {
     const mvData = getMarketValueData(allProps);
-    unitsCard.style.alignSelf = 'start';
-    wrap.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 2fr;gap:16px;margin-bottom:16px' }, unitsCard, buildInvestedSplitCard()));
-    wrap.appendChild(buildMarketValueSection(mvData));
+    // KPI cards lead the tab: portfolio units + the four market value tiles in one row.
+    wrap.appendChild(el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px' },
+      unitsCard, ...buildMarketValueKpis(mvData).children));
+    wrap.appendChild(buildMarketValueSection(mvData, { kpis: false }));
+    wrap.appendChild(el('div', { class: 'mb-16' }, buildInvestedSplitCard()));
     const lifecycleTimeline = buildPropertyLifecycleTimeline(propData);
     if (lifecycleTimeline) wrap.appendChild(lifecycleTimeline);
     renders.push(() => renderMarketValueLine(mvData), () => renderMarketValueByProp(mvData), () => renderInvestedSplitDonut(curData));
@@ -1970,7 +1972,7 @@ function toMarketValueRows(rows) {
   })).sort((a, b) => b.value - a.value);
 }
 
-function buildMarketValueSection({ current, totals, valueYearAgo }) {
+function buildMarketValueSection({ current, totals, valueYearAgo }, { kpis = true } = {}) {
   const section = el('div', {});
   section.appendChild(el('div', { style: 'margin:28px 0 12px' },
     el('h3', { style: 'margin:0 0 4px;font-size:16px;font-weight:700' }, 'Market Value & Appreciation'),
@@ -1998,7 +2000,7 @@ function buildMarketValueSection({ current, totals, valueYearAgo }) {
   }
   section.appendChild(intervalBar);
 
-  section.appendChild(buildMarketValueKpis({ current, totals, valueYearAgo }));
+  if (kpis) section.appendChild(buildMarketValueKpis({ current, totals, valueYearAgo }));
   const rows = toMarketValueRows(current);
 
   const chartRow = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px' });
