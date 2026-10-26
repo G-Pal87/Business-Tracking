@@ -1243,10 +1243,14 @@ function openStreamRevenueModal(streamKey, streamTotal, totalRevMix, cur, cmp, c
   openModal({ title: `${streamLabel} — Revenue Detail`, body, large: true });
 }
 
+// Fixed card order for the per-stream row; any other stream follows, largest first.
+const STREAM_CARD_ORDER = ['customer_success', 'marketing_services', 'short_term_rental', 'long_term_rental'];
+
 // Per-stream KPI card row — one card per stream with revenue this period
 // (value, % of mix and comparison delta).
 function buildStreamKpiRow(cur, cmp, cmpRange) {
-  const entries = [...cur.streamMap.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const rank = k => { const i = STREAM_CARD_ORDER.indexOf(k); return i === -1 ? STREAM_CARD_ORDER.length : i; };
+  const entries = [...cur.streamMap.entries()].filter(([, v]) => v > 0).sort((a, b) => rank(a[0]) - rank(b[0]) || b[1] - a[1]);
   if (!entries.length) return null;
   const totalRevMix = entries.reduce((s, [, v]) => s + v, 0);
   const cmpLabel = cmpRange?.label;
