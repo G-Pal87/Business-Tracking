@@ -19,7 +19,21 @@ let gStatusFilter = new Set(); // 'active' | 'renovation' | 'vacant' | 'sold'
 let gMvInterval = 'year'; // market value charts: 'year' (31 Dec) | 'half' (30 Jun + 31 Dec)
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const CHART_IDS    = ['prop-profit-hbar', 'prop-month-bar', 'prop-rev-donut', 'prop-value-hbar', 'prop-value-owner-donut', 'prop-value-stream-donut', 'prop-acq-bar', 'prop-growth-line', 'prop-capital-line', 'prop-single-trend', 'prop-mv-line', 'prop-mv-by-prop'];
+const CHART_IDS    = ['prop-profit-hbar', 'prop-month-bar', 'prop-single-trend', 'prop-mv-line', 'prop-mv-by-prop', 'prop-invested-donut'];
+
+// Dashboard tabs; `scope` tells which filters apply to the tab's figures.
+const PROP_TABS = [
+  { id: 'overview',    label: 'Overview',          scope: 'Headline figures and alerts. Value and equity are as of today; revenue, profit, yield and vacancy follow the period filter.' },
+  { id: 'performance', label: 'Performance',       scope: 'Everything on this tab follows the period and comparison filters.' },
+  { id: 'value',       label: 'Portfolio & Value', scope: 'All-time and as-of-today figures. Property / Stream / Owner / Status filters apply; the period filters do not.' },
+  { id: 'financing',   label: 'Financing',         scope: 'Mortgage figures estimated as of today. Property / Stream / Owner / Status filters apply; the period filters do not.' }
+];
+const PROP_TAB_KEY = 'btf:prop_dash_tab';
+let gTab = (() => {
+  try { const t = localStorage.getItem(PROP_TAB_KEY); return PROP_TABS.some(x => x.id === t) ? t : 'overview'; }
+  catch { return 'overview'; }
+})();
+let gInvestedSplit = 'owner'; // invested-capital donut: 'owner' | 'stream'
 
 let _finSortCol = -1, _finSortDir = 1, _finSearch = '';
 let _sumSortCol = -1, _sumSortDir = 1, _sumSearch = '';
@@ -451,109 +465,10 @@ function mixedRows(pays, exps) {
   ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 }
 
-// ── Acquisition & growth data ─────────────────────────────────────────────────
 function formatMonthKey(mk) {
   const [year, mm] = mk.split('-');
   return `${MONTH_LABELS[parseInt(mm, 10) - 1]} ${year}`;
 }
-
-function getAcquisitionData(allProps) {
-  const propIds    = new Set(allProps.map(p => p.id));
-  const allCapEx   = listActive('expenses').filter(e => isCapEx(e) && propIds.has(e.propertyId));
-  const withDate   = allProps.filter(p => p.purchaseDate);
-  const withoutDate = allProps.filter(p => !p.purchaseDate);
-
-  const bucketMap = new Map();
-  withDate.forEach(p => {
-    const mk = p.purchaseDate.slice(0, 7);
-    if (!bucketMap.has(mk)) bucketMap.set(mk, { count: 0, props: [] });
-    const b = bucketMap.get(mk);
-    b.count++;
-    b.props.push(p);
-  });
-
-  const capitalMap = new Map();
-  withDate.forEach(p => {
-    const mk = p.purchaseDate.slice(0, 7);
-    if (!capitalMap.has(mk)) capitalMap.set(mk, { purchaseEUR: 0, capExEUR: 0, capExItems: [] });
-    capitalMap.get(mk).purchaseEUR += p.purchasePrice
-      ? toEUR(p.purchasePrice, p.currency, p.purchaseDate) : 0;
-  });
-  allCapEx.forEach(e => {
-    if (!e.date) return;
-    const mk = e.date.slice(0, 7);
-    if (!capitalMap.has(mk)) capitalMap.set(mk, { purchaseEUR: 0, capExEUR: 0, capExItems: [] });
-    const c = capitalMap.get(mk);
-    c.capExEUR += toEUR(e.amount, e.currency, e.date);
-    c.capExItems.push(e);
-  });
-
-  const allMonths = [...new Set([...bucketMap.keys(), ...capitalMap.keys()])].sort();
-
-  let cumCount = 0, cumCapital = 0;
-  const timeline = allMonths.map(mk => {
-    const b = bucketMap.get(mk);
-    const c = capitalMap.get(mk) || { purchaseEUR: 0, capExEUR: 0, capExItems: [] };
-    cumCount   += b ? b.count : 0;
-    cumCapital += c.purchaseEUR + c.capExEUR;
-    return {
-      mk,
-      label:       formatMonthKey(mk),
-      count:       b ? b.count : 0,
-      cumCount,
-      capital:     c.purchaseEUR + c.capExEUR,
-      cumCapital,
-      props:       b ? b.props : [],
-      capExItems:  c.capExItems
-    };
-  });
-
-  return { timeline, withoutDate };
-}
-
-function toPropAcqRows(props) {
-  return props.map(p => ({
-    name:   p.name,
-    stream: STREAMS[propStream(p)]?.short || propStream(p),
-    owner:  OWNERS[p.owner] || p.owner || '—',
-    city:   p.city || '—',
-    pdate:  p.purchaseDate || '—',
-    price:  p.purchasePrice ? toEUR(p.purchasePrice, p.currency, p.purchaseDate) : 0
-  })).sort((a, b) => (a.pdate || '').localeCompare(b.pdate || ''));
-}
-const PROP_ACQ_COLS = [
-  { key: 'name',   label: 'Property'                                            },
-  { key: 'stream', label: 'Stream'                                              },
-  { key: 'owner',  label: 'Owner'                                               },
-  { key: 'city',   label: 'City'                                                },
-  { key: 'pdate',  label: 'Purchase Date', format: v => fmtDate(v)              },
-  { key: 'price',  label: 'Price (EUR)',   right: true, format: v => formatEUR(v) }
-];
-
-function toCapitalDrillRows(monthProps, capExItems) {
-  const purchaseRows = monthProps.map(p => ({
-    date:    p.purchaseDate || '—',
-    type:    'Purchase',
-    name:    p.name,
-    detail:  p.city || '—',
-    eur:     p.purchasePrice ? toEUR(p.purchasePrice, p.currency, p.purchaseDate) : 0
-  }));
-  const capExRows = capExItems.map(e => ({
-    date:    e.date || '—',
-    type:    'CapEx',
-    name:    byId('properties', e.propertyId)?.name || '—',
-    detail:  e.category || '—',
-    eur:     toEUR(e.amount, e.currency, e.date)
-  }));
-  return [...purchaseRows, ...capExRows].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-}
-const CAPITAL_DRILL_COLS = [
-  { key: 'date',   label: 'Date',     format: v => fmtDate(v)               },
-  { key: 'type',   label: 'Type'                                             },
-  { key: 'name',   label: 'Property'                                         },
-  { key: 'detail', label: 'Detail'                                           },
-  { key: 'eur',    label: 'EUR',      right: true, format: v => formatEUR(v) }
-];
 
 // ── Mortgage estimation ───────────────────────────────────────────────────────
 function computeMortgageEstimate(prop) {
@@ -1241,15 +1156,13 @@ function computePropertyInsights({ totals, propData, opExpenses, capExpenses, av
 
   if (best && worst && best !== worst) {
     const spread = (best.simpleROI ?? 0) - (worst.simpleROI ?? 0);
-    if (spread > 20) {
-      signals.push({
-        severity: 'Note',
-        title: 'ROI SPREAD',
-        text: `${spread.toFixed(0)} pp spread between best ("${best.prop.name}") and weakest ("${worst.prop.name}") performer. Review allocation.`,
-        inspect: 'Property Comparison',
-        onClick: () => drillDownModal('Property Comparison — Best vs Weakest', toROIDrillRows([best, worst]), ROI_DRILL_COLS)
-      });
-    }
+    signals.push({
+      severity: spread > 20 ? 'Watch' : 'Note',
+      title: 'BEST & WEAKEST',
+      text: `Best: "${best.prop.name}" (ROI ${best.simpleROI != null ? best.simpleROI.toFixed(1) + '%' : '—'}) · Weakest: "${worst.prop.name}" (ROI ${worst.simpleROI != null ? worst.simpleROI.toFixed(1) + '%' : '—'})${avgROI != null ? ` · portfolio avg ${avgROI.toFixed(1)}%` : ''}${spread > 20 ? ` — a ${spread.toFixed(0)} pp spread, review allocation.` : '.'}`,
+      inspect: 'Property Comparison',
+      onClick: () => drillDownModal('Property Comparison — Best vs Weakest', toROIDrillRows([best, worst]), ROI_DRILL_COLS)
+    });
   }
 
   return signals;
@@ -1672,37 +1585,17 @@ function buildView() {
 
   const { allProps, propData, payments, opExpenses, capExpenses, totals, avgROI, best, worst } = curData;
 
-  // Comparison line
+  // Comparison line (shown on the period-based tabs only)
   const compLine = buildComparisonLine(curRange, cmpRange);
-  if (compLine) wrap.appendChild(compLine);
 
-  // ── Section 1: Portfolio Units ─────────────────────────────────────────────
+  // ── Portfolio units (Portfolio & Value tab) ───────────────────────────────
   const activeCount = allProps.filter(p => (p.status || 'active') === 'active').length;
-  const invKpiRow = el('div', { class: 'grid grid-4 mb-16' });
-  invKpiRow.appendChild(mkKpiCard({
+  const unitsCard = mkKpiCard({
     label: 'Portfolio Units',
     value: String(allProps.length),
+    subtitle: `${activeCount} active${allProps.length > activeCount ? ` · ${allProps.length - activeCount} other status` : ''}`,
     onClick: () => drillDownModal('Portfolio Properties', [...toPropValueRows(propData)].sort((a, b) => a.name.localeCompare(b.name)), PROP_VALUE_COLS)
-  }));
-  invKpiRow.appendChild(mkKpiCard({
-    label: 'Active Properties',
-    value: String(activeCount),
-    subtitle: allProps.length > activeCount ? `${allProps.length - activeCount} other status` : null,
-    onClick: () => drillDownModal('Active Properties', toPropValueRows(propData.filter(d => (d.prop.status || 'active') === 'active')), PROP_VALUE_COLS)
-  }));
-  invKpiRow.appendChild(mkKpiCard({
-    label: 'Portfolio Book Value',
-    value: formatEUR(totals.purchaseValue),
-    subtitle: 'Purchase prices only',
-    onClick: () => drillDownModal('Portfolio Book Value', [...toPropValueRows(propData)].sort((a, b) => b.purchase - a.purchase), PROP_VALUE_COLS)
-  }));
-  invKpiRow.appendChild(mkKpiCard({
-    label: 'Total Invested',
-    value: formatEUR(totals.totalInvested),
-    subtitle: 'Purchase + all-time CapEx',
-    onClick: () => drillDownModal('Total Invested Capital', toPropValueRows(propData), PROP_VALUE_COLS)
-  }));
-  wrap.appendChild(invKpiRow);
+  });
 
   // ── Section 2: Period Performance ─────────────────────────────────────────
   const deltaRev    = safePct(totals.rev,    cmpData?.totals.rev);
@@ -1711,7 +1604,7 @@ function buildView() {
   const deltaCapEx  = safePct(totals.capEx,  cmpData?.totals.capEx);
 
   const kpiRow = el('div', { class: 'grid grid-4 mb-16' });
-  kpiRow.appendChild(mkKpiCard({
+  const revCard = kpiRow.appendChild(mkKpiCard({
     label:   'Rental Revenue',
     value:   formatEUR(totals.rev),
     delta:      deltaRev,
@@ -1750,7 +1643,7 @@ function buildView() {
     compValue:   cmpData ? formatEUR(cmpData.totals.opEx) : undefined,
     onClick:     () => openOperatingExpensesModal({ totals, opExpenses, cmpTotals: cmpData?.totals, cmpOpExpenses: cmpData?.opExpenses, cmpLabel: cmpRange?.label })
   }));
-  kpiRow.appendChild(mkKpiCard({
+  const profitCard = kpiRow.appendChild(mkKpiCard({
     label:   'Operating Profit',
     value:   formatEUR(totals.profit),
     variant:    totals.profit >= 0 ? 'success' : 'danger',
@@ -1769,7 +1662,6 @@ function buildView() {
     compValue:   cmpData ? formatEUR(cmpData.totals.capEx) : undefined,
     onClick:     () => openPropertyCapExModal({ totals, capExpenses, cmpTotals: cmpData?.totals, cmpCapExpenses: cmpData?.capExpenses, cmpLabel: cmpRange?.label })
   }));
-  wrap.appendChild(kpiRow);
 
   // ── Section 3: Operational KPIs ───────────────────────────────────────────
   const opData  = getOperationalData({ propData, payments, start, end, isIncomplete: curRange.isIncomplete });
@@ -1793,7 +1685,7 @@ function buildView() {
         return sum + (d.totalInvested > 0 ? (annualNet / d.totalInvested) * 100 : 0);
       }, 0) / netYieldItems.length
     : null;
-  opKpiRow.appendChild(mkKpiCard({
+  const yieldCard = opKpiRow.appendChild(mkKpiCard({
     label:   'Rental Yield',
     value:   ryData.avg !== null ? ryData.avg.toFixed(1) + '%' : '—',
     subtitle: avgNetYield !== null
@@ -1839,7 +1731,7 @@ function buildView() {
 
   // 2. Vacancy / Dead Months
   const vacData = opData.vacancy;
-  opKpiRow.appendChild(mkKpiCard({
+  const vacancyCard = opKpiRow.appendChild(mkKpiCard({
     label:   'Vacancy / Dead Months',
     value:   `${vacData.count} property-month${vacData.count !== 1 ? 's' : ''}`,
     subtitle: vacData.count > 0 ? 'Months with zero revenue' : 'No zero-revenue months',
@@ -1863,141 +1755,102 @@ function buildView() {
     }
   }));
 
-  wrap.appendChild(opKpiRow);
 
-  // Property insights
+  // Property insights (Overview tab), plus mortgages ending within a year
+  const finData = getFinancingData(allProps);
   const signals = computePropertyInsights(curData);
-  const banner  = mkInsightsBanner(signals, 'Property Insights');
-  if (banner) wrap.appendChild(banner);
+  for (const d of finData.finData) {
+    if (!d.financed || d.paidOff || d.yearsLeft == null || d.yearsLeft > 1) continue;
+    signals.push({
+      severity: 'Note',
+      title: 'MORTGAGE ENDING',
+      text: `"${d.prop.name}" mortgage is estimated to be paid off within ${Math.max(1, Math.round(d.yearsLeft * 12))} month(s).`,
+      inspect: 'Financing',
+      onClick: () => drillDownModal('Mortgage Details', toMortgageDetailRows(d), MORTGAGE_DETAIL_COLS)
+    });
+  }
+  const banner = mkInsightsBanner(signals, 'Property Insights');
 
-  // ── Chart row 1: profit hbar (2/3) + revenue donut (1/3) ──────────────────
-  const row1 = el('div', { style: 'display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px' });
-  row1.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Operating Profit by Property')),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'prop-profit-hbar' }))
-  ));
-  row1.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Revenue Share')),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'prop-rev-donut' }))
-  ));
-  wrap.appendChild(row1);
-
-  // ── Chart row 2: monthly grouped bar ──────────────────────────────────────
-  wrap.appendChild(el('div', { class: 'card mb-16' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Monthly Revenue vs Operating Expenses')),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'prop-month-bar' }))
-  ));
-
-  // ── Chart row 3: per-property monthly P&L trend ───────────────────────────
-  wrap.appendChild(el('div', { class: 'card mb-16' },
-    el('div', { class: 'card-header' },
-      el('div', { class: 'card-title' }, 'Per-Property Monthly P&L Trend'),
-      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Top 5 by revenue · Click a point for that month\'s breakdown')
-    ),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'prop-single-trend' }))
-  ));
-
-  // ── Total investment breakdown ─────────────────────────────────────────────
-  wrap.appendChild(el('div', { class: 'card mb-16' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Total Investment by Property (Purchase + All-Time CapEx)')),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'prop-value-hbar' }))
-  ));
-  const valueRow = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px' });
-  valueRow.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Invested Capital by Owner')),
-    el('div', { class: 'chart-wrap' }, el('canvas', { id: 'prop-value-owner-donut' }))
-  ));
-  valueRow.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Invested Capital by Stream')),
-    el('div', { class: 'chart-wrap' }, el('canvas', { id: 'prop-value-stream-donut' }))
-  ));
-  wrap.appendChild(valueRow);
-
-  // ── Market value & appreciation ────────────────────────────────────────────
-  const mvData = getMarketValueData(allProps);
-  wrap.appendChild(buildMarketValueSection(mvData));
-
-  // ── Property comparison ────────────────────────────────────────────────────
-  const compSection = buildComparisonSection({ propData, avgROI, best, worst });
-  if (compSection) wrap.appendChild(compSection);
-
-  // ── Property summary table ─────────────────────────────────────────────────
-  const tableCard = el('div', { class: 'card mb-16' });
-  tableCard.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'Property Summary'),
-    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click a row for a compact summary')
-  ));
-  buildSummaryTable(tableCard, propData);
-  wrap.appendChild(tableCard);
-
-  // ── Lease Expiry Alerts ────────────────────────────────────────────────────
-  wrap.appendChild(buildLeaseExpiryCard());
-
-  // ── Property Lifecycle Timeline ────────────────────────────────────────────
-  const lifecycleTimeline = buildPropertyLifecycleTimeline(propData);
-  if (lifecycleTimeline) wrap.appendChild(lifecycleTimeline);
-
-  // STR Occupancy Heatmap moved to the STR Performance dashboard.
-
-  // ── Portfolio Acquisition & Growth ─────────────────────────────────────────
-  const acqData = getAcquisitionData(allProps);
-
-  wrap.appendChild(el('div', { style: 'margin:28px 0 12px' },
-    el('h3', { style: 'margin:0 0 4px;font-size:16px;font-weight:700' }, 'Portfolio Acquisition & Growth'),
-    el('p',  { style: 'margin:0;font-size:12px;color:var(--text-muted)' },
-      'Based on purchase dates. Property / Stream / Owner / Status filters apply; Current Period and Comparison Period filters do not.' +
-      (acqData.withoutDate.length ? ` ${acqData.withoutDate.length} propert${acqData.withoutDate.length > 1 ? 'ies' : 'y'} excluded (no purchase date).` : '')
-    )
-  ));
-
-  wrap.appendChild(el('div', { class: 'card mb-16' },
-    el('div', { class: 'card-header' },
-      el('div', { class: 'card-title' }, 'Acquisitions per Month'),
-      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click a bar to see properties acquired')
-    ),
-    el('div', { class: 'chart-wrap' }, el('canvas', { id: 'prop-acq-bar' }))
-  ));
-
-  const acqGrowthRow = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px' });
-  acqGrowthRow.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' },
-      el('div', { class: 'card-title' }, 'Cumulative Portfolio Growth'),
-      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click a point to see portfolio at that date')
-    ),
-    el('div', { class: 'chart-wrap' }, el('canvas', { id: 'prop-growth-line' }))
-  ));
-  acqGrowthRow.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' },
-      el('div', { class: 'card-title' }, 'Cumulative Capital Deployed'),
-      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Purchase prices + All-Time CapEx')
-    ),
-    el('div', { class: 'chart-wrap' }, el('canvas', { id: 'prop-capital-line' }))
-  ));
-  wrap.appendChild(acqGrowthRow);
-
-  // ── CapEx Impact — Revenue Before vs After ────────────────────────────────
-  const capExImpactSection = buildCapExImpactSection({ propData, curRange });
-  if (capExImpactSection) wrap.appendChild(capExImpactSection);
-
-  // ── Financing & Payoff ─────────────────────────────────────────────────────
-  wrap.appendChild(buildFinancingSection(getFinancingData(allProps)));
+  // ── Tabs ───────────────────────────────────────────────────────────────────
+  // One tab is built per render (switching rebuilds the view), so each chart
+  // canvas exists once and tiles built above can be placed on any tab.
+  const tabBar = el('div', { class: 'flex gap-8', style: 'flex-wrap:wrap;border-bottom:1px solid var(--border);margin-bottom:12px' });
+  for (const t of PROP_TABS) {
+    const isActive = gTab === t.id;
+    const btn = el('button', {
+      type: 'button',
+      style: [
+        'padding:8px 14px;border:none;background:transparent;font-size:13px;cursor:pointer;margin-bottom:-1px',
+        isActive
+          ? 'border-bottom:2px solid var(--accent);color:var(--text);font-weight:600'
+          : 'border-bottom:2px solid transparent;color:var(--text-muted)'
+      ].join(';')
+    }, t.label);
+    btn.onclick = () => { if (gTab !== t.id) { gTab = t.id; try { localStorage.setItem(PROP_TAB_KEY, gTab); } catch { /* storage unavailable */ } rebuildView(); } };
+    tabBar.appendChild(btn);
+  }
+  wrap.appendChild(tabBar);
+  const tabMeta = PROP_TABS.find(t => t.id === gTab);
+  wrap.appendChild(el('p', { style: 'margin:0 0 16px;font-size:12px;color:var(--text-muted)' }, tabMeta.scope));
 
   const { keys: monthKeys } = getMonthKeysForRange(start, end);
-  setTimeout(() => {
-    renderProfitHBar(curData);
-    renderRevDonut(curData);
-    renderMonthBar(curData, monthKeys);
-    renderSingleTrend(curData, monthKeys);
-    renderValueHBar(curData);
-    renderValueOwnerDonut(curData);
-    renderValueStreamDonut(curData);
-    renderAcqBar(acqData);
-    renderGrowthLine(acqData);
-    renderCapitalLine(acqData);
-    renderMarketValueLine(mvData);
-    renderMarketValueByProp(mvData);
-  }, 0);
+  const renders = [];
 
+  if (gTab === 'overview') {
+    if (compLine) wrap.appendChild(compLine);
+    const mvData = getMarketValueData(allProps);
+    wrap.appendChild(buildMarketValueKpis(mvData));
+    wrap.appendChild(el('div', { class: 'grid grid-4 mb-16' }, revCard, profitCard, yieldCard, vacancyCard));
+    if (banner) wrap.appendChild(banner);
+    wrap.appendChild(buildLeaseExpiryCard());
+  }
+
+  if (gTab === 'performance') {
+    if (compLine) wrap.appendChild(compLine);
+    wrap.appendChild(kpiRow);
+    wrap.appendChild(opKpiRow);
+    wrap.appendChild(el('div', { class: 'card mb-16' },
+      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Operating Profit by Property')),
+      el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'prop-profit-hbar' }))
+    ));
+    wrap.appendChild(el('div', { class: 'card mb-16' },
+      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Monthly Revenue vs Operating Expenses')),
+      el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'prop-month-bar' }))
+    ));
+    wrap.appendChild(el('div', { class: 'card mb-16' },
+      el('div', { class: 'card-header' },
+        el('div', { class: 'card-title' }, 'Per-Property Monthly P&L Trend'),
+        el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Top 5 by revenue · Click a point for that month\'s breakdown')
+      ),
+      el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'prop-single-trend' }))
+    ));
+    const tableCard = el('div', { class: 'card mb-16' });
+    tableCard.appendChild(el('div', { class: 'card-header' },
+      el('div', { class: 'card-title' }, 'Property Summary'),
+      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click a row for every return measure and a full breakdown')
+    ));
+    buildSummaryTable(tableCard, propData, curRange);
+    wrap.appendChild(tableCard);
+    const capExImpactSection = buildCapExImpactSection({ propData, curRange });
+    if (capExImpactSection) wrap.appendChild(capExImpactSection);
+    renders.push(() => renderProfitHBar(curData), () => renderMonthBar(curData, monthKeys), () => renderSingleTrend(curData, monthKeys));
+  }
+
+  if (gTab === 'value') {
+    const mvData = getMarketValueData(allProps);
+    unitsCard.style.alignSelf = 'start';
+    wrap.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 2fr;gap:16px;margin-bottom:16px' }, unitsCard, buildInvestedSplitCard()));
+    wrap.appendChild(buildMarketValueSection(mvData));
+    const lifecycleTimeline = buildPropertyLifecycleTimeline(propData);
+    if (lifecycleTimeline) wrap.appendChild(lifecycleTimeline);
+    renders.push(() => renderMarketValueLine(mvData), () => renderMarketValueByProp(mvData), () => renderInvestedSplitDonut(curData));
+  }
+
+  if (gTab === 'financing') {
+    wrap.appendChild(buildFinancingSection(finData));
+  }
+
+  setTimeout(() => renders.forEach(fn => fn()), 0);
   return wrap;
 }
 
@@ -2069,263 +1922,6 @@ function renderMonthBar({ payments, opExpenses }, monthKeys) {
         ));
       }
       openModal({ title: `${label} — P&L Summary`, body, large: true });
-    }
-  });
-}
-
-// ── Chart 3: Donut — Revenue share per property ───────────────────────────────
-function renderRevDonut({ propData }) {
-  const withRev = propData.filter(d => d.rev > 0);
-  if (!withRev.length) return;
-
-  const PALETTE = ['#6366f1','#8b5cf6','#14b8a6','#f59e0b','#ec4899','#3b82f6','#10b981','#ef4444','#06b6d4','#84cc16'];
-  charts.doughnut('prop-rev-donut', {
-    labels: withRev.map(d => d.prop.name),
-    data:   withRev.map(d => Math.round(d.rev)),
-    colors: withRev.map((_, i) => PALETTE[i % PALETTE.length]),
-    onClickItem: (_label, idx) => {
-      const d = withRev[idx];
-      const body = el('div');
-      const totalRev = withRev.reduce((s, x) => s + x.rev, 0);
-      const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px' });
-      sgrid.appendChild(mkSummaryBox('Revenue', formatEUR(d.rev), totalRev > 0 ? `${(d.rev / totalRev * 100).toFixed(0)}% of portfolio` : null));
-      sgrid.appendChild(mkSummaryBox('Operating Expenses', formatEUR(d.opEx), null));
-      sgrid.appendChild(mkSummaryBox('Operating Profit', formatEUR(d.profit), d.rev > 0 ? `Margin: ${(d.profit / d.rev * 100).toFixed(0)}%` : null));
-      body.appendChild(sgrid);
-      const monthlyMap = new Map();
-      d.propPayments.forEach(p => { const mk = p.date?.slice(0, 7); if (mk) monthlyMap.set(mk, (monthlyMap.get(mk) || 0) + toEUR(p.amount, p.currency, p.date)); });
-      const monthly = [...monthlyMap.entries()].sort(([a], [b]) => a.localeCompare(b));
-      if (monthly.length > 1) {
-        body.appendChild(mkSectionLabel('Monthly Revenue'));
-        body.appendChild(mkModalTable(
-          [{ label: 'Month' }, { label: 'Revenue', right: true }],
-          monthly.map(([mk, v]) => [mk, formatEUR(v)])
-        ));
-      }
-      openModal({ title: `${d.prop.name} — Property Performance`, body, large: true });
-    }
-  });
-}
-
-// ── Chart 4: Stacked hbar — Total investment by property ─────────────────────
-function renderValueHBar({ propData }) {
-  const sorted = [...propData]
-    .filter(d => d.totalInvested > 0)
-    .sort((a, b) => b.totalInvested - a.totalInvested);
-  if (!sorted.length) return;
-
-  charts.bar('prop-value-hbar', {
-    labels: sorted.map(d => d.prop.name),
-    datasets: [
-      {
-        label:           'Purchase Price',
-        data:            sorted.map(d => Math.round(d.purchaseEUR)),
-        backgroundColor: 'rgba(99,102,241,0.8)'
-      },
-      {
-        label:           'All-Time CapEx',
-        data:            sorted.map(d => Math.round(d.allTimeCapEx)),
-        backgroundColor: 'rgba(245,158,11,0.8)'
-      }
-    ],
-    stacked:    true,
-    horizontal: true,
-    onClickItem: (_label, idx) => {
-      const d = sorted[idx];
-      drillDownModal(`Investment — ${d.prop.name}`, toPropValueRows([d]), PROP_VALUE_COLS);
-    }
-  });
-}
-
-// ── Chart 5: Donut — Invested capital by owner ────────────────────────────────
-function renderValueOwnerDonut({ propData }) {
-  const byOwner = new Map();
-  propData.forEach(d => {
-    if (d.totalInvested <= 0) return;
-    const label = OWNERS[d.prop.owner] || d.prop.owner || 'Unknown';
-    byOwner.set(label, (byOwner.get(label) || 0) + d.totalInvested);
-  });
-  const entries = [...byOwner.entries()];
-  if (!entries.length) return;
-
-  const PALETTE = ['#6366f1', '#14b8a6', '#f59e0b', '#ec4899', '#3b82f6'];
-  charts.doughnut('prop-value-owner-donut', {
-    labels: entries.map(([k]) => k),
-    data:   entries.map(([, v]) => Math.round(v)),
-    colors: entries.map((_, i) => PALETTE[i % PALETTE.length]),
-    onClickItem: (_label, idx) => {
-      const [ownerLabel] = entries[idx];
-      const ownProps = propData.filter(d =>
-        (OWNERS[d.prop.owner] || d.prop.owner || 'Unknown') === ownerLabel
-      );
-      drillDownModal(`Invested Capital — ${ownerLabel}`, toPropValueRows(ownProps), PROP_VALUE_COLS);
-    }
-  });
-}
-
-// ── Chart 6: Donut — Invested capital by stream ───────────────────────────────
-function renderValueStreamDonut({ propData }) {
-  const byStream = new Map();
-  propData.forEach(d => {
-    if (d.totalInvested <= 0) return;
-    const sk    = propStream(d.prop);
-    const label = STREAMS[sk]?.short || sk;
-    byStream.set(label, (byStream.get(label) || 0) + d.totalInvested);
-  });
-  const entries = [...byStream.entries()];
-  if (!entries.length) return;
-
-  const PALETTE = ['#6366f1', '#14b8a6', '#f59e0b', '#ec4899'];
-  charts.doughnut('prop-value-stream-donut', {
-    labels: entries.map(([k]) => k),
-    data:   entries.map(([, v]) => Math.round(v)),
-    colors: entries.map((_, i) => PALETTE[i % PALETTE.length]),
-    onClickItem: (_label, idx) => {
-      const [streamLabel] = entries[idx];
-      const ownProps = propData.filter(d =>
-        (STREAMS[propStream(d.prop)]?.short || propStream(d.prop)) === streamLabel
-      );
-      drillDownModal(`Invested Capital — ${streamLabel}`, toPropValueRows(ownProps), PROP_VALUE_COLS);
-    }
-  });
-}
-
-// ── Property comparison section ───────────────────────────────────────────────
-function buildComparisonSection({ propData, avgROI, best, worst }) {
-  if (!best) return null;
-  const section = el('div', { class: 'card mb-16' });
-  section.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'Property P&L & ROI Comparison'),
-    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click tiles for transactions')
-  ));
-  const grid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:16px' });
-  grid.appendChild(comparisonTile('Best Performer', best, 'var(--success)'));
-  grid.appendChild(portfolioAvgTile(propData, avgROI));
-  if (worst && worst !== best) {
-    grid.appendChild(comparisonTile('Weakest Performer', worst, 'var(--danger)'));
-  }
-  section.appendChild(grid);
-  return section;
-}
-
-function comparisonTile(title, d, accentColor) {
-  const costRatio = d.rev > 0 ? (d.opEx / d.rev * 100) : null;
-  const tile = el('div', {
-    style: `background:var(--bg-elev-1);border-radius:var(--radius-sm);padding:14px;border-left:3px solid ${accentColor};cursor:pointer`,
-    title: 'Click for transactions'
-  });
-  tile.onclick = () => drillDownModal(
-    `${d.prop.name} — All Transactions`,
-    mixedRows(d.propPayments, [...d.propOpExpenses, ...d.propCapExpenses]),
-    MIXED_DRILL_COLS
-  );
-  tile.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px' }, title));
-  tile.appendChild(el('div', { style: 'font-size:15px;font-weight:700;margin-bottom:8px;color:var(--text)' }, d.prop.name));
-  [
-    ['Revenue',        formatEUR(d.rev)],
-    ['Expenses',       formatEUR(d.opEx)],
-    ['Operating Profit', formatEUR(d.profit)],
-    ['Simple ROI',     d.simpleROI != null ? d.simpleROI.toFixed(1) + '%' : '—'],
-    ['Cost Ratio',     costRatio != null ? costRatio.toFixed(0) + '%' : '—']
-  ].forEach(([label, value]) => {
-    tile.appendChild(el('div', { style: 'display:flex;justify-content:space-between;font-size:12px;padding:2px 0;border-bottom:1px solid var(--border)' },
-      el('span', { style: 'color:var(--text-muted)' }, label),
-      el('span', { style: 'font-weight:600' }, value)
-    ));
-  });
-  return tile;
-}
-
-function portfolioAvgTile(propData, avgROI) {
-  const n         = propData.length;
-  const avgRev    = n > 0 ? propData.reduce((s, d) => s + d.rev,    0) / n : 0;
-  const avgOpEx   = n > 0 ? propData.reduce((s, d) => s + d.opEx,   0) / n : 0;
-  const avgProfit = n > 0 ? propData.reduce((s, d) => s + d.profit, 0) / n : 0;
-  const avgCostRatio = avgRev > 0 ? (avgOpEx / avgRev * 100) : null;
-  const tile = el('div', {
-    style: 'background:var(--bg-elev-1);border-radius:var(--radius-sm);padding:14px;border-left:3px solid var(--accent);cursor:pointer',
-    title: 'Click for ROI overview'
-  });
-  tile.onclick = () => drillDownModal('Portfolio ROI Overview', toROIDrillRows(propData), ROI_DRILL_COLS);
-  tile.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px' }, 'Portfolio Average'));
-  tile.appendChild(el('div', { style: 'font-size:15px;font-weight:700;margin-bottom:8px;color:var(--text)' },
-    `${n} Propert${n === 1 ? 'y' : 'ies'}`
-  ));
-  [
-    ['Avg Revenue',     formatEUR(avgRev)],
-    ['Avg Expenses',    formatEUR(avgOpEx)],
-    ['Avg Op. Profit',  formatEUR(avgProfit)],
-    ['Avg Simple ROI',  avgROI != null ? avgROI.toFixed(1) + '%' : '—'],
-    ['Avg Cost Ratio',  avgCostRatio != null ? avgCostRatio.toFixed(0) + '%' : '—']
-  ].forEach(([label, value]) => {
-    tile.appendChild(el('div', { style: 'display:flex;justify-content:space-between;font-size:12px;padding:2px 0;border-bottom:1px solid var(--border)' },
-      el('span', { style: 'color:var(--text-muted)' }, label),
-      el('span', { style: 'font-weight:600' }, value)
-    ));
-  });
-  return tile;
-}
-
-// ── Chart 7: Bar — Acquisitions per month ────────────────────────────────────
-function renderAcqBar({ timeline }) {
-  const active = timeline.filter(t => t.count > 0);
-  if (!active.length) return;
-
-  charts.bar('prop-acq-bar', {
-    labels: active.map(t => t.label),
-    datasets: [{
-      label:           'Properties Acquired',
-      data:            active.map(t => t.count),
-      backgroundColor: 'rgba(99,102,241,0.8)'
-    }],
-    onClickItem: (_label, idx) => {
-      const t = active[idx];
-      drillDownModal(`Acquisitions — ${t.label}`, toPropAcqRows(t.props), PROP_ACQ_COLS);
-    }
-  });
-}
-
-// ── Chart 8: Line — Cumulative portfolio growth ───────────────────────────────
-function renderGrowthLine({ timeline }) {
-  if (!timeline.length) return;
-
-  charts.line('prop-growth-line', {
-    labels: timeline.map(t => t.label),
-    datasets: [{
-      label:           'Total Properties',
-      data:            timeline.map(t => t.cumCount),
-      borderColor:     '#6366f1',
-      backgroundColor: 'rgba(99,102,241,0.1)',
-      fill:            true
-    }],
-    onClickItem: (_label, idx) => {
-      const propsUpTo = timeline.slice(0, idx + 1).flatMap(t => t.props);
-      drillDownModal(`Portfolio as of ${timeline[idx].label}`, toPropAcqRows(propsUpTo), PROP_ACQ_COLS);
-    }
-  });
-}
-
-// ── Chart 9: Line — Cumulative capital deployed ───────────────────────────────
-function renderCapitalLine({ timeline }) {
-  if (!timeline.length) return;
-
-  charts.line('prop-capital-line', {
-    labels: timeline.map(t => t.label),
-    datasets: [{
-      label:           'Capital Deployed (EUR)',
-      data:            timeline.map(t => Math.round(t.cumCapital)),
-      borderColor:     '#f59e0b',
-      backgroundColor: 'rgba(245,158,11,0.1)',
-      fill:            true
-    }],
-    onClickItem: (_label, idx) => {
-      const t = timeline[idx];
-      if (!t.capital) return;
-      drillDownModal(
-        `Capital Events — ${t.label}`,
-        toCapitalDrillRows(t.props, t.capExItems),
-        CAPITAL_DRILL_COLS
-      );
     }
   });
 }
@@ -2422,6 +2018,42 @@ function buildMarketValueSection({ current, totals, valueYearAgo }) {
   }
   section.appendChild(intervalBar);
 
+  section.appendChild(buildMarketValueKpis({ current, totals, valueYearAgo }));
+  const rows = toMarketValueRows(current);
+
+  const chartRow = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px' });
+  chartRow.appendChild(el('div', { class: 'card' },
+    el('div', { class: 'card-header' },
+      el('div', { class: 'card-title' }, 'Portfolio Value vs Invested'),
+      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, `${gMvInterval === 'half' ? '30 Jun & 31 Dec values' : 'Year-end values'} · click a point for the breakdown`)
+    ),
+    el('div', { class: 'chart-wrap' }, el('canvas', { id: 'prop-mv-line' }))
+  ));
+  chartRow.appendChild(el('div', { class: 'card' },
+    el('div', { class: 'card-header' },
+      el('div', { class: 'card-title' }, 'Market Value by Property'),
+      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, gMvInterval === 'half' ? '30 Jun & 31 Dec values' : 'Year-end values')
+    ),
+    el('div', { class: 'chart-wrap' }, el('canvas', { id: 'prop-mv-by-prop' }))
+  ));
+  section.appendChild(chartRow);
+
+  if (rows.length) {
+    const card = el('div', { class: 'card mb-16' });
+    card.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Value by Property')));
+    const tw = el('div', { class: 'table-wrap' });
+    tw.appendChild(mkModalTable(
+      MV_COLS.map(c => ({ label: c.label, right: !!c.right, tip: c.tip })),
+      rows.map(r => MV_COLS.map(c => c.format ? c.format(r[c.key]) : r[c.key]))
+    ));
+    card.appendChild(tw);
+    section.appendChild(card);
+  }
+  return section;
+}
+
+// The four market value tiles (Portfolio & Value section and the Overview).
+function buildMarketValueKpis({ current, totals, valueYearAgo }) {
   const pct = (a, b) => b > 0 ? (a / b) * 100 : null;
   const fmtPct = v => v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
   const rows = toMarketValueRows(current);
@@ -2458,37 +2090,57 @@ function buildMarketValueSection({ current, totals, valueYearAgo }) {
     onClick: open('Equity'),
     explain: { formula: 'Market value − estimated remaining mortgage', note: 'Mortgage balance is estimated from the amount, monthly payment and rate on each property (same estimate as Financing & Payoff).' }
   }));
-  section.appendChild(kpis);
+  return kpis;
+}
 
-  const chartRow = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px' });
-  chartRow.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' },
-      el('div', { class: 'card-title' }, 'Portfolio Value vs Invested'),
-      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, `${gMvInterval === 'half' ? '30 Jun & 31 Dec values' : 'Year-end values'} · click a point for the breakdown`)
-    ),
-    el('div', { class: 'chart-wrap' }, el('canvas', { id: 'prop-mv-line' }))
-  ));
-  chartRow.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' },
-      el('div', { class: 'card-title' }, 'Market Value by Property'),
-      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, gMvInterval === 'half' ? '30 Jun & 31 Dec values' : 'Year-end values')
-    ),
-    el('div', { class: 'chart-wrap' }, el('canvas', { id: 'prop-mv-by-prop' }))
-  ));
-  section.appendChild(chartRow);
-
-  if (rows.length) {
-    const card = el('div', { class: 'card mb-16' });
-    card.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Value by Property')));
-    const tw = el('div', { class: 'table-wrap' });
-    tw.appendChild(mkModalTable(
-      MV_COLS.map(c => ({ label: c.label, right: !!c.right, tip: c.tip })),
-      rows.map(r => MV_COLS.map(c => c.format ? c.format(r[c.key]) : r[c.key]))
-    ));
-    card.appendChild(tw);
-    section.appendChild(card);
+// ── Invested capital split (one donut, Owner / Stream switch) ─────────────────
+function buildInvestedSplitCard() {
+  const toggle = el('div', { class: 'flex gap-8' });
+  for (const [val, label] of [['owner', 'By owner'], ['stream', 'By stream']]) {
+    const isActive = gInvestedSplit === val;
+    const btn = el('button', {
+      type: 'button',
+      style: [
+        'padding:3px 12px;border-radius:14px;border:1px solid;font-size:12px;cursor:pointer',
+        isActive
+          ? 'border-color:var(--accent);background:var(--accent);color:#fff;font-weight:600'
+          : 'border-color:var(--border);background:transparent;color:var(--text-muted)'
+      ].join(';')
+    }, label);
+    btn.onclick = () => { if (gInvestedSplit !== val) { gInvestedSplit = val; rebuildView(); } };
+    toggle.appendChild(btn);
   }
-  return section;
+  return el('div', { class: 'card' },
+    el('div', { class: 'card-header' },
+      el('div', { class: 'card-title' }, 'Invested Capital Split (Purchase + All-Time CapEx)'),
+      toggle
+    ),
+    el('div', { class: 'chart-wrap' }, el('canvas', { id: 'prop-invested-donut' }))
+  );
+}
+
+function renderInvestedSplitDonut({ propData }) {
+  const keyOf = d => gInvestedSplit === 'owner'
+    ? (OWNERS[d.prop.owner] || d.prop.owner || 'Unknown')
+    : (STREAMS[propStream(d.prop)]?.short || propStream(d.prop));
+  const groups = new Map();
+  propData.forEach(d => {
+    if (d.totalInvested <= 0) return;
+    groups.set(keyOf(d), (groups.get(keyOf(d)) || 0) + d.totalInvested);
+  });
+  const entries = [...groups.entries()];
+  if (!entries.length) return;
+
+  const PALETTE = ['#6366f1', '#14b8a6', '#f59e0b', '#ec4899', '#3b82f6'];
+  charts.doughnut('prop-invested-donut', {
+    labels: entries.map(([k]) => k),
+    data:   entries.map(([, v]) => Math.round(v)),
+    colors: entries.map((_, i) => PALETTE[i % PALETTE.length]),
+    onClickItem: (_label, idx) => {
+      const [groupLabel] = entries[idx];
+      drillDownModal(`Invested Capital — ${groupLabel}`, toPropValueRows(propData.filter(d => keyOf(d) === groupLabel)), PROP_VALUE_COLS);
+    }
+  });
 }
 
 function renderMarketValueLine({ timeline }) {
@@ -2762,17 +2414,16 @@ function renderSingleTrend({ propData, payments, opExpenses }, monthKeys) {
 }
 
 // ── Summary table — one row per property ──────────────────────────────────────
-function buildSummaryTable(container, propData) {
+function buildSummaryTable(container, propData, curRange) {
   if (propData.length === 0) {
     container.appendChild(el('div', { class: 'empty' }, 'No properties match the selected filters'));
     return;
   }
 
-  const hasSimpleROI     = propData.some(d => d.simpleROI       !== null);
+  // Net Yield and Annualized ROI are the table's return measures; Simple,
+  // Run-Rate and Cash-on-Cash ROI and Steady-State Yield are in the row's
+  // summary (openPropertySummaryModal).
   const hasAnnROI        = propData.some(d => d.annualizedROI   !== null);
-  const hasCoCROI        = propData.some(d => d.cashOnCashROI   !== null);
-  const hasRunRateROI    = propData.some(d => d.runRateROI      !== null);
-  const hasSteadyState   = propData.some(d => d.steadyStateYield !== null);
   const hasExpectedBooked = propData.some(d => d.expectedBookedEUR !== null);
 
   const COLS = [
@@ -2787,15 +2438,16 @@ function buildSummaryTable(container, propData) {
     { key: 'capEx',     label: 'CapEx',              right: true, fmt: formatEUR, tip: 'Capital/renovation expenses in the selected period.' },
     { key: 'net',       label: 'Net (after CapEx)',  right: true, fmt: formatEUR, colored: true, tip: 'Revenue minus Operating Expenses minus CapEx for the selected period.' },
     { key: 'costRatio', label: 'Cost %',             right: true, fmt: v => v != null ? v.toFixed(0) + '%' : '—', tip: 'Operating Expenses as a percentage of Revenue.' },
-    ...(hasSimpleROI    ? [{ key: 'simpleROI',    label: 'Simple ROI',        right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—', tip: 'Net income ÷ total invested × 100. For an in-progress period (e.g. YTD) this is the raw actual-so-far figure, not projected.' }] : []),
-    ...(hasRunRateROI   ? [{ key: 'runRateROI',   label: 'Run-Rate ROI',     right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—', tip: 'Simple ROI, but this period\'s actual net income projected to a full-year run-rate. Only shown for an in-progress period. Still reflects any real vacancy this year — see Steady-State Yield for a fully-let hypothetical.' }] : []),
-    ...(hasAnnROI       ? [{ key: 'annualizedROI', label: 'Ann. ROI',         right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—', tip: 'Simple ROI divided by years owned since purchase — average annual return per year of ownership (lifetime average, not this year\'s figure).' }] : []),
-    ...(hasCoCROI       ? [{ key: 'cashOnCashROI', label: 'CoC ROI',          right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—', tip: 'Annual net income ÷ actual cash invested (purchase price minus mortgage). Null for cash purchases with no mortgage.' }] : []),
-    ...(hasSteadyState  ? [{ key: 'steadyStateYield', label: 'SS Yield',      right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—', tip: 'Steady-State Yield: current contracted rent × 12 ÷ total invested — what this property would yield if let all year at today\'s rent, ignoring any actual vacancy this year. Long-term only.' }] : [])
+    { key: 'netYield',  label: 'Net Yield',          right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—', tip: 'Net income for the period (annualized for a full past period, actual so far for an in-progress one) ÷ total invested — same basis as the Rental Yield tile.' },
+    ...(hasAnnROI       ? [{ key: 'annualizedROI', label: 'Ann. ROI',         right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—', tip: 'Simple ROI divided by years owned since purchase — average annual return per year of ownership (lifetime average, not this year\'s figure).' }] : [])
   ];
 
   const sorted = [...propData]
-    .map(d => ({ ...d, costRatio: d.rev > 0 ? (d.opEx / d.rev) * 100 : null }))
+    .map(d => ({
+      ...d,
+      costRatio: d.rev > 0 ? (d.opEx / d.rev) * 100 : null,
+      netYield: d.totalInvested > 0 ? (annualizeForProperty(d.prop, d.netIncome, curRange) / d.totalInvested) * 100 : null
+    }))
     .sort((a, b) => b.profit - a.profit);
 
   const table = el('table', { class: 'table' });
