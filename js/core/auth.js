@@ -6,10 +6,12 @@ import { unlockOnLogin, lockOnLogout, hasWrappedKeyConfigured, isUnlocked, setBo
 import { recordSessionEvent } from './presence.js';
 
 const SESSION_KEY = 'bt_session';
-// Password hashing cost. Raised from 150k; each user record stores the
-// count its hash was made with (passwordIter), and a successful login with
-// an older count transparently re-hashes at this one (see verifyPassword).
-const PBKDF2_ITERATIONS = 300000;
+// Password hashing cost. Raised from 150k, then 300k (OWASP: 600k for
+// PBKDF2-HMAC-SHA256); each user record stores the count its hash was made
+// with (passwordIter), and a successful login with an older count
+// transparently re-hashes at this one (see verifyPassword). The login hint
+// records the record's own count, so it keeps working across the upgrade.
+const PBKDF2_ITERATIONS = 600000;
 const LEGACY_ITERATIONS = 150000;
 export const MIN_PASSWORD_LENGTH = 10;
 // A session with no expiry at all (the previous behavior) never ends, so a

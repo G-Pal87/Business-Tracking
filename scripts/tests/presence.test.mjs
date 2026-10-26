@@ -88,15 +88,17 @@ test('writes are encrypted envelopes with a generic message, and queued failed l
   assert.equal(history.length, 2);
 });
 
-test('a legacy plaintext file is read once and rewritten encrypted, dropping failed-login usernames', async () => {
+test('a plaintext file after encrypted ones were seen is ignored (not trusted) and rewritten encrypted', async () => {
+  // This device already decrypted presence-branch files above, so a plain
+  // JSON file can only have been written outside the app: its content is
+  // ignored (it used to be read once as "legacy").
   files.set('data/session-history.json', {
     sha: 'legacy1',
     content: b64(JSON.stringify({ events: [{ type: 'failed_login', username: 'someone', name: 'Someone', at: 1 }] }))
   });
   const before = puts.length;
   const events = await presence.listSessionHistory();
-  assert.equal(events.length, 1);
-  assert.equal(events[0].username, null);
+  assert.equal(events.length, 0);
   // The rewrite runs in the background through the write queue.
   await new Promise(r => setTimeout(r, 50));
   assert.equal(puts.length, before + 1);
@@ -120,4 +122,20 @@ test('kill signals round-trip encrypted', async () => {
   assert.ok(crypto.isEncryptedEnvelope(env));
   const doc = await crypto.decryptEnvelopeToJson(env);
   assert.equal(doc.kills['other-device'].by, 'User One');
+});
+
+test('a plaintext session-signal file is never acted on (no kill/disconnect)', async () => {
+  files.set('data/session-signal.json', {
+    sha: 'plain-signal',
+    content: b64(JSON.stringify({ disconnectAt: Date.now() + 60_000, issuedBy: 'attacker', kills: { [state.github.sessionId]: { at: Date.now() + 60_000, by: 'attacker' } } }))
+  });
+  // A kill written now goes through an encrypted rewrite that drops the plaintext content.
+  assert.ok(await presence.killDevice('another-device'));
+  const env = JSON.parse(unb64(files.get('data/session-signal.json').content));
+  assert.ok(crypto.isEncryptedEnvelope(env));
+  const doc = await crypto.decryptEnvelopeToJson(env);
+  assert.equal(doc.disconnectAt, undefined);
+  assert.equal(doc.issuedBy, undefined);
+  assert.deepEqual(Object.keys(doc.kills), ['another-device']);
+  assert.equal(state.github.disconnected || false, false);
 });

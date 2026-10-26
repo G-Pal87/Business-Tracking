@@ -71,6 +71,28 @@ Never list a real leak there instead of removing it.
 - Deliberately obfuscated secrets won't match any pattern. For broader coverage,
   enable GitHub secret scanning and push protection (below).
 
+## Protections in the app
+
+- **Rollback protection.** db.json carries a revision number (`_rev`) inside
+  the encrypted payload; every push writes the next one. Each device remembers
+  the highest revision it has accepted (localStorage `bt_db_rev_seen`) and
+  refuses an older db.json (`DB_ROLLBACK`) instead of merging or saving over
+  it, so someone with only the token can't put an old copy back. A delayed
+  GitHub read clears on its own. Settings → Data → Restore/Import is the
+  deliberate way back (it writes a time-based revision above anything any
+  device has seen); Settings → GitHub → *Accept GitHub version* is the
+  confirmed recovery for a device that keeps refusing a legitimate change.
+- **Path binding.** New db.json envelopes (`v:3`) and attachments are
+  encrypted with their path as AES-GCM additional data, so a file can't be
+  swapped in for another one. Older files without it still open.
+- **Token at rest.** The GitHub token is only ever stored encrypted under the
+  team key; one that arrives before sign-in waits in memory (this tab only)
+  until it can be encrypted. Setup links that carry a token always ask first.
+- **Calendar links.** With an own calendar proxy set, Airbnb links go only
+  there unless *fall back to public proxies* is ticked (`icalPublicFallback`).
+- Password-based key wrapping and password hashes use PBKDF2-SHA256 with
+  600,000 iterations (older ones are upgraded at sign-in).
+
 ## If something leaked
 
 1. Stop pushing. Rewrite the history to remove it (`git filter-repo`), force-push

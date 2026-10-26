@@ -1,7 +1,7 @@
 // Settings module: GitHub config, FX rates, services catalog, business info, team
 import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, attachSortFilter, fmtDate } from '../core/ui.js';
-import { ghFetch, saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFileEncrypted, deleteGithubFile, assertDataLocationPresent } from '../core/github.js';
+import { ghFetch, saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFileEncrypted, deleteGithubFile, assertDataLocationPresent, adoptStoredToken, allowDbRollbackForRestore, nextDbRev, forgetDbRevision } from '../core/github.js';
 import { canDecryptWith, setRotationPending, isRotationPending, hasPreviousKeys, supportsCompression } from '../core/crypto.js';
 import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured, hasSessionWrapKey, unlockOnLogin, isEncryptedEnvelope, encryptJsonToEnvelope, decryptEnvelopeToJson, encryptFilename, decryptFilename, exportActiveDataKeyBase64, generateDebugKey, installDebugKey, exportActiveDebugKeyBase64, hasDebugKeyConfigured, isDebugKeyUnlocked, encryptJsonWithDebugKey } from '../core/crypto.js';
 import { verifyPassword } from '../core/auth.js';
@@ -9,7 +9,7 @@ import { requestDisconnectOtherSessions, listDevices, killDevice, removeDevice, 
 import { navigate } from '../core/router.js';
 import { loadLib } from '../core/libs.js';
 import { redactForDebug } from '../core/redact.js';
-import { downloadBytes, fmtFileSize, MAX_UPLOAD_BYTES } from '../core/files.js';
+import { downloadBytes, fmtFileSize, MAX_UPLOAD_BYTES, storagePathWithExt } from '../core/files.js';
 import { patchSettings, upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments, runAllReservationExpenseRules, formatRuleConflictWarning } from '../core/data.js';
 import { setDb } from '../core/state.js';
 import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS, EXPENSE_CATEGORIES, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
@@ -199,7 +199,7 @@ function buildGithubCard() {
   body.appendChild(formRow(
     effToken ? 'Token (configured)' : 'Token (PAT)',
     tokenI,
-    'Stored only in this browser (never written to db.json). Share it with other devices via Copy Setup Link.'
+    'Stored only in this browser, encrypted under the team key (never written to db.json). Until the key is unlocked here it is kept in this tab only. Share it with other devices via Copy Setup Link.'
   ));
 
   const saveBtn = button('Save & Pull', { variant: 'primary', onClick: async () => {
@@ -211,7 +211,8 @@ function buildGithubCard() {
 
     if (!owner || !repo) { toast('Owner and repo are required', 'danger'); return; }
 
-    await saveConfig({ owner, repo, branch, dbPath, token });
+    try { await saveConfig({ owner, repo, branch, dbPath, token }); }
+    catch (e) { toast(e.message, 'danger', 8000); return; } // invalid owner/repo/branch/path — nothing changed
 
     saveBtn.disabled = true;
     saveBtn.textContent = 'Saving\u2026';
@@ -282,6 +283,19 @@ function buildGithubCard() {
       setTimeout(() => navigate('settings'), 200);
     }});
     btnRow.appendChild(disconnectBtn);
+
+    // Recovery for "db.json on GitHub reads as an OLDER version" that doesn't
+    // clear: accept GitHub's copy as it is (this device's unsaved edits are
+    // still merged into it on the next sync).
+    const acceptBtn = button('Accept GitHub version', { onClick: async () => {
+      const ok = await confirmDialog('Accept db.json on GitHub as it is, even though it looks older than what this device has seen? Only do this if you know why — e.g. someone restored a backup on another device. If you don\'t know why it went back, check who has the GitHub token first.', { danger: true, okLabel: 'Accept' });
+      if (!ok) return;
+      forgetDbRevision();
+      toast('Accepted — reloading to read GitHub again', 'info');
+      setTimeout(() => location.reload(), 800);
+    }});
+    acceptBtn.title = 'Use only when saving keeps failing with "reads as an older version"';
+    btnRow.appendChild(acceptBtn);
   }
 
   body.appendChild(btnRow);
@@ -505,6 +519,9 @@ function buildEncryptionCard() {
       }
       if (!(await promptForPasswordAndUnlock())) { saveKeyBtn.disabled = false; return; }
       await installDataKey(key);
+      // A GitHub token entered while no key was unlocked waits in this tab
+      // only (github.js writeCfg) — store it encrypted now.
+      try { await adoptStoredToken(); } catch { /* best-effort */ }
       refreshAfterKeyChange();
     } catch (e) {
       toast('Invalid key: ' + e.message, 'danger', 5000);
@@ -663,6 +680,7 @@ function buildEncryptionCard() {
           try {
             const { key, base64 } = await generateDataKey();
             await installDataKey(key);
+            try { await adoptStoredToken(); } catch { /* best-effort — see the key paste path */ }
             if (state.github.syncNow) { try { await state.github.syncNow(); } catch { /* toast below still shows the key regardless */ } }
             showNewKeyModal(base64);
           } catch (e) {
@@ -792,6 +810,8 @@ function buildEncryptionCard() {
           // rotation still completes on the next save.
           setRotationPending(true);
           await installDataKey(key);
+          // Re-encrypt the stored GitHub token under the new key.
+          try { await adoptStoredToken(); } catch { /* best-effort */ }
           progressStep();
         } catch (e) {
           genBtn.disabled = false;
@@ -1472,16 +1492,45 @@ function buildStrSettingsCard() {
 
   // Airbnb calendar links contain an access token, and browsers can't fetch
   // them directly (no CORS). A private proxy (see docs/ical-proxy.md) keeps
-  // them away from third parties; the public proxies are the fallback.
+  // them away from third parties. Matches ical.js fetchICal:
+  //   - own proxy set: public proxies are used only if explicitly allowed
+  //     (icalPublicFallback === true — a field only this screen writes, so a
+  //     default saved by the old screen doesn't count), as a fallback;
+  //   - no own proxy: public proxies are used unless switched off (=== false).
+  // The checkbox therefore defaults to unchecked once an own proxy is set.
   const proxyI = input({ value: af.icalProxyUrl || '', placeholder: 'https://calendar-proxy.<you>.workers.dev' });
   const publicChk = el('input', { type: 'checkbox' });
-  publicChk.checked = af.allowPublicIcalProxies !== false;
+  const hasOwnProxy = () => proxyI.value.trim() !== '';
+  publicChk.checked = af.icalProxyUrl ? af.icalPublicFallback === true : af.allowPublicIcalProxies !== false;
+  let publicTouched = false;
+  const publicLabelText = el('span', {});
+  const publicWarn = el('div', {
+    style: 'display:none;background:var(--warning-light,#fff8e1);border-left:3px solid var(--warning,#f0ad4e);padding:8px 12px;margin:4px 0 8px;font-size:12px;border-radius:4px'
+  },
+    'No own calendar proxy is set, so Airbnb calendar links — which contain an access token — are sent to public CORS proxies (corsproxy.io, allorigins, cors.eu.org). Set up your own free proxy: ',
+    el('a', { href: 'docs/ical-proxy.md', target: '_blank', rel: 'noopener' }, 'docs/ical-proxy.md'),
+    '.');
+  const syncPublicUi = () => {
+    const own = hasOwnProxy();
+    publicLabelText.textContent = own
+      ? 'If my own proxy fails, fall back to public CORS proxies (not recommended)'
+      : 'Use public CORS proxies (no own proxy is set)';
+    publicWarn.style.display = !own && publicChk.checked ? '' : 'none';
+  };
+  proxyI.addEventListener('input', () => {
+    // Typing an own proxy into an empty field: default to sending links
+    // only there, unless the checkbox was changed by hand.
+    if (!publicTouched) publicChk.checked = hasOwnProxy() ? (!!af.icalProxyUrl && af.icalPublicFallback === true) : af.allowPublicIcalProxies !== false;
+    syncPublicUi();
+  });
+  publicChk.addEventListener('change', () => { publicTouched = true; syncPublicUi(); });
+  syncPublicUi();
   body.appendChild(formRow('Calendar proxy (recommended)', proxyI,
-    'Your own proxy for fetching Airbnb calendars (a free Cloudflare Worker — see docs/ical-proxy.md). When set, calendar links are sent only there.'));
+    'Your own proxy for fetching Airbnb calendars (a free Cloudflare Worker — see docs/ical-proxy.md). When set, calendar links are sent only there unless the fallback below is ticked.'));
+  body.appendChild(publicWarn);
   body.appendChild(formRow('Public calendar proxies',
-    el('label', { style: 'display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer' }, publicChk,
-      'Allow public CORS proxies when no own proxy is set'),
-    'Public proxies (corsproxy.io, allorigins, cors.eu.org) receive your calendar links, which include an access token. Turn this off once your own proxy works, then re-export the calendar links in Airbnb.'));
+    el('label', { style: 'display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer' }, publicChk, publicLabelText),
+    'Public proxies (corsproxy.io, allorigins, cors.eu.org) see every calendar link sent through them, and each link contains an access token to that calendar. Once your own proxy works, leave this unticked and re-export the calendar links in Airbnb.'));
 
   const save = button('Save', { variant: 'primary', onClick: () => {
     const fee = parseFloat(feeI.value);
@@ -1504,7 +1553,10 @@ function buildStrSettingsCard() {
       cleaningFee:       cleanI.value === '' ? AIRBNB_CLEANING_FEE : clean,
       globalDiscountPct: globalDiscI.value === '' ? 0 : globalDisc,
       icalProxyUrl:           proxyUrl,
-      allowPublicIcalProxies: publicChk.checked
+      // With an own proxy the checkbox is the fallback opt-in; without one it
+      // is the old "use public proxies" switch.
+      icalPublicFallback:     proxyUrl ? publicChk.checked : false,
+      allowPublicIcalProxies: proxyUrl ? (af.allowPublicIcalProxies !== false) : publicChk.checked
     };
     markDirty();
     toast('Saved', 'success');
@@ -2927,8 +2979,9 @@ async function runReencryptAndRenameDocs(rootFolder, collection, entityLabel, st
   for (const { entity, doc } of items) {
     btn.textContent = `Processing ${done + failed + 1} / ${items.length}…`;
     try {
-      const ext = (doc.path.match(/\.[^.]+$/) || [''])[0];
-      const correctPath = `${rootFolder}/${entity.id}/${doc.id}${ext}`;
+      // Extension from the old path's last segment only, and only a short real
+      // one (an old-style path like "Flat 2.0/lease" must not leak into it).
+      const correctPath = storagePathWithExt(`${rootFolder}/${entity.id}/${doc.id}`, doc.path.split('/').pop(), doc.type);
       const fileData = await fetchGithubFileEncrypted(doc.path);
       if (doc.path === correctPath) {
         await uploadGithubFileEncrypted(doc.path, fileData.content, 'Update file');
@@ -3540,14 +3593,22 @@ function renderStorageReport(repoSize, tree, branch) {
   });
   const known = new Set(files.filter(f => STORAGE_AREAS.some(a => f.path.startsWith(a.prefix))).map(f => f.path));
   const other = files.filter(f => !known.has(f.path));
-  rows.push({ label: 'Other (app code etc.)', count: other.length, size: other.reduce((s, f) => s + (f.size || 0), 0) });
+  // The listed branch is the DATA branch (state.github.branch). It only holds
+  // the app code too while the data still lives on the Pages branch.
+  const codeHere = branch === PAGES_BRANCH;
+  rows.push({ label: codeHere ? 'Other (app code etc.)' : 'Other', count: other.length, size: other.reduce((s, f) => s + (f.size || 0), 0) });
   const totalFiles = rows.reduce((s, r) => s + r.size, 0);
 
-  const pct = Math.min(100, (repoSize / REPO_SIZE_LIMIT_BYTES) * 100);
-  const level = repoSize >= REPO_SIZE_LIMIT_BYTES ? 'danger' : repoSize >= REPO_SIZE_WARN_BYTES ? 'warning' : 'success';
+  // GitHub's reported repository size lags (it is recomputed with a delay)
+  // and can read lower than what the data branch alone holds right now; the
+  // repository can never be smaller than that, so judge by the larger one.
+  const reportedLags = totalFiles > repoSize;
+  const effSize = Math.max(repoSize, totalFiles);
+  const pct = Math.min(100, (effSize / REPO_SIZE_LIMIT_BYTES) * 100);
+  const level = effSize >= REPO_SIZE_LIMIT_BYTES ? 'danger' : effSize >= REPO_SIZE_WARN_BYTES ? 'warning' : 'success';
   const color = `var(--${level})`;
   wrap.appendChild(el('div', { style: 'font-size:13px;margin-bottom:4px' },
-    el('strong', {}, `Repository: ${fmtFileSize(repoSize)}`), ` of the 1 GB GitHub recommends (${pct.toFixed(0)}%)`));
+    el('strong', {}, `Repository: ${reportedLags ? 'at least ' : ''}${fmtFileSize(effSize)}`), ` of the 1 GB GitHub recommends (${pct.toFixed(0)}%)`));
   const bar = el('div', { style: 'height:8px;border-radius:4px;background:var(--border);overflow:hidden;margin-bottom:6px' });
   bar.appendChild(el('div', { style: `height:100%;width:${pct}%;background:${color}` }));
   wrap.appendChild(bar);
@@ -3555,9 +3616,17 @@ function renderStorageReport(repoSize, tree, branch) {
     level === 'danger' ? 'Over the recommended size. Uploads still work, but the repository should be cleaned up — old history makes up most of it.'
     : level === 'warning' ? 'Approaching the recommended 1 GB. Consider cleaning up old history before adding many more files.'
     : 'Within the recommended size. This includes all history, and GitHub updates it with a delay.'));
+  if (reportedLags) {
+    wrap.appendChild(el('div', { class: 'muted', style: 'font-size:12px;margin:-6px 0 12px' },
+      `GitHub currently reports ${fmtFileSize(repoSize)}, less than the files on the data branch alone — its figure hasn't caught up yet, so the size of the current files is shown instead.`));
+  }
 
   const t = el('table', { class: 'table' });
-  t.innerHTML = `<thead><tr><th>Stored now (${branch} branch)</th><th class="right">Files</th><th class="right">Size</th></tr></thead>`;
+  // Built with el(): the branch name comes from settings, never from innerHTML.
+  t.appendChild(el('thead', {}, el('tr', {},
+    el('th', {}, `Stored now on the data branch (${branch})`),
+    el('th', { class: 'right' }, 'Files'),
+    el('th', { class: 'right' }, 'Size'))));
   const tb = el('tbody');
   for (const r of rows) {
     if (!r.count) continue;
@@ -3804,8 +3873,8 @@ function fillExpenseReceiptRepoBody(body) {
   function resolveAction(d) {
     if (d.type === 'not_uploaded' || (d.type === 'missing_file' && d.canReupload)) {
       return async () => {
-        const ext = (d.receipt.name || 'file').split('.').pop().toLowerCase();
-        const repoPath = `expenses/receipts/${d.exp.id}.${ext}`;
+        // Short real extension only — never text from the file name.
+        const repoPath = storagePathWithExt(`expenses/receipts/${d.exp.id}`, d.receipt.name, d.receipt.type);
         await uploadGithubFileEncrypted(repoPath, d.receipt.data, 'Update file');
         upsert('expenses', { ...d.exp, receipt: { name: d.receipt.name, type: d.receipt.type, path: repoPath } });
         markDirty();
@@ -4143,6 +4212,11 @@ function buildDangerCard() {
     delete restoredDb._syncedAt;
     delete restoredDb._hasLocalChanges;
     delete restoredDb._staleFetch;
+    // A snapshot carries the (older) revision it was taken at. A restore is
+    // the one deliberate way to go back in time, so it is numbered ABOVE
+    // everything seen (github.js rollback guard); the push renumbers it the
+    // same way in any case.
+    restoredDb._rev = nextDbRev();
     if (restoredDb.appConfig?.github?.token) delete restoredDb.appConfig.github.token;
     if (!Array.isArray(restoredDb.users) || restoredDb.users.length === 0) {
       restoredDb.users = structuredClone(state.db.users || []);
@@ -4281,6 +4355,9 @@ function buildDangerCard() {
 
     const restoredDb = buildRestoredDb(importedData);
 
+    // The next push may go over a db.json the rollback guard refuses (e.g.
+    // someone put an old copy there — exactly when a restore is needed).
+    allowDbRollbackForRestore();
     setDb(restoredDb);
     saveLocalCache(restoredDb);
     markDirty();

@@ -96,7 +96,7 @@ async function boot() {
     // merge instead.
     if (hasLocal) { restoreBase(); return; }
     reconciled._syncedAt = Date.now();
-    if (github.deepEqual({ ...reconciled, _syncedAt: 0, _syncedPlain: 0 }, { ...state.db, _syncedAt: 0, _syncedPlain: 0 })) {
+    if (github.deepEqual({ ...reconciled, _syncedAt: 0, _syncedPlain: 0, _rev: 0 }, { ...state.db, _syncedAt: 0, _syncedPlain: 0, _rev: 0 })) {
       state.db._syncedAt = reconciled._syncedAt;
       state.db._syncedPlain = reconciled._syncedPlain;
       return;
@@ -118,27 +118,38 @@ async function boot() {
         // Ask first when it would change an existing setup — a crafted link
         // could otherwise point the app at someone else's repo, or swap the
         // token, just by being opened.
-        const differs = state.github.owner && (
-          state.github.owner !== p.get('owner') || state.github.repo !== (p.get('repo') || '') ||
-          (p.get('token') && state.github.token && p.get('token') !== state.github.token));
-        const accepted = !differs || await confirmDialog(
-          `This link changes where this browser saves data: ${p.get('owner')}/${p.get('repo') || ''} instead of ${state.github.owner}/${state.github.repo}${p.get('token') ? ', with a different GitHub token' : ''}. Only continue if you trust whoever sent it.`,
-          { title: 'Apply setup link?', danger: true, okLabel: 'Apply link' });
+        // A link carrying a token is ALWAYS confirmed, even on a fresh
+        // device: opening a crafted link must not silently plant someone
+        // else's token/repo. Malformed owner/repo/branch/path is refused
+        // outright (github.validateLocation — same rules as Settings).
+        const linkCfg = {
+          owner:  p.get('owner') || '',
+          repo:   p.get('repo')  || '',
+          branch: p.get('branch') || 'main',
+          dbPath: p.get('path')   || 'data/db.json'
+        };
+        const invalid = p.get('owner') ? github.validateLocation(linkCfg) : null;
+        if (invalid) {
+          console.warn('[BT] Ignoring setup link:', invalid);
+          toast(`Setup link ignored: ${invalid}`, 'danger', 10000);
+        }
+        const linkToken = p.get('token') || '';
+        const differs = !!state.github.owner && (
+          state.github.owner !== linkCfg.owner || state.github.repo !== linkCfg.repo ||
+          (linkToken && state.github.token && linkToken !== state.github.token));
+        const where = `${linkCfg.owner}/${linkCfg.repo}${linkCfg.branch !== 'main' ? ` (branch ${linkCfg.branch})` : ''}`;
+        const ask = !invalid && p.get('owner') && (differs || !!linkToken);
+        const accepted = !invalid && (!ask || await confirmDialog(
+          differs
+            ? `This link changes where this browser saves data: ${where} instead of ${state.github.owner}/${state.github.repo}${linkToken ? ', with a different GitHub token' : ''}. Only continue if you trust whoever sent it.`
+            : `This link sets this browser up to save data to ${where}${linkToken ? ' and stores the GitHub token it contains' : ''}. Only continue if you trust whoever sent it.`,
+          { title: 'Apply setup link?', danger: differs, okLabel: 'Apply link' }));
         if (p.get('owner') && accepted) {
           // Setup link is the authoritative source
-          state.github.owner  = p.get('owner');
-          state.github.repo   = p.get('repo')   || '';
-          state.github.branch = p.get('branch') || 'main';
-          state.github.dbPath = p.get('path')   || 'data/db.json';
-          if (p.get('token')) state.github.token = p.get('token');
-          // Save to localStorage so subsequent loads don't need the link again
-          github.saveConfig({
-            owner:  state.github.owner,
-            repo:   state.github.repo,
-            branch: state.github.branch,
-            dbPath: state.github.dbPath,
-            token:  state.github.token
-          });
+          // Save so subsequent loads don't need the link again. The token is
+          // only kept in memory/this tab's sessionStorage until the key is
+          // unlocked at sign-in, then stored encrypted (github.js writeCfg).
+          await github.saveConfig({ ...linkCfg, token: linkToken || state.github.token });
         }
         // Remove setup params (and the token) from the URL bar either way
         history.replaceState(null, '', window.location.pathname + window.location.search);
@@ -501,6 +512,7 @@ async function boot() {
           : e.code === 'NEWER_FORMAT' ? 'App updated — reload the page to keep saving'
           : e.code === 'UNSUPPORTED_BROWSER' ? 'Browser too old to read the data — update it'
           : e.code === 'PLAINTEXT_REMOTE' ? 'db.json on GitHub was changed outside the app — not saving'
+          : e.code === 'DB_ROLLBACK' ? 'db.json on GitHub reads as an older version — not saving, will retry'
           : 'Push failed — changes saved locally only', true);
         // Retry on its own with backoff. A transient failure (5xx, rate limit,
         // dropped connection) used to leave the edit stranded until the next
@@ -508,6 +520,8 @@ async function boot() {
         // backgroundResync also stands down, so the tab stopped converging.
         // Key problems can't fix themselves by retrying, so skip those.
         if (!['NO_ENC_KEY', 'KEY_MISMATCH', 'NEWER_FORMAT', 'UNSUPPORTED_BROWSER', 'PLAINTEXT_REMOTE'].includes(e.code)) {
+          // (DB_ROLLBACK is retried: a lagging GitHub read clears on its own,
+          // and a real rollback keeps being refused — nothing is pushed.)
           clearTimeout(retryTimer);
           const delay = Math.min(120000, 5000 * 2 ** Math.min(5, saveFailCount - 1));
           retryTimer = setTimeout(() => {
@@ -556,7 +570,8 @@ async function boot() {
   // compared key order too, so a merge that rebuilt a record with its keys in
   // a different order read as "changed" and forced a full re-render.
   function sameDbContent(a, b) {
-    try { return github.deepEqual({ ...a, _syncedAt: 0, _syncedPlain: 0 }, { ...b, _syncedAt: 0, _syncedPlain: 0 }); }
+    // _rev: revision counter (github.js rollback guard) — sync metadata, not content.
+    try { return github.deepEqual({ ...a, _syncedAt: 0, _syncedPlain: 0, _rev: 0 }, { ...b, _syncedAt: 0, _syncedPlain: 0, _rev: 0 }); }
     catch { return false; } // be conservative — treat as changed on any comparison failure
   }
 
@@ -646,6 +661,11 @@ async function boot() {
       else if (e?.code === 'PLAINTEXT_REMOTE') {
         updateSyncStatus('offline', 'db.json on GitHub was changed outside the app — not loading it', true);
         toast(e.message, 'danger', 15000);
+      }
+      else if (e?.code === 'DB_ROLLBACK') {
+        // Status only: a lagging read clears by the next poll; a persistent
+        // one stays visible here (full explanation in Settings → GitHub).
+        updateSyncStatus('offline', 'db.json on GitHub reads as an older version — not loading it', true);
       }
     }
     finally { resyncing = false; }
@@ -809,6 +829,12 @@ async function boot() {
         console.warn('Background GitHub sync failed', e);
         state.github.lastSyncError = normalizeNetworkError(e.message);
         state.github.usingCache = true;
+        if (e?.code === 'DB_ROLLBACK') {
+          updateSyncStatus('offline', 'Using local cache — db.json on GitHub reads as an older version', true);
+        } else if (e?.code === 'PLAINTEXT_REMOTE') {
+          updateSyncStatus('offline', 'Using local cache — db.json on GitHub was changed outside the app', true);
+          toast(e.message, 'danger', 15000);
+        } else
         updateSyncStatus('offline', 'Using local cache — GitHub is currently unavailable');
         pendingSaveBeforeSync = false; // GitHub unreachable — can't push anyway
         initialSyncDone = true;

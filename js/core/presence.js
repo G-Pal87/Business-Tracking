@@ -160,6 +160,25 @@ const _etagCache = new Map();
 // Files already found in plaintext this page load (rewritten encrypted once).
 const _migrated = new Set();
 
+// Plaintext guard — mirrors github.js assertPlaintextRemoteAllowed. Anyone
+// holding the repo token can write a plain JSON file to the presence branch.
+// Once this device has decrypted an encrypted presence-branch file (or an
+// encrypted db.json), a plaintext one can't be a leftover from an older app
+// version: its content is ignored (treated as empty, then rewritten
+// encrypted) instead of trusted. A plaintext session-signal file is NEVER
+// acted on — it could disconnect/kill sessions.
+const PRESENCE_ENC_SEEN_LS_KEY = 'bt_presence_enc_seen';
+const DB_ENC_SEEN_LS_KEY = 'bt_enc_remote_seen'; // set by github.js
+function markPresenceEncryptedSeen() {
+  try { localStorage.setItem(PRESENCE_ENC_SEEN_LS_KEY, '1'); } catch { /* ignore */ }
+}
+function plaintextAllowed(path) {
+  if (path === SIGNAL_PATH) return false;
+  try {
+    return localStorage.getItem(PRESENCE_ENC_SEEN_LS_KEY) !== '1' && localStorage.getItem(DB_ENC_SEEN_LS_KEY) !== '1';
+  } catch { return false; }
+}
+
 // Reads one presence-branch file. Resolves to { sha, data, legacy }: data is
 // null when the file doesn't exist; legacy means it was still plaintext.
 // Throws when GitHub isn't configured or reachable, when the key isn't
@@ -182,8 +201,12 @@ async function readBranchJson(path) {
   const file = await res.json();
   const parsed = file.content ? JSON.parse(b64ToUtf8(file.content)) : null;
   let data = null, legacy = false;
-  if (isEncryptedEnvelope(parsed)) data = await decryptEnvelopeToJson(parsed);
-  else if (parsed && typeof parsed === 'object') { data = parsed; legacy = true; }
+  if (isEncryptedEnvelope(parsed)) { data = await decryptEnvelopeToJson(parsed); markPresenceEncryptedSeen(); }
+  else if (parsed && typeof parsed === 'object') {
+    legacy = true; // rewritten encrypted either way (below)
+    if (plaintextAllowed(path)) data = parsed;
+    else console.warn(`[BT] Ignoring plaintext ${path} on the presence branch — written outside the app.`);
+  }
   const etag = res.headers.get('ETag');
   if (etag) _etagCache.set(cacheKey, { etag, sha: file.sha, data: structuredClone(data), legacy });
   else _etagCache.delete(cacheKey);

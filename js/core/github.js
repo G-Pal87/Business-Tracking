@@ -1,6 +1,6 @@
 // GitHub API layer — direct calls from the frontend using a PAT stored in db.json.
 import { state, notify, invalidateActiveCache } from './state.js';
-import { isEncryptedEnvelope, decryptEnvelopeToJson, decryptEnvelopeWithInfo, isRotationPending, setRotationPending, activeKeyId, encryptJsonToEnvelope, isUnlocked, hasWrappedKeyConfigured, encryptBytes, decryptBytes, isEncryptedBytes, supportsCompression, bytesToBase64, base64ToBytes, hasPreviousKeys } from './crypto.js';
+import { isEncryptedEnvelope, decryptEnvelopeToJson, decryptEnvelopeWithInfo, isRotationPending, setRotationPending, activeKeyId, encryptJsonToEnvelope, isUnlocked, hasWrappedKeyConfigured, encryptBytes, decryptBytes, decryptBytesWithInfo, isEncryptedBytes, supportsCompression, bytesToBase64, base64ToBytes, hasPreviousKeys, DB_ENVELOPE_AAD } from './crypto.js';
 
 const DB_LS_KEY  = 'bt_db_cache';
 const CFG_LS_KEY = 'bt_github_config';
@@ -209,15 +209,121 @@ function assertPlaintextRemoteAllowed() {
   throw err;
 }
 
+// ── Rollback guard (db `_rev`) ───────────────────────────────────────────────
+// Anyone holding the repo token (but not the key) can PUT an OLDER db.json —
+// a previous commit, or a backup's `data` envelope — and it decrypts fine
+// under the same key. To catch that, the decrypted db carries `_rev`, a
+// counter every successful push sets to max(remote._rev, highest rev this
+// device has seen) + 1. Each device remembers, per owner/repo/branch/path,
+// the highest `_rev` it accepted (`rev`, used for numbering) and the lowest
+// it will still accept (`floor`, normally equal). A fetched/merged remote
+// whose `_rev` is below the floor is refused (DB_ROLLBACK): not merged, not
+// pushed over. A device with no record (first use, or data from before
+// `_rev` existed) accepts whatever it reads and records it. The only way
+// past a refusal is an explicit restore (Settings → Data → Restore/Import),
+// which calls allowDbRollbackForRestore(): its push then merges the restored
+// data over the rolled-back remote and numbers it above everything seen.
+const REV_LS_KEY = 'bt_db_rev_seen';
+const revTargetOf = (owner, repo, branch, path) =>
+  `${String(owner || '').toLowerCase()}/${String(repo || '').toLowerCase()}@${branch || 'main'}:${path || DEFAULT_DB_PATH}`;
+const currentRevTarget = () => revTargetOf(state.github.owner, state.github.repo, state.github.branch, state.github.dbPath);
+function validRev(v) { return Number.isSafeInteger(v) && v >= 0 ? v : null; }
+function readRevMap() {
+  try {
+    const m = JSON.parse(localStorage.getItem(REV_LS_KEY) || '{}');
+    return m && typeof m === 'object' && !Array.isArray(m) ? m : {};
+  } catch { return {}; }
+}
+function revRecord(target) {
+  const r = readRevMap()[target];
+  if (!r || typeof r !== 'object') return null;
+  const rev = validRev(r.rev), floor = validRev(r.floor);
+  if (rev === null) return null;
+  return { rev, floor: floor === null ? rev : Math.min(floor, rev) };
+}
+function writeRevRecord(target, rec) {
+  try {
+    const m = readRevMap();
+    m[target] = rec;
+    localStorage.setItem(REV_LS_KEY, JSON.stringify(m));
+  } catch { /* storage unavailable — protection degrades to first-use on reload */ }
+}
+// Records that `rev` was accepted at `target` (never lowers anything).
+function noteRevAccepted(target, rev) {
+  const r = validRev(rev) ?? 0;
+  const cur = revRecord(target);
+  writeRevRecord(target, { rev: Math.max(cur?.rev ?? 0, r), floor: Math.max(cur?.floor ?? 0, r) });
+}
+function isRolledBack(target, db) {
+  const rec = revRecord(target);
+  if (!rec) return false;
+  return (validRev(db?._rev) ?? 0) < rec.floor;
+}
+function rollbackError(db, target) {
+  const rec = revRecord(target);
+  const err = new Error(`db.json on GitHub reads as an OLDER version than this device has already seen (revision ${validRev(db?._rev) ?? 'none'}, expected ${rec?.floor} or later). Nothing was loaded or saved; your changes are kept on this device and saving is retried automatically. A delayed GitHub read clears on its own within minutes — if this persists, db.json was replaced outside the app: check who has the GitHub token, then put the right data back with Settings → Data → Restore from Backup (or Import JSON).`);
+  err.code = 'DB_ROLLBACK';
+  return err;
+}
+// The `_rev` the next push writes over `remote`.
+function nextRevFor(target, remote) {
+  return Math.max(validRev(remote?._rev) ?? 0, revRecord(target)?.rev ?? 0) + 1;
+}
+/** Highest db `_rev` this device has accepted for the current location (0 = none). */
+export function seenDbRev() { return revRecord(currentRevTarget())?.rev ?? 0; }
+/** The `_rev` a push made now would at least write (restore flows stamp it). */
+export function nextDbRev() {
+  return Math.max(seenDbRev(), validRev(state.github.remoteDb?._rev) ?? 0, Date.now()) + 1;
+}
+/**
+ * Recovery: forget the revision this device has accepted for the current
+ * location, so the next read accepts db.json on GitHub as it is (like a first
+ * use). For a device stuck on DB_ROLLBACK after a legitimate change made
+ * elsewhere; Settings asks for confirmation first.
+ */
+export function forgetDbRevision() {
+  try {
+    const m = readRevMap();
+    delete m[currentRevTarget()];
+    localStorage.setItem(REV_LS_KEY, JSON.stringify(m));
+  } catch { /* nothing stored */ }
+}
+// One-shot: the next successful db.json push may go over a rolled-back
+// remote. Set only by the explicit restore/import flow in Settings.
+let _rollbackOverride = null;
+export function allowDbRollbackForRestore() { _rollbackOverride = currentRevTarget(); }
+// After a data move the protection follows the data.
+function carryRevRecord(fromTarget, toTarget) {
+  const from = revRecord(fromTarget);
+  if (!from) return;
+  const to = revRecord(toTarget);
+  writeRevRecord(toTarget, { rev: Math.max(from.rev, to?.rev ?? 0), floor: Math.max(from.floor, to?.floor ?? 0) });
+}
+
 // ── Config ───────────────────────────────────────────────────────────────────
 
 // The token is stored encrypted under the team data key (`tokenEnc`, the
-// same BTX1 container as documents) once a key is unlocked, so it isn't
-// readable from localStorage by anything that isn't signed in. Before that
-// — a brand-new device that just opened a setup link — it is kept as-is
-// until the first sign-in encrypts it (adoptStoredToken).
+// same BTX1 container as documents), so it isn't readable from localStorage
+// by anything that isn't signed in. It is never written there in plain form:
+// a token that arrives while the key is locked (a setup link opened before
+// sign-in, Settings on a device without a key yet) is held in memory and in
+// this tab's sessionStorage (PENDING_TOKEN_SS_KEY — survives the sign-in
+// reload, gone when the tab closes) until the first unlock encrypts it
+// (adoptStoredToken). A plaintext `token` left by an older app version is
+// still read, and replaced by `tokenEnc` on the next unlock.
+const PENDING_TOKEN_SS_KEY = 'bt_pending_token';
+// The token value known to be stored as `tokenEnc` already (memory only) —
+// such a token never needs the sessionStorage fallback, e.g. when a config
+// write happens after sign-out locked the key.
+let _tokenStoredEncrypted = null;
 function readCfg() {
   try { return JSON.parse(localStorage.getItem(CFG_LS_KEY) || '{}'); } catch { return {}; }
+}
+function readPendingToken() {
+  try { return sessionStorage.getItem(PENDING_TOKEN_SS_KEY) || ''; } catch { return ''; }
+}
+function setPendingToken(token) {
+  try { token ? sessionStorage.setItem(PENDING_TOKEN_SS_KEY, token) : sessionStorage.removeItem(PENDING_TOKEN_SS_KEY); } catch { /* ignore */ }
 }
 
 async function writeCfg() {
@@ -231,17 +337,28 @@ async function writeCfg() {
   if (_pin && pinRepoMatches(_pin.owner, _pin.repo)) cfg.pin = { ..._pin };
   else _pin = null;
   const token = state.github.token || '';
+  const prev = readCfg();
+  let encrypted = false;
   if (token && isUnlocked()) {
     try {
       const bytes = await encryptBytes(new TextEncoder().encode(token));
-      let bin = ''; for (const b of bytes) bin += String.fromCharCode(b);
-      cfg.tokenEnc = btoa(bin);
-    } catch { cfg.token = token; }
-  } else if (token) {
-    cfg.token = token;
+      cfg.tokenEnc = bytesToBase64(bytes);
+      encrypted = true;
+    } catch (e) { console.warn('[BT] Could not encrypt the GitHub token — keeping it in this tab only', e); }
+  }
+  if (encrypted) {
+    _tokenStoredEncrypted = token;
+    setPendingToken('');
   } else {
-    const prev = readCfg();
-    if (prev.tokenEnc) cfg.tokenEnc = prev.tokenEnc; // locked: keep it for next sign-in
+    // Locked (or encryption failed): never write the token in plain form.
+    // Keep what is already stored for the next sign-in: the encrypted copy,
+    // and a legacy plaintext copy only while it IS this token (an older
+    // version wrote it; dropping it before it can be encrypted would leave
+    // the device without a token). A token not yet stored anywhere waits in
+    // memory + sessionStorage.
+    if (prev.tokenEnc) cfg.tokenEnc = prev.tokenEnc;
+    if (prev.token && prev.token === token) cfg.token = prev.token;
+    if (token && prev.token !== token && token !== _tokenStoredEncrypted) setPendingToken(token);
   }
   try { localStorage.setItem(CFG_LS_KEY, JSON.stringify(cfg)); } catch { /* ignore */ }
 }
@@ -252,7 +369,8 @@ export function loadConfig() {
   state.github.repo   = cfg.repo   || '';
   state.github.branch = cfg.branch || 'main';
   state.github.dbPath = cfg.path   || 'data/db.json';
-  state.github.token  = cfg.token  || '';
+  // A token waiting for the first unlock (see writeCfg) is the newest one.
+  state.github.token  = readPendingToken() || cfg.token || '';
   _pin = validPin(cfg.pin);
 }
 
@@ -276,6 +394,26 @@ const BOOTSTRAP_URL = 'data/github-config.json';
 const DEFAULT_DB_PATH = 'data/db.json';
 const BRANCH_NAME_RE = /^(?!\/)(?!.*\/\/)(?!.*\.\.)(?!.*\/$)(?!.*\.lock$)[A-Za-z0-9._\/-]{1,100}$/;
 const DB_PATH_RE     = /^(?!\/)(?!.*\/\/)(?!.*\.\.)[A-Za-z0-9._\/-]{1,200}\.json$/;
+// GitHub naming rules: an owner (user/org) is 1-39 alphanumerics or single
+// hyphens, not starting with one (kept lenient about a trailing/double hyphen,
+// which some old accounts have); a repository name is 1-100 of
+// [A-Za-z0-9._-] and not "." or "..".
+const OWNER_RE = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/;
+const REPO_RE  = /^(?!\.\.?$)[A-Za-z0-9._-]{1,100}$/;
+/**
+ * Validates a GitHub data location. Returns null when it is acceptable, else
+ * a short human-readable reason. Empty owner/repo are allowed only together
+ * (= "not configured").
+ */
+export function validateLocation({ owner = '', repo = '', branch = 'main', dbPath = DEFAULT_DB_PATH } = {}) {
+  if (!owner && !repo) return null;
+  if (typeof owner !== 'string' || !OWNER_RE.test(owner)) return `"${String(owner).slice(0, 60)}" is not a valid GitHub owner name`;
+  if (typeof repo !== 'string' || !REPO_RE.test(repo)) return `"${String(repo).slice(0, 110)}" is not a valid GitHub repository name`;
+  if (typeof branch !== 'string' || !BRANCH_NAME_RE.test(branch)) return `"${String(branch).slice(0, 110)}" is not a valid branch name`;
+  if (typeof dbPath !== 'string' || !DB_PATH_RE.test(dbPath)) return `"${String(dbPath).slice(0, 210)}" is not a valid data file path (e.g. data/db.json)`;
+  return null;
+}
+const encodePath = (p) => String(p).replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/');
 const MAX_MOVES_PER_SESSION = 1; // never ping-pong between locations
 let _pin = null;                  // { owner, repo, branch, path } — see above
 let _movesThisSession = 0;
@@ -352,6 +490,9 @@ async function followBootstrapMove(from) {
   g.branch = branch;
   g.dbPath = path;
   _pin = { owner: g.owner, repo: g.repo, branch, path };
+  // The rollback guard's memory follows the data (otherwise a crafted "move"
+  // to a branch holding an old db.json would read as first use there).
+  carryRevRecord(revTargetOf(from.owner, from.repo, from.branch, from.dbPath), revTargetOf(g.owner, g.repo, branch, path));
   await writeCfg();
   return true;
 }
@@ -363,6 +504,10 @@ async function followBootstrapMove(from) {
  */
 export function adoptBootstrapConfig(cfg) {
   if (!cfg || typeof cfg.owner !== 'string' || !cfg.owner) return;
+  if (!OWNER_RE.test(cfg.owner) || (cfg.repo !== undefined && (typeof cfg.repo !== 'string' || !REPO_RE.test(cfg.repo)))) {
+    console.warn('[BT] Ignoring bootstrap config with an invalid owner/repo');
+    return;
+  }
   const g = state.github;
   g.owner  = cfg.owner;
   g.repo   = typeof cfg.repo === 'string' ? cfg.repo : '';
@@ -387,6 +532,8 @@ function withPinnedLocation(appConfig) {
 /** Test-only: forget pins/moves (each test file is its own process anyway). */
 export function _resetLocationStateForTests() {
   _pin = null; _movesThisSession = 0; _dbMissingTarget = null;
+  _rollbackOverride = null;
+  try { localStorage.removeItem(REV_LS_KEY); } catch { /* ignore */ }
 }
 export function pinnedLocation() { return _pin ? { ..._pin } : null; }
 
@@ -395,12 +542,16 @@ export function pinnedLocation() { return _pin ? { ..._pin } : null; }
 export async function adoptStoredToken() {
   if (!isUnlocked()) return;
   const cfg = readCfg();
-  if (cfg.token) {
-    state.github.token = cfg.token;
+  const pending = readPendingToken();
+  if (pending) {
+    state.github.token = pending;          // newest: arrived while locked
+  } else if (cfg.token) {
+    state.github.token = cfg.token;        // legacy plaintext → encrypted below
   } else if (cfg.tokenEnc && !state.github.token) {
     try {
       const bytes = await decryptBytes(Uint8Array.from(atob(cfg.tokenEnc), c => c.charCodeAt(0)));
       state.github.token = new TextDecoder().decode(bytes);
+      _tokenStoredEncrypted = state.github.token;
     } catch { return; } // encrypted under a key this device no longer holds
     // Already stored encrypted, and nothing about it would change: skip the
     // re-encrypt + rewrite every sign-in used to do. Only when this device
@@ -429,15 +580,30 @@ export function applyDbConfig(ghCfg) {
   // the db) is followed again instead of being ignored forever.
   if (keepLocation && (ghCfg.branch || 'main') === _pin.branch &&
       (ghCfg.path || DEFAULT_DB_PATH) === _pin.path) _pin = null;
-  if (ghCfg.owner)  state.github.owner  = ghCfg.owner;
-  if (ghCfg.repo)   state.github.repo   = ghCfg.repo;
-  if (ghCfg.branch && !keepLocation) state.github.branch = ghCfg.branch;
-  if (ghCfg.path && !keepLocation)   state.github.dbPath = ghCfg.path;
+  // Each field is validated (it comes from the shared data, which anyone
+  // with write access to it can edit); a malformed one is ignored.
+  const bad = (what, v) => { console.warn(`[BT] Ignoring invalid ${what} in appConfig.github:`, String(v).slice(0, 120)); return false; };
+  const okOwner  = v => (typeof v === 'string' && OWNER_RE.test(v)) || bad('owner', v);
+  const okRepo   = v => (typeof v === 'string' && REPO_RE.test(v)) || bad('repo', v);
+  const okBranch = v => (typeof v === 'string' && BRANCH_NAME_RE.test(v)) || bad('branch', v);
+  const okPath   = v => (typeof v === 'string' && DB_PATH_RE.test(v)) || bad('path', v);
+  if (ghCfg.owner && okOwner(ghCfg.owner))  state.github.owner  = ghCfg.owner;
+  if (ghCfg.repo && okRepo(ghCfg.repo))     state.github.repo   = ghCfg.repo;
+  if (ghCfg.branch && !keepLocation && okBranch(ghCfg.branch)) state.github.branch = ghCfg.branch;
+  if (ghCfg.path && !keepLocation && okPath(ghCfg.path))       state.github.dbPath = ghCfg.path;
   // ghCfg.token is deliberately ignored — never read tokens from the DB
   writeCfg();
 }
 
+// Throws (synchronously, before changing anything) on a malformed
+// owner/repo/branch/path — see validateLocation.
 export function saveConfig({ owner, repo, branch, dbPath, token }) {
+  const invalid = validateLocation({ owner: owner || '', repo: repo || '', branch: branch || 'main', dbPath: dbPath || DEFAULT_DB_PATH });
+  if (invalid) {
+    const err = new Error(`GitHub settings not saved: ${invalid}.`);
+    err.code = 'INVALID_CONFIG';
+    throw err;
+  }
   _pin = null; // an explicit choice (Settings, setup link) replaces any adopted location
   state.github.owner  = owner  || '';
   state.github.repo   = repo   || '';
@@ -466,6 +632,9 @@ export function clearConfig() {
   _lastFetched = null;
   _pin = null;
   _dbMissingTarget = null;
+  _rollbackOverride = null;
+  _tokenStoredEncrypted = null;
+  setPendingToken('');
   try { localStorage.removeItem(CFG_LS_KEY); } catch { /* ignore */ }
 }
 
@@ -525,7 +694,7 @@ function rateLimitWaitMs(res) {
 let _syncGen = 0;
 export const syncGeneration = () => _syncGen;
 
-export async function fetchDb({ conditional = false, _afterMove = false } = {}) {
+export async function fetchDb({ conditional = false, _afterMove = false, _rollbackRetry = false } = {}) {
   _syncGen++;
   const { owner, repo, branch, dbPath, token } = state.github;
   if (!owner || !repo) throw new Error('GitHub not configured');
@@ -534,7 +703,7 @@ export async function fetchDb({ conditional = false, _afterMove = false } = {}) 
   const headers = { 'Accept': 'application/vnd.github+json', 'If-None-Match': useEtag ? _lastFetched.etag : `"${Date.now()}"` };
   if (token) headers['Authorization'] = `token ${token}`;
 
-  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${dbPath}?ref=${encodeURIComponent(branch || 'main')}`;
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodePath(dbPath)}?ref=${encodeURIComponent(branch || 'main')}`;
 
   // ATTEMPTS covers both the 403-rate-limit retry below AND a raw network
   // failure (dropped connection, DNS hiccup) — a transient blip during the
@@ -634,11 +803,24 @@ export async function fetchDb({ conditional = false, _afterMove = false } = {}) 
   // key configured yet rather than silently returning ciphertext as "data".
   let decKid = _lastFetched?.sha === sha ? _lastFetched.decKid : null;
   if (isEncryptedEnvelope(parsed)) {
-    ({ data: parsed, usedKid: decKid } = await decryptEnvelopeWithInfo(parsed));
+    ({ data: parsed, usedKid: decKid } = await decryptEnvelopeWithInfo(parsed, { aad: DB_ENVELOPE_AAD }));
     markEncryptedRemoteSeen();
   } else if (_lastFetched?.sha !== sha) {
     assertPlaintextRemoteAllowed();
   }
+  // Rollback guard (see "Rollback guard" above) — before anything (sha cache,
+  // merge base, state) adopts this read.
+  const revTarget = revTargetOf(owner, repo, branch, dbPath);
+  if (isRolledBack(revTarget, parsed)) {
+    // Could be a lagging GitHub read: look once more before refusing.
+    if (!_rollbackRetry) {
+      await sleep(1000 + Math.random() * 1000);
+      return fetchDb({ conditional: false, _afterMove, _rollbackRetry: true });
+    }
+    state.github.lastSyncError = 'db.json on GitHub reads as an older version than this device has seen';
+    throw rollbackError(parsed, revTarget);
+  }
+  noteRevAccepted(revTarget, parsed._rev);
   // One private copy serves as both the sha cache and (below) the merge base —
   // both are read-only (see _lastFetched), so they can share it.
   if (!sameAsLast) _lastFetched = { sha, path: dbPath, target: fetchTarget(dbPath), db: structuredClone(parsed), decKid };
@@ -743,7 +925,7 @@ async function doPushDb(message = 'Update data') {
     } catch { /* best-effort — push still proceeds without a base */ }
   }
 
-  const apiBase  = `https://api.github.com/repos/${owner}/${repo}/contents/${dbPath}`;
+  const apiBase  = `https://api.github.com/repos/${owner}/${repo}/contents/${encodePath(dbPath)}`;
   const ghHeaders = {
     'Accept':        'application/vnd.github+json',
     'Authorization': `token ${token}`,
@@ -774,6 +956,7 @@ async function doPushDb(message = 'Update data') {
   // remoteDb directly instead of cloning the whole DB again on every push.
   const base     = state.github.remoteDb || null;
   let   lastError = null;
+  let   rollbackReads = 0;
 
   // Push first, read only on conflict (optimistic concurrency). When this tab
   // already holds the decrypted content of a known db.json sha, the first
@@ -869,7 +1052,7 @@ async function doPushDb(message = 'Update data') {
       // itself can still read the old-key remote and merge normally; a
       // device that genuinely lacks the key gets KEY_MISMATCH and keeps its
       // edits locally (state.dirty stays set) until the new key is entered.
-      const { data, usedKid } = await decryptEnvelopeWithInfo(freshDb);
+      const { data, usedKid } = await decryptEnvelopeWithInfo(freshDb, { aad: DB_ENVELOPE_AAD });
       remoteKid = usedKid;
       freshDb = data;
       markEncryptedRemoteSeen();
@@ -891,7 +1074,29 @@ async function doPushDb(message = 'Update data') {
         throw err;
       }
     }
+    // Rollback guard: never merge into (and so "heal" by pushing over) a remote
+    // older than what this device has already accepted — merging a rolled-back
+    // remote against a newer base reads every record added since as "deleted
+    // remotely". Only an explicit restore (allowDbRollbackForRestore) may.
+    const revTarget = revTargetOf(owner, repo, branch, dbPath);
+    if (isRolledBack(revTarget, freshDb) && _rollbackOverride !== revTarget) {
+      // Push-first merges onto this tab's cached copy. If that copy is now
+      // below the floor (another tab accepted something newer, or the old
+      // bytes were put back on GitHub — same sha, so the PUT would succeed),
+      // never write over it: read the real remote through the GET path.
+      if (pushFirst) continue;
+      // A lagging read looks the same — re-read a couple of times first.
+      if (++rollbackReads < 3 && attempt < 8) { lastError = 'older db.json read'; await sleep(1000 + Math.random() * 1000); continue; }
+      throw rollbackError(freshDb, revTarget);
+    }
     const merged  = mergeDb(freshDb, snapshot, base);
+    // Monotonic revision (metadata — mergeDb takes the remote's, see there).
+    // A restore jumps to a time-based revision, far above what any device
+    // can have seen through normal +1 pushes, so no device that saw a
+    // higher revision than this one refuses the restored data.
+    merged._rev = _rollbackOverride === revTarget
+      ? Math.max(nextRevFor(revTarget, freshDb), Date.now())
+      : nextRevFor(revTarget, freshDb);
     // Never push the token. Copy-on-write: merged.appConfig may be the
     // shared remote snapshot's object, which must not be mutated.
     if (merged.appConfig?.github?.token) {
@@ -908,7 +1113,7 @@ async function doPushDb(message = 'Update data') {
     // PUT merged content — always encrypted (see the guard at the top).
     // Compressed only once an admin has switched it on (Settings →
     // Encryption), after every device runs a version that can read it.
-    const jsonStr = JSON.stringify(await encryptJsonToEnvelope(merged, { compress: merged.settings?.compressDb === true }));
+    const jsonStr = JSON.stringify(await encryptJsonToEnvelope(merged, { compress: merged.settings?.compressDb === true, aad: DB_ENVELOPE_AAD }));
     if (jsonStr.length > 8 * 1024 * 1024) {
       const mb = (jsonStr.length / 1024 / 1024).toFixed(1);
       console.warn(`[BT] DB is ${mb} MB — consider purging deleted records in Settings → Data`);
@@ -987,6 +1192,8 @@ async function doPushDb(message = 'Update data') {
 
     state.github.sha          = newSha;
     _dbMissingTarget = null;
+    noteRevAccepted(revTarget, merged._rev);
+    if (_rollbackOverride === revTarget) _rollbackOverride = null;
     // `merged` becomes the shared read-only snapshot (merge base + sha cache)
     // as-is, with no copies: it is built only from `snapshot` (this push's
     // private clone) and the read-only remote snapshot, and nothing below
@@ -1187,6 +1394,7 @@ export function mergeDb(freshRemote, localCurrent, lastSynced) {
     if (col === '_tombstones') { result._tombstones = tombstones; continue; }
     if (col === '_mtimes') continue; // written after the loop
     if (col === '_syncedPlain') continue; // device-local sync metadata, never pushed
+    if (col === '_rev') continue; // revision counter: remote's, set after the loop (doPushDb numbers the push)
     const fresh = freshRemote[col];
     const local = localCurrent[col];
     const base  = lastSynced ? lastSynced[col] : undefined;
@@ -1319,6 +1527,7 @@ export function mergeDb(freshRemote, localCurrent, lastSynced) {
     result[col] = [...merged.values()];
   }
   result._mtimes = mtimes;
+  if (validRev(freshRemote?._rev) !== null) result._rev = freshRemote._rev;
 
   if (conflicts.length > 0) {
     recordConflicts(result, conflicts, now);
@@ -1397,6 +1606,7 @@ export function resyncDb(remote, local, { owned = false } = {}) {
   for (const col of Object.keys(local)) {
     if (col === '_tombstones') { result._tombstones = tombstones; continue; }
     if (col === '_mtimes') continue; // handled per field below
+    if (col === '_rev') continue;    // revision counter: always the remote's
     const localArr = local[col];
     if (!Array.isArray(localArr)) {
       // Non-array fields (settings, config, etc.). This only runs when the
@@ -1936,15 +2146,24 @@ function b64Len(b64) {
   const pad = b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0;
   return Math.floor(b64.length * 3 / 4) - pad;
 }
+// Decoded first bytes of base64 content. Only the first 128 characters are
+// looked at (sliced BEFORE stripping whitespace), so checking a multi-MB
+// upload doesn't copy the whole string.
+function b64Head(b64Content) {
+  const head64 = String(b64Content || '').slice(0, 128).replace(/\s/g, '').slice(0, 96);
+  try { return base64ToBytes(head64.slice(0, head64.length - (head64.length % 4))); }
+  catch { return null; }
+}
 export function isEncryptedUpload(b64Content) {
-  const b64 = String(b64Content || '').replace(/\s/g, '');
-  const head64 = b64.slice(0, 96);
-  let head;
-  try { head = Uint8Array.from(atob(head64.slice(0, head64.length - (head64.length % 4))), c => c.charCodeAt(0)); }
-  catch { return false; }
-  if (isEncryptedBytes(head)) return b64Len(b64) >= 4 + 12 + 16;
+  const head = b64Head(b64Content);
+  if (!head) return false;
+  // 72 head bytes cover the 32-byte minimum (magic + IV + tag); a shorter
+  // head is the whole content.
+  if (isEncryptedBytes(head)) return head.length >= 4 + 12 + 16;
   const text = new TextDecoder('utf-8', { fatal: false }).decode(head);
   if (!/^\s*\{\s*"enc"\s*:\s*1\s*,/.test(text)) return false;
+  // Only a JSON envelope (small: a backup or debug export) is parsed whole.
+  const b64 = String(b64Content).replace(/\s/g, '');
   let env;
   try { env = JSON.parse(decodeURIComponent(escape(atob(b64)))); } catch { return false; }
   if (!env || typeof env !== 'object' || Array.isArray(env)) return false;
@@ -1969,7 +2188,18 @@ export function isEncryptedUpload(b64Content) {
  *   encryption rule below is the same either way.
  * @returns {Promise<{sha: string}>}
  */
-export async function uploadGithubFile(path, b64Content, message = 'Upload file', { assumeNew = false, branch: branchOverride } = {}) {
+export async function uploadGithubFile(path, b64Content, message = 'Upload file', opts = {}) {
+  const cleanPath = String(path).replace(/^\/+/, '');
+  // A BTX1 container handed in as-is (a file fetched from one path and
+  // re-uploaded to another: renames, backup copies) is checked against the
+  // path it is going to — see rebindRawContainer.
+  if (!opts[ALREADY_BOUND] && !PLAINTEXT_UPLOAD_ALLOWED.has(cleanPath) && isEncryptedBytes(b64Head(b64Content) || new Uint8Array(0))) {
+    b64Content = await rebindRawContainer(cleanPath, b64Content);
+  }
+  return putGithubFile(path, b64Content, message, opts);
+}
+
+async function putGithubFile(path, b64Content, message = 'Upload file', { assumeNew = false, branch: branchOverride } = {}) {
   const { owner, repo, token } = state.github;
   const branch = branchOverride || state.github.branch;
   if (!owner || !repo || !token) throw new Error('GitHub not configured — add owner/repo/token in Settings');
@@ -1999,6 +2229,10 @@ export async function uploadGithubFile(path, b64Content, message = 'Upload file'
   };
   const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}`;
   const ATTEMPTS = 6;
+  // The request body is serialised ONCE (the content can be many MB); only
+  // the sha differs between attempts and is spliced onto the end.
+  const bodyNoSha = JSON.stringify({ message, content: b64Content, branch: branch || 'main' });
+  const bodyFor = sha => sha ? `${bodyNoSha.slice(0, -1)},"sha":${JSON.stringify(sha)}}` : bodyNoSha;
 
   let lastErr = null;
   let skipShaLookup = assumeNew;
@@ -2026,12 +2260,9 @@ export async function uploadGithubFile(path, b64Content, message = 'Upload file'
       } catch { /* network error during existence check — proceed anyway */ }
     }
 
-    const body = { message, content: b64Content, branch: branch || 'main' };
-    if (existingSha) body.sha = existingSha;
-
     let res;
     try {
-      res = await ghFetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
+      res = await ghFetch(apiUrl, { method: 'PUT', headers, body: bodyFor(existingSha) });
     } catch {
       // A dropped connection here threw a raw TypeError that skipped this
       // retry loop entirely — the surrounding ATTEMPTS loop only covered the
@@ -2110,14 +2341,84 @@ function base64ToRawBytes(b64) {
  * @param {string} message   - commit message
  */
 export async function uploadGithubFileEncrypted(path, b64Content, message = 'Upload file', opts = {}) {
+  return uploadGithubBytesEncrypted(path, base64ToRawBytes(b64Content), message, opts);
+}
+
+/**
+ * Encrypts raw bytes (BTX1, bound to `path` — see crypto.js encryptBytes)
+ * and uploads them. Same guards and options as uploadGithubFileEncrypted;
+ * the base64 encoding happens exactly once and the request body is built
+ * once, outside the retry loop.
+ * @param {string} path      - repo-relative path
+ * @param {Uint8Array} bytes - plaintext file content
+ * @param {string} message   - commit message
+ * @param {{assumeNew?: boolean, branch?: string}} [opts]
+ * @returns {Promise<{sha: string}>}
+ */
+export async function uploadGithubBytesEncrypted(path, bytes, message = 'Upload file', opts = {}) {
+  if (!(bytes instanceof Uint8Array)) throw new TypeError('uploadGithubBytesEncrypted: bytes must be a Uint8Array');
   // Never falls back to a plaintext upload: the repo is public.
   if (!isUnlocked()) {
     const err = new Error('Encryption key not unlocked on this device — unlock it in Settings → Encryption before uploading. Nothing was uploaded.');
     err.code = 'NO_ENC_KEY';
     throw err;
   }
-  const encrypted = await encryptBytes(base64ToRawBytes(b64Content));
-  return uploadGithubFile(path, rawBytesToBase64(encrypted), message, opts);
+  const cleanPath = String(path).replace(/^\/+/, '');
+  // Refuse before spending time encrypting (putGithubFile checks again).
+  const { owner, repo } = state.github;
+  if (opts.branch === undefined) assertDataLocationPresent(owner, repo, state.github.branch, cleanPath);
+  const encrypted = await encryptBytes(bytes, { aad: cleanPath });
+  return putGithubFile(cleanPath, bytesToBase64(encrypted), message, { ...opts, [ALREADY_BOUND]: true });
+}
+
+// ── Path binding for raw re-uploads ──────────────────────────────────────────
+// Encrypted files are bound to their path (AES-GCM AAD). Code that moves a
+// file by fetching its stored bytes and uploading them unchanged elsewhere
+// (invoice renames, the "backup" copy buttons) would otherwise produce a copy
+// that can never be decrypted at its new path — and then delete the original.
+// fetchGithubFile remembers where recent BTX1 contents came from; a raw
+// re-upload is decrypted with the old path and re-encrypted for the new one.
+// When it can't be made readable at the destination, the upload is refused
+// (nothing is changed, so a following delete never runs).
+const ALREADY_BOUND = Symbol('alreadyBound');
+// Keyed by length + first/last 64 base64 chars (the random IV and the GCM
+// tag), so no file content is kept alive. A (practically impossible) clash
+// only makes the re-encrypt fail its decrypt and refuse.
+const _rawSources = new Map(); // fingerprint → path it was fetched from
+const RAW_SOURCES_MAX = 64;
+const rawFingerprint = b64 => `${b64.length}:${b64.slice(0, 64)}:${b64.slice(-64)}`;
+function rememberRawSource(b64, cleanPath) {
+  const k = rawFingerprint(b64);
+  _rawSources.delete(k);
+  _rawSources.set(k, cleanPath);
+  while (_rawSources.size > RAW_SOURCES_MAX) _rawSources.delete(_rawSources.keys().next().value);
+}
+async function rebindRawContainer(destPath, b64Content) {
+  const b64 = String(b64Content).replace(/\s/g, '');
+  const source = _rawSources.get(rawFingerprint(b64));
+  if (!isUnlocked()) {
+    // Can't check or re-encrypt. Copying a file known to come from another
+    // path would make an unreadable copy — refuse; anything else as before.
+    if (source !== undefined && source !== destPath) {
+      const err = new Error(`Not copying "${source}" to "${destPath}" while the encryption key is locked — unlock it in Settings → Encryption first. Nothing was changed.`);
+      err.code = 'NO_ENC_KEY';
+      throw err;
+    }
+    return b64Content;
+  }
+  const bytes = base64ToBytes(b64);
+  try {
+    await decryptBytesWithInfo(bytes, { aad: destPath });
+    return b64Content; // already readable at the destination (bound to it, or legacy)
+  } catch { /* fall through */ }
+  if (source !== undefined && source !== destPath) {
+    let plain = null;
+    try { plain = await decryptBytes(bytes, { aad: source }); } catch { plain = null; }
+    if (plain) return bytesToBase64(await encryptBytes(plain, { aad: destPath }));
+  }
+  const err = new Error(`Not uploading "${destPath}": the encrypted file can't be made readable at that path on this device (it is bound to the path it was saved at, or uses a key this device doesn't have). Nothing was changed.`);
+  err.code = 'AAD_MISMATCH';
+  throw err;
 }
 
 /**
@@ -2185,6 +2486,9 @@ export async function fetchGithubFile(path) {
   if (!data.content && data.sha && data.type !== 'dir') {
     data.content = await fetchGithubBlobBase64(data.sha);
   }
+  if (typeof data.content === 'string' && isEncryptedBytes(b64Head(data.content) || new Uint8Array(0))) {
+    rememberRawSource(data.content.replace(/\s/g, ''), path.replace(/^\/+/, ''));
+  }
   return data;
 }
 
@@ -2218,7 +2522,8 @@ export async function fetchGithubFileEncrypted(path) {
   const fileData = await fetchGithubFile(path);
   const bytes = base64ToRawBytes(fileData.content);
   if (!isEncryptedBytes(bytes)) return fileData;
-  const decrypted = await decryptBytes(bytes);
+  // Bound to its path (new files) or unbound (legacy) — see encryptBytes.
+  const decrypted = await decryptBytes(bytes, { aad: path.replace(/^\/+/, '') });
   return { ...fileData, content: rawBytesToBase64(decrypted) };
 }
 

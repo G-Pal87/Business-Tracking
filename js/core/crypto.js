@@ -13,11 +13,12 @@
 // `enc: 1` is the marker used to distinguish this from a plain (legacy,
 // unencrypted) JSON object — see isEncryptedEnvelope().
 
-// Wrap-key derivation cost. Raised from 150k; the count a device's keys were
+// Wrap-key derivation cost. Raised from 150k, then 300k (OWASP 2023+
+// guidance for PBKDF2-HMAC-SHA256 is 600k); the count a device's keys were
 // wrapped with is stored next to them (WRAP_ITER_LS_KEY), so keys wrapped
 // under the old count still unlock — and are re-wrapped at the new count
 // right after (see unlockOnLogin). Matches auth.js's password hashing cost.
-export const PBKDF2_ITERATIONS = 300000;
+export const PBKDF2_ITERATIONS = 600000;
 const LEGACY_PBKDF2_ITERATIONS = 150000;
 const WRAP_ITER_LS_KEY = 'bt_enc_wrap_iter';
 const WRAP_SALT_LS_KEY = 'bt_enc_wrap_salt';
@@ -448,7 +449,28 @@ export function isEncryptedEnvelope(parsed) {
 // Compression is only ever written when the caller asks for it (doPushDb,
 // gated by the synced settings.compressDb switch), because an app version
 // from before this change can't read it. Reading is always supported.
-export const ENVELOPE_FORMAT_VERSION = 2;
+//
+// v3 = the ciphertext is bound to a logical name through AES-GCM additional
+// authenticated data (AAD). Only db.json is written this way, always with
+// the constant DB_ENVELOPE_AAD (NOT the configured branch/path: backups store
+// a verbatim copy of the db.json envelope, and the data can move branches —
+// both must still decrypt). An envelope from somewhere else that happens to
+// be encrypted under the same key (a journal, a manual backup, a presence
+// file) then can't be passed off as db.json. Older envelopes (v absent/2)
+// carry no AAD and still decrypt. v3 also makes app versions from before
+// this change stop (NEWER_FORMAT → "reload") instead of reading db.json,
+// which is what keeps them from writing a stale `_rev` (github.js).
+export const ENVELOPE_FORMAT_VERSION = 3;
+const AAD_ENVELOPE_VERSION = 3;
+export const DB_ENVELOPE_AAD = 'data/db.json';
+const aadBytes = (aad) => new TextEncoder().encode(String(aad));
+function envelopeAad(envelope, aad) {
+  if ((Number(envelope?.v) || 1) < AAD_ENVELOPE_VERSION) return undefined;
+  return aadBytes(aad ?? DB_ENVELOPE_AAD);
+}
+function gcm(iv, aad) {
+  return aad ? { name: 'AES-GCM', iv, additionalData: aad } : { name: 'AES-GCM', iv };
+}
 
 export function supportsCompression() {
   return typeof CompressionStream === 'function' && typeof DecompressionStream === 'function';
@@ -469,16 +491,22 @@ async function gunzipBytes(bytes) {
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-export async function encryptJsonToEnvelope(obj, { compress = false } = {}) {
+// `aad` (optional): binds the ciphertext to that name (v3, see above). Only
+// db.json pushes pass it (DB_ENVELOPE_AAD); the local cache, journals,
+// manual backups and presence files are written exactly as before.
+export async function encryptJsonToEnvelope(obj, { compress = false, aad } = {}) {
   if (!_dataKey) throw new Error('No encryption key configured on this device');
   const iv = randomBytes(12);
   let plaintext = new TextEncoder().encode(JSON.stringify(obj));
   const zip = compress && supportsCompression();
   if (zip) plaintext = await gzipBytes(plaintext);
-  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, _dataKey, plaintext);
+  const ad = aad !== undefined && aad !== null ? aadBytes(aad) : undefined;
+  const ct = await crypto.subtle.encrypt(gcm(iv, ad), _dataKey, plaintext);
   // `kid` is additive: older app versions ignore unknown envelope fields.
   const env = { enc: 1, iv: b64encode(iv), ct: b64encode(new Uint8Array(ct)), kid: await keyIdOf(_dataKey) };
-  if (zip) { env.v = ENVELOPE_FORMAT_VERSION; env.z = 'gzip'; }
+  if (ad) env.v = AAD_ENVELOPE_VERSION;
+  else if (zip) env.v = 2;
+  if (zip) env.z = 'gzip';
   return env;
 }
 
@@ -502,15 +530,17 @@ function keyMismatchError() {
   return err;
 }
 
-export async function decryptEnvelopeToJson(envelope) {
-  return (await decryptEnvelopeWithInfo(envelope)).data;
+export async function decryptEnvelopeToJson(envelope, opts) {
+  return (await decryptEnvelopeWithInfo(envelope, opts)).data;
 }
 
 // Same as decryptEnvelopeToJson, but also reports whether it took a
 // PREVIOUS key (not the current one) to read it — doPushDb uses this to
 // refuse re-encrypting the shared data under a current key that can't read
 // it (e.g. a wrong key pasted into Settings), outside a deliberate rotation.
-export async function decryptEnvelopeWithInfo(envelope) {
+// `opts.aad`: the name a v3 envelope is bound to (default DB_ENVELOPE_AAD —
+// the only name v3 envelopes are written with). Ignored for v1/v2.
+export async function decryptEnvelopeWithInfo(envelope, { aad } = {}) {
   if (!_dataKey && _prevKeys.length === 0) {
     const err = new Error('Data is encrypted but no encryption key is configured on this device');
     err.code = 'NO_ENC_KEY';
@@ -522,9 +552,10 @@ export async function decryptEnvelopeWithInfo(envelope) {
     throw err;
   }
   const iv = b64decode(envelope.iv), ct = b64decode(envelope.ct);
+  const ad = envelopeAad(envelope, aad);
   for (const key of await candidateKeys(envelope.kid)) {
     let plaintext;
-    try { plaintext = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct)); }
+    try { plaintext = new Uint8Array(await crypto.subtle.decrypt(gcm(iv, ad), key, ct)); }
     catch { continue; } // wrong key — try the next one
     if (envelope.z === 'gzip') plaintext = await gunzipBytes(plaintext);
     return { data: JSON.parse(new TextDecoder().decode(plaintext)), usedPrevious: key !== _dataKey, usedKid: await keyIdOf(key) };
@@ -534,9 +565,9 @@ export async function decryptEnvelopeWithInfo(envelope) {
 
 // True if `key` alone can decrypt `envelope` — used to validate a pasted key
 // against the live data before installing it.
-export async function canDecryptWith(key, envelope) {
+export async function canDecryptWith(key, envelope, { aad } = {}) {
   try {
-    await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64decode(envelope.iv) }, key, b64decode(envelope.ct));
+    await crypto.subtle.decrypt(gcm(b64decode(envelope.iv), envelopeAad(envelope, aad)), key, b64decode(envelope.ct));
     return true;
   } catch { return false; }
 }
@@ -565,27 +596,52 @@ export function isEncryptedBytes(bytes) {
   return BYTES_MAGIC.every((b, i) => bytes[i] === b);
 }
 
-export async function encryptBytes(bytes) {
+// `aad` (optional): the repo path the file is stored at. Bound into the
+// AES-GCM tag, so a container moved/copied to another path (e.g. someone with
+// the token swapping one attachment for another) no longer decrypts there.
+// The container format is unchanged (the privacy guard and older readers
+// expect exactly BTX1 + IV + ciphertext), so there is no flag: decryptBytes
+// with an `aad` tries it bound first, then unbound (legacy files). A
+// container encrypted WITH a path never opens without that exact path.
+// Filenames and the stored token are encrypted without one.
+export async function encryptBytes(bytes, { aad } = {}) {
   if (!_dataKey) throw new Error('No encryption key configured on this device');
   const iv = randomBytes(12);
-  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, _dataKey, bytes));
+  const ad = aad !== undefined && aad !== null ? aadBytes(aad) : undefined;
+  const ct = new Uint8Array(await crypto.subtle.encrypt(gcm(iv, ad), _dataKey, bytes));
   const out = new Uint8Array(BYTES_MAGIC.length + iv.length + ct.length);
   out.set(BYTES_MAGIC, 0); out.set(iv, BYTES_MAGIC.length); out.set(ct, BYTES_MAGIC.length + iv.length);
   return out;
 }
 
-export async function decryptBytes(container) {
+export async function decryptBytes(container, opts = {}) {
+  return (await decryptBytesWithInfo(container, opts)).bytes;
+}
+
+// Also reports whether the container was bound to `aad` (`bound`) or was a
+// legacy unbound one.
+export async function decryptBytesWithInfo(container, { aad } = {}) {
   if (!_dataKey && _prevKeys.length === 0) throw new Error('File is encrypted but no encryption key is configured on this device — add it in Settings');
   const iv = container.slice(BYTES_MAGIC.length, BYTES_MAGIC.length + 12);
   const ct = container.slice(BYTES_MAGIC.length + 12);
+  const ad = aad !== undefined && aad !== null ? aadBytes(aad) : undefined;
   // Current key first, then previous keys — a file not yet re-encrypted by
   // an interrupted rotation is still readable.
   let lastErr = null;
   for (const key of [_dataKey, ..._prevKeys].filter(Boolean)) {
-    try { return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct)); }
+    if (ad) {
+      try { return { bytes: new Uint8Array(await crypto.subtle.decrypt(gcm(iv, ad), key, ct)), bound: true }; }
+      catch (e) { lastErr = e; }
+    }
+    try { return { bytes: new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct)), bound: false }; }
     catch (e) { lastErr = e; }
   }
-  throw lastErr || new Error('Could not decrypt file');
+  const err = new Error(ad
+    ? 'Could not decrypt this file — it is encrypted with a key this device does not have, or it was moved here from another path (files are bound to the path they were saved at).'
+    : 'Could not decrypt file');
+  err.code = 'DECRYPT_FAILED';
+  err.cause = lastErr;
+  throw err;
 }
 
 // ── Encrypt / decrypt file/folder NAMES ─────────────────────────────────────
