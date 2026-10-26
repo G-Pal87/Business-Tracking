@@ -1140,6 +1140,10 @@ function buildView() {
 
 // ── Breakdown tab ─────────────────────────────────────────────────────────────
 function buildBreakdownTab(wrap, cur, cmp, cmpLabel) {
+  // Stream KPI cards lead the tab, ahead of the charts.
+  const streamKpiRow = buildExpenseStreamKpiRow(cur, cmp, cmpLabel);
+  if (streamKpiRow) wrap.appendChild(streamKpiRow);
+
   wrap.appendChild(el('div', { class: 'card mb-16' },
     el('div', { class: 'card-header' },
       el('div', { class: 'card-title' }, 'Monthly Expenses by Category'),
@@ -1147,9 +1151,6 @@ function buildBreakdownTab(wrap, cur, cmp, cmpLabel) {
     ),
     el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'exp-cat-bar' }))
   ));
-
-  const streamKpiRow = buildExpenseStreamKpiRow(cur, cmp, cmpLabel);
-  if (streamKpiRow) wrap.appendChild(streamKpiRow);
 
   // ── Category hbar (1/2) + Vendor hbar (1/2) ───────────────────────────────
   const row2 = el('div', { class: 'grid grid-2 mb-16' });
