@@ -208,45 +208,156 @@ function openPersonForm(existing, onSave) {
   body.appendChild(formRow('Status', el('label', { style: 'display:flex;align-items:center;gap:8px;cursor:pointer' }, activeChk, el('span', {}, 'Active'))));
 
   // ── Documents ──
-  let pendingDocs = [...(p.documents || [])];
+  // Folders are metadata only (person.docFolders: { id, name, parentId }, and
+  // doc.folderId), kept inside the encrypted db.json. Stored files keep their
+  // ID-only paths, so folder names never appear in the public repository and
+  // creating, renaming or moving never re-uploads a file.
+  // Copies: moving a document between folders must not touch the stored
+  // record until Save (Cancel really cancels).
+  let pendingDocs = (p.documents || []).map(d => ({ ...d }));
+  let pendingFolders = (p.docFolders || []).map(f => ({ ...f }));
   // Removals are deferred to Save, so Cancel really cancels.
   let pendingRemovals = [];
+  let curFolder = null; // null = top level
+  const MAX_FOLDER_DEPTH = 6;
+  const folderById = id => pendingFolders.find(f => f.id === id) || null;
+  const folderChain = id => { const out = []; for (let f = folderById(id); f && out.length < 20; f = folderById(f.parentId)) out.unshift(f); return out; };
+  const folderPathLabel = id => id ? folderChain(id).map(f => f.name).join(' / ') : 'Top level';
+  const childFolders = parentId => pendingFolders.filter(f => (f.parentId || null) === parentId).sort((a, b) => a.name.localeCompare(b.name));
+  const docsIn = folderId => pendingDocs.filter(d => (d.folderId || null) === folderId);
+  // A folder and everything below it (for "can't move a folder into itself").
+  const descendantIds = id => { const ids = new Set([id]); let grew = true; while (grew) { grew = false; for (const f of pendingFolders) if (f.parentId && ids.has(f.parentId) && !ids.has(f.id)) { ids.add(f.id); grew = true; } } return ids; };
+  // Documents whose folder no longer exists show at the top level.
+  for (const d of pendingDocs) if (d.folderId && !folderById(d.folderId)) d.folderId = null;
+
   const fileInput = el('input', { type: 'file', accept: '.pdf,.jpg,.jpeg,.png,.gif,.webp,.heic,.doc,.docx,.xls,.xlsx', multiple: true, style: 'display:none' });
-  const docListEl = el('div', { class: 'doc-list', style: 'margin-top:8px' });
-  const renderDocList = () => {
-    docListEl.innerHTML = '';
-    if (pendingDocs.length === 0) {
-      docListEl.appendChild(el('div', { class: 'doc-empty' }, 'No documents yet.'));
-      return;
+  const crumbsEl = el('div', { style: 'display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:13px;margin:8px 0' });
+  const folderBar = el('div', { style: 'display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px' });
+  const docListEl = el('div', { class: 'doc-list', style: 'margin-top:4px' });
+
+  const cleanName = v => String(v || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+  const nameTaken = (name, parentId, exceptId) => pendingFolders.some(f => f.id !== exceptId && (f.parentId || null) === parentId && f.name.toLowerCase() === name.toLowerCase());
+
+  // Inline name editor (the form is already a modal, so no nested dialog).
+  const inlineNameEditor = (initial, onOk) => {
+    const inp = input({ value: initial, placeholder: 'Folder name', style: 'width:200px' });
+    const wrap = el('span', { style: 'display:inline-flex;gap:4px;align-items:center' });
+    const ok = () => { const v = cleanName(inp.value); if (v) onOk(v); };
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); ok(); } if (e.key === 'Escape') { e.preventDefault(); renderDocs(); } });
+    wrap.append(inp, button('OK', { variant: 'sm primary', onClick: ok }), button('Cancel', { variant: 'sm ghost', onClick: () => renderDocs() }));
+    setTimeout(() => inp.focus(), 0);
+    return wrap;
+  };
+
+  const renderDocs = () => {
+    // Breadcrumbs
+    crumbsEl.innerHTML = '';
+    const crumb = (label, id, isLast) => isLast
+      ? el('strong', {}, label)
+      : el('a', { href: '#', onClick: e => { e.preventDefault(); curFolder = id; renderDocs(); } }, label);
+    const chain = folderChain(curFolder);
+    crumbsEl.appendChild(el('span', {}, '\u{1F4C1} '));
+    crumbsEl.appendChild(crumb('All documents', null, chain.length === 0));
+    chain.forEach((f, i) => { crumbsEl.appendChild(el('span', { style: 'color:var(--text-muted)' }, ' / ')); crumbsEl.appendChild(crumb(f.name, f.id, i === chain.length - 1)); });
+
+    // Folder actions for the current folder
+    folderBar.innerHTML = '';
+    const depth = chain.length;
+    if (depth < MAX_FOLDER_DEPTH) {
+      folderBar.appendChild(button('+ New folder', { variant: 'sm ghost', onClick: () => {
+        folderBar.innerHTML = '';
+        folderBar.appendChild(inlineNameEditor('', name => {
+          if (nameTaken(name, curFolder)) { toast('A folder with that name already exists here', 'warning'); return; }
+          pendingFolders.push({ id: newId('fld'), name, parentId: curFolder });
+          renderDocs();
+        }));
+      }}));
     }
-    for (const d of pendingDocs) {
+    if (curFolder) {
+      const cur = folderById(curFolder);
+      folderBar.appendChild(button('Rename folder', { variant: 'sm ghost', onClick: () => {
+        folderBar.innerHTML = '';
+        folderBar.appendChild(inlineNameEditor(cur.name, name => {
+          if (nameTaken(name, cur.parentId || null, cur.id)) { toast('A folder with that name already exists here', 'warning'); return; }
+          cur.name = name; renderDocs();
+        }));
+      }}));
+      // Move the current folder (and its contents) somewhere else.
+      const blocked = descendantIds(cur.id);
+      const targets = [{ value: '', label: 'Top level' }, ...pendingFolders
+        .filter(f => !blocked.has(f.id) && folderChain(f.id).length < MAX_FOLDER_DEPTH)
+        .map(f => ({ value: f.id, label: folderPathLabel(f.id) }))
+        .sort((a, b) => a.label.localeCompare(b.label))];
+      const moveFolderS = select([{ value: '__', label: 'Move folder to…' }, ...targets], '__', { style: 'width:auto;font-size:12px' });
+      moveFolderS.onchange = () => {
+        if (moveFolderS.value === '__') return;
+        const parentId = moveFolderS.value || null;
+        if (nameTaken(cur.name, parentId, cur.id)) { toast('A folder with that name already exists there', 'warning'); renderDocs(); return; }
+        cur.parentId = parentId; renderDocs();
+      };
+      folderBar.appendChild(moveFolderS);
+      folderBar.appendChild(button('Delete folder', { variant: 'sm ghost', onClick: () => {
+        if (childFolders(cur.id).length || docsIn(cur.id).length) { toast('Move or remove what is inside the folder first', 'warning'); return; }
+        pendingFolders = pendingFolders.filter(f => f.id !== cur.id);
+        curFolder = cur.parentId || null; renderDocs();
+      }}));
+    }
+
+    // Contents: subfolders, then documents
+    docListEl.innerHTML = '';
+    const subs = childFolders(curFolder);
+    const docs = docsIn(curFolder);
+    for (const f of subs) {
+      const nInside = docsIn(f.id).length + childFolders(f.id).length;
+      const row = el('div', { class: 'doc-row', style: 'cursor:pointer', onClick: () => { curFolder = f.id; renderDocs(); } });
+      row.appendChild(el('span', { class: 'doc-icon' }, '\u{1F4C1}'));
+      row.appendChild(el('span', { class: 'doc-name', title: f.name, style: 'font-weight:600' }, f.name));
+      row.appendChild(el('span', { class: 'doc-size' }, nInside ? `${nInside} item${nInside === 1 ? '' : 's'}` : 'empty'));
+      docListEl.appendChild(row);
+    }
+    if (!subs.length && !docs.length) {
+      docListEl.appendChild(el('div', { class: 'doc-empty' }, curFolder ? 'This folder is empty. Upload files here or move documents into it.' : 'No documents yet.'));
+    }
+    const moveTargets = [{ value: '', label: 'Top level' }, ...pendingFolders
+      .map(f => ({ value: f.id, label: folderPathLabel(f.id) }))
+      .sort((a, b) => a.label.localeCompare(b.label))];
+    for (const d of docs) {
       const row = el('div', { class: 'doc-row' });
       row.appendChild(el('span', { class: 'doc-icon' }, docIcon(d.type)));
       row.appendChild(el('span', { class: 'doc-name', title: d.name }, d.name));
       row.appendChild(el('span', { class: 'doc-size' }, d.size ? fmtFileSize(d.size) : ''));
+      if (pendingFolders.length) {
+        const mv = select([{ value: '__', label: 'Move to…' }, ...moveTargets.filter(t => t.value !== (d.folderId || ''))], '__', { style: 'width:auto;font-size:12px', title: 'Move to folder' });
+        mv.onchange = () => { if (mv.value === '__') return; d.folderId = mv.value || null; renderDocs(); };
+        row.appendChild(mv);
+      }
       if (d.path) row.appendChild(button('Preview', { variant: 'sm ghost', onClick: () => previewDoc(d) }));
       row.appendChild(el('button', {
         class: 'btn ghost sm', type: 'button', title: 'Remove',
         onClick: () => {
           if (d.path) pendingRemovals.push({ path: d.path, name: d.name });
           pendingDocs = pendingDocs.filter(x => x.id !== d.id);
-          renderDocList();
+          renderDocs();
         }
       }, '✕'));
       docListEl.appendChild(row);
     }
   };
-  renderDocList();
+  renderDocs();
   // Over-limit files are refused and photos shrunk/stripped (core/files.js);
-  // Save waits for files still being prepared.
+  // Save waits for files still being prepared. New files go into the folder
+  // that is open when they are picked.
   let prep = null;
-  const addPendingFiles = files => prep.track((async () => {
-    for (const file of await prepareUploadFiles(files, (msg, kind) => toast(msg, kind, 6000))) {
-      pendingDocs.push({ id: newId('doc'), name: file.name, type: file.type, size: file.size, uploadedAt: new Date().toISOString(), _file: file });
-    }
-    renderDocList();
-  })());
-  const dropZone = el('div', { class: 'doc-drop-zone' }, 'Drop files here or click to browse');
+  const addPendingFiles = files => {
+    const targetFolder = curFolder;
+    return prep.track((async () => {
+      for (const file of await prepareUploadFiles(files, (msg, kind) => toast(msg, kind, 6000))) {
+        pendingDocs.push({ id: newId('doc'), name: file.name, type: file.type, size: file.size, uploadedAt: new Date().toISOString(), folderId: targetFolder, _file: file });
+      }
+      renderDocs();
+    })());
+  };
+  const dropZone = el('div', { class: 'doc-drop-zone' }, 'Drop files here or click to browse (they go into the open folder)');
   dropZone.onclick = () => fileInput.click();
   dropZone.ondragover = e => { e.preventDefault(); dropZone.classList.add('dragover'); };
   dropZone.ondragleave = () => dropZone.classList.remove('dragover');
@@ -257,12 +368,14 @@ function openPersonForm(existing, onSave) {
   docsCard.appendChild(el('div', { class: 'card-header' },
     el('div', {},
       el('div', { class: 'card-title' }, 'Documents'),
-      el('div', { class: 'card-subtitle' }, 'Passport, ID, tax, bank… Encrypted before upload; visible to everyone who can sign in to the app.')
+      el('div', { class: 'card-subtitle' }, 'Passport, ID, tax, bank… Encrypted before upload; folder names stay inside the encrypted data. Visible to everyone who can sign in to the app.')
     ),
     button('+ Upload', { variant: 'primary', onClick: () => fileInput.click() })
   ));
-  docsCard.appendChild(dropZone);
+  docsCard.appendChild(crumbsEl);
+  docsCard.appendChild(folderBar);
   docsCard.appendChild(docListEl);
+  docsCard.appendChild(dropZone);
   body.appendChild(docsCard);
 
   const saveBtn = button('Save', { variant: 'primary', onClick: async () => {
@@ -302,7 +415,7 @@ function openPersonForm(existing, onSave) {
         toast(`Failed to upload ${d.name}: ${e.message}`, 'danger', 6000);
         return;
       }
-      const meta = { id: d.id, name: d.name, type: d.type, size: d.size, uploadedAt: d.uploadedAt, path: repoPath };
+      const meta = { id: d.id, name: d.name, type: d.type, size: d.size, uploadedAt: d.uploadedAt, path: repoPath, folderId: d.folderId || null };
       docsToSave.push(meta);
       const idx = pendingDocs.indexOf(d);
       if (idx !== -1) pendingDocs[idx] = meta; // a retry doesn't re-upload it
@@ -314,7 +427,8 @@ function openPersonForm(existing, onSave) {
       phone: phoneI.value.trim(),
       email: emailI.value.trim(),
       active: activeChk.checked,
-      documents: docsToSave
+      documents: docsToSave,
+      docFolders: pendingFolders
     });
     upsert('people', p);
     // Only now that the record no longer references them, delete removed files.
