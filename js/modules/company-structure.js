@@ -3,6 +3,8 @@ import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, button, textarea } from '../core/ui.js';
 import { upsert, softDelete, listActive, newId, listActivePayments } from '../core/data.js';
 import { PERSON_ROLES, DIVIDEND_METHODS } from '../core/config.js';
+import { uploadGithubBytesEncrypted, deleteGithubFile, fetchGithubFileEncrypted } from '../core/github.js';
+import { openFileSafely, base64ToBytes, prepareUploadFiles, prepTrackerForButton, storagePathWithExt, fmtFileSize } from '../core/files.js';
 
 export default {
   id: 'company-structure',
@@ -19,6 +21,30 @@ export default {
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+// Personal documents (passport, ID, tax, bank…) — same storage as property
+// and client documents: encrypted in the browser (AES-GCM, bound to the path)
+// before upload, stored on the data branch as People/{person id}/{doc id}.{ext}
+// with only metadata (name, type, size) in db.json.
+async function previewDoc(doc) {
+  try {
+    const file = await fetchGithubFileEncrypted(doc.path);
+    // The stored doc.type is never trusted for the preview: see core/files.js.
+    const how = openFileSafely(base64ToBytes(file.content), doc.name || 'document');
+    if (how === 'download') toast('This file type can’t be previewed safely, so it was downloaded instead.', 'info');
+  } catch (e) {
+    toast('Could not open document: ' + e.message, 'danger');
+  }
+}
+
+function docIcon(type) {
+  if (!type) return '\u{1F4CE}';
+  if (type.startsWith('image/')) return '\u{1F5BC}';
+  if (type === 'application/pdf') return '\u{1F4C4}';
+  if (type.includes('word')) return '\u{1F4DD}';
+  if (type.includes('excel') || type.includes('spreadsheet')) return '\u{1F4CA}';
+  return '\u{1F4CE}';
+}
 
 function getPeople() {
   return (state.db.people || []).filter(p => !p.deletedAt);
@@ -51,6 +77,8 @@ function getRelatedRecordCount(person) {
     // time-off.js's ensureDefaultEngagement/openEngagementForm), not the
     // legacyKey||id convention the fields above use.
     engagements: (state.db.settings?.engagements || []).filter(en => en.personId === person.id).length,
+    // Their own documents: removing the person would orphan the files.
+    documents: (person.documents || []).length,
   };
   const total = Object.values(counts).reduce((s, v) => s + v, 0);
   return { total, counts };
@@ -90,7 +118,7 @@ function buildPeopleCard() {
 
     const t = el('table', { class: 'table' });
     t.innerHTML = `<thead><tr>
-      <th>Name</th><th>Role</th><th>Share %</th><th>Phone</th><th>Email</th><th>Status</th><th></th>
+      <th>Name</th><th>Role</th><th>Share %</th><th>Phone</th><th>Email</th><th>Documents</th><th>Status</th><th></th>
     </tr></thead>`;
     const tb = el('tbody');
 
@@ -107,6 +135,8 @@ function buildPeopleCard() {
       tr.appendChild(el('td', {}, ['partner', 'director'].includes(p.role) && p.sharePercent != null ? `${p.sharePercent}%` : '—'));
       tr.appendChild(el('td', { style: 'color:var(--text-muted);font-size:12px' }, p.phone || '—'));
       tr.appendChild(el('td', { style: 'color:var(--text-muted);font-size:12px' }, p.email || '—'));
+      const nDocs = (p.documents || []).length;
+      tr.appendChild(el('td', { style: 'font-size:12px' }, nDocs ? `\u{1F4CE} ${nDocs}` : '—'));
       tr.appendChild(el('td', {},
         el('span', { class: `badge ${p.active !== false ? 'success' : ''}` }, p.active !== false ? 'Active' : 'Inactive')
       ));
@@ -177,7 +207,76 @@ function openPersonForm(existing, onSave) {
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Phone', phoneI), formRow('Email', emailI)));
   body.appendChild(formRow('Status', el('label', { style: 'display:flex;align-items:center;gap:8px;cursor:pointer' }, activeChk, el('span', {}, 'Active'))));
 
-  const saveBtn = button('Save', { variant: 'primary', onClick: () => {
+  // ── Documents ──
+  let pendingDocs = [...(p.documents || [])];
+  // Removals are deferred to Save, so Cancel really cancels.
+  let pendingRemovals = [];
+  const fileInput = el('input', { type: 'file', accept: '.pdf,.jpg,.jpeg,.png,.gif,.webp,.heic,.doc,.docx,.xls,.xlsx', multiple: true, style: 'display:none' });
+  const docListEl = el('div', { class: 'doc-list', style: 'margin-top:8px' });
+  const renderDocList = () => {
+    docListEl.innerHTML = '';
+    if (pendingDocs.length === 0) {
+      docListEl.appendChild(el('div', { class: 'doc-empty' }, 'No documents yet.'));
+      return;
+    }
+    for (const d of pendingDocs) {
+      const row = el('div', { class: 'doc-row' });
+      row.appendChild(el('span', { class: 'doc-icon' }, docIcon(d.type)));
+      row.appendChild(el('span', { class: 'doc-name', title: d.name }, d.name));
+      row.appendChild(el('span', { class: 'doc-size' }, d.size ? fmtFileSize(d.size) : ''));
+      if (d.path) row.appendChild(button('Preview', { variant: 'sm ghost', onClick: () => previewDoc(d) }));
+      row.appendChild(el('button', {
+        class: 'btn ghost sm', type: 'button', title: 'Remove',
+        onClick: () => {
+          if (d.path) pendingRemovals.push({ path: d.path, name: d.name });
+          pendingDocs = pendingDocs.filter(x => x.id !== d.id);
+          renderDocList();
+        }
+      }, '✕'));
+      docListEl.appendChild(row);
+    }
+  };
+  renderDocList();
+  // Over-limit files are refused and photos shrunk/stripped (core/files.js);
+  // Save waits for files still being prepared.
+  let prep = null;
+  const addPendingFiles = files => prep.track((async () => {
+    for (const file of await prepareUploadFiles(files, (msg, kind) => toast(msg, kind, 6000))) {
+      pendingDocs.push({ id: newId('doc'), name: file.name, type: file.type, size: file.size, uploadedAt: new Date().toISOString(), _file: file });
+    }
+    renderDocList();
+  })());
+  const dropZone = el('div', { class: 'doc-drop-zone' }, 'Drop files here or click to browse');
+  dropZone.onclick = () => fileInput.click();
+  dropZone.ondragover = e => { e.preventDefault(); dropZone.classList.add('dragover'); };
+  dropZone.ondragleave = () => dropZone.classList.remove('dragover');
+  dropZone.ondrop = e => { e.preventDefault(); dropZone.classList.remove('dragover'); addPendingFiles([...e.dataTransfer.files]); };
+  fileInput.onchange = () => { addPendingFiles([...fileInput.files]); fileInput.value = ''; };
+  const docsCard = el('div', { class: 'card', style: 'margin-top:12px' });
+  docsCard.appendChild(fileInput);
+  docsCard.appendChild(el('div', { class: 'card-header' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'Documents'),
+      el('div', { class: 'card-subtitle' }, 'Passport, ID, tax, bank… Encrypted before upload; visible to everyone who can sign in to the app.')
+    ),
+    button('+ Upload', { variant: 'primary', onClick: () => fileInput.click() })
+  ));
+  docsCard.appendChild(dropZone);
+  docsCard.appendChild(docListEl);
+  body.appendChild(docsCard);
+
+  const saveBtn = button('Save', { variant: 'primary', onClick: async () => {
+    // dataset.saving: the preparation tracker must not re-enable Save mid-save.
+    if (saveBtn.disabled || saveBtn.dataset.saving) return;
+    saveBtn.dataset.saving = '1';
+    saveBtn.disabled = true;
+    try { await doSave(); }
+    finally { delete saveBtn.dataset.saving; saveBtn.disabled = !!saveBtn.dataset.preparing; }
+  }});
+  prep = prepTrackerForButton(saveBtn);
+
+  async function doSave() {
+    await prep.idle();
     if (!nameI.value.trim()) { toast('Name required', 'danger'); return; }
     const newShare = ['partner', 'director'].includes(roleS.value) ? (Number(shareI.value) || 0) : null;
     if (newShare != null) {
@@ -190,19 +289,45 @@ function openPersonForm(existing, onSave) {
         return;
       }
     }
+    // Upload new files (only ids + a short real extension reach the public
+    // path; encrypted uploads refuse to run while the key is locked).
+    const docsToSave = [];
+    for (const d of pendingDocs) {
+      if (!d._file) { docsToSave.push(d); continue; }
+      const repoPath = storagePathWithExt(`People/${p.id}/${d.id}`, d.name, d.type);
+      try {
+        await uploadGithubBytesEncrypted(repoPath, new Uint8Array(await d._file.arrayBuffer()), 'Update file');
+      } catch (e) {
+        // Nothing deleted yet; earlier uploads in this save are kept for a retry.
+        toast(`Failed to upload ${d.name}: ${e.message}`, 'danger', 6000);
+        return;
+      }
+      const meta = { id: d.id, name: d.name, type: d.type, size: d.size, uploadedAt: d.uploadedAt, path: repoPath };
+      docsToSave.push(meta);
+      const idx = pendingDocs.indexOf(d);
+      if (idx !== -1) pendingDocs[idx] = meta; // a retry doesn't re-upload it
+    }
     Object.assign(p, {
       name: nameI.value.trim(),
       role: roleS.value,
       sharePercent: newShare,
       phone: phoneI.value.trim(),
       email: emailI.value.trim(),
-      active: activeChk.checked
+      active: activeChk.checked,
+      documents: docsToSave
     });
     upsert('people', p);
+    // Only now that the record no longer references them, delete removed files.
+    const removals = pendingRemovals;
+    pendingRemovals = [];
+    for (const rem of removals) {
+      try { await deleteGithubFile(rem.path, null, 'Delete file'); }
+      catch (e) { toast(`Repo cleanup failed for ${rem.name}: ${e.message}`, 'warning', 5000); }
+    }
     toast('Saved', 'success');
     closeModal();
     onSave?.();
-  }});
+  }
 
   openModal({
     title: isEdit ? `Edit — ${existing.name}` : 'Add Person',

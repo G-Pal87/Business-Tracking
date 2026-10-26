@@ -3547,6 +3547,7 @@ const STORAGE_AREAS = [
   { prefix: 'invoices/',          label: 'Invoice PDFs' },
   { prefix: 'Properties/',        label: 'Property documents' },
   { prefix: 'Clients/',           label: 'Client documents' },
+  { prefix: 'People/',            label: 'Personal documents' },
   { prefix: 'expenses/receipts/', label: 'Expense receipts' },
   { prefix: 'backups/',           label: 'Backups' },
   { prefix: 'data/',              label: 'Database' },

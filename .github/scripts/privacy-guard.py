@@ -88,13 +88,13 @@ FORBIDDEN = re.compile(r"^exports/")
 # base64url of a BTX1 container) + ".pdf"; the name itself (invoice number,
 # client, date) is sensitive.
 INVOICE_NAME = re.compile(r"^invoices/(backup/)?([^/]+)\.pdf$")
-# Property/client documents and expense receipts are stored under ID-based
-# names (properties.js / clients.js: {Root}/{record id}/{doc id}{ext};
+# Property/client/person documents and expense receipts are stored under ID-based
+# names (properties.js / clients.js / company-structure.js: {Root}/{record id}/{doc id}{ext};
 # expenses.js: expenses/receipts/{expense id}.{ext}; the "backup" copies keep
 # the same names under {Root}/backup/). The extension comes from the user's
 # own file name, so a long "extension" or a folder/file named after a client,
 # property or document leaks that text even though the content is encrypted.
-ATTACHMENT_ROOT = re.compile(r"^(Properties|Clients|expenses)/")
+ATTACHMENT_ROOT = re.compile(r"^(Properties|Clients|People|expenses)/")
 ATTACHMENT_NAME = re.compile(r"(?:[A-Za-z0-9_\-]{1,128}/){1,4}[A-Za-z0-9_\-]{1,128}(?:\.[A-Za-z0-9]{1,5})?")
 
 # ── Secrets ───────────────────────────────────────────────────────────────────

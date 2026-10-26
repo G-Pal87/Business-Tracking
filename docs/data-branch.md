@@ -24,7 +24,7 @@ After the move:
 | Branch       | Holds                                                                                                                                             | History                                                  |
 |--------------|---------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------|
 | `main`       | code, docs, workflows, `data/github-config.json` (`"branch": "data"`)                                                                             | code commits only                                        |
-| `data`       | `data/db.json`, `backups/`, `invoices/`, `Properties/`, `Clients/`, `expenses/`, `debug/`, plus the three privacy-guard files (see [Privacy](#privacy-on-the-data-branch)) | squashed to one commit every week (`squash-data.yml`)    |
+| `data`       | `data/db.json`, `backups/`, `invoices/`, `Properties/`, `Clients/`, `People/`, `expenses/`, `debug/`, plus the three privacy-guard files (see [Privacy](#privacy-on-the-data-branch)) | squashed to one commit every week (`squash-data.yml`)    |
 | `presence`   | unchanged (who's online)                                                                                                                          | squashed weekly (`squash-presence.yml`)                  |
 | `rates-feed` | unchanged (public daily-rate feeds)                                                                                                               | one commit, replaced on every publish                    |
 
@@ -119,7 +119,7 @@ A push runs only the workflows in the pushed branch's own tree. That is why
 `.github/scripts/privacy-guard.py` and `.github/privacy-guard-known.txt`: every
 app save to `data` is still checked. The guard's `data` policy (`check_data`)
 applies the normal rules, so every data file must be one of the app's
-encrypted formats, and attachments under `Properties/`, `Clients/` and
+encrypted formats, and attachments under `Properties/`, `Clients/`, `People/` and
 `expenses/` must have ID-based names with a short extension (no file or folder
 names taken from the user's own text). It also rejects app code and docs on
 that branch. The daily
