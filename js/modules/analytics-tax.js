@@ -12,7 +12,7 @@ import {
   derivedCache, memoGet,
   getPersonName, drillRevRows, drillExpRows, drillNetRows, drillRevRowsPnL, drillNetRowsPnL
 } from '../core/data.js';
-import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkExplainButton, mkDrillValue, recordOwner, invoiceOwner, ownerShare, groupByMonthKey } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkExplainButton, mkDrillValue, recordOwner, invoiceOwner, ownerShare, groupByMonthKey, loadDashboardTab, mkDashboardTabs } from './analytics-helpers.js';
 import {
   getCyprusTaxYearConfig, setCyprusTaxYear, persistCyprusTaxYearConfig,
   daysLabel, monthRemainingFraction, isCoRec, getActualsForYear,
@@ -45,9 +45,19 @@ const NET_COLS = [
   { key: 'eur',    label: 'EUR', right: true, format: v => formatEUR(v), tip: 'Amount converted to EUR.' }
 ];
 
+// Dashboard tabs; `scope` tells which filters apply to the tab's figures.
+// The two provisional-tax tabs follow the tax year in Tax Settings; only the
+// P&L tab follows the Year / Owner / Scope controls.
+const TAX_TABS = [
+  { id: 'provisional', label: 'Provisional Tax', scope: 'Corporation tax and instalment deadlines for the tax year chosen in Tax Settings, from the rate, buffer and estimates entered here (prefill uses company records only). The P&L Year, Owner and Scope filters do not apply.' },
+  { id: 'checks',      label: 'Year-end Checks', scope: '75% safety check and December revision for the tax year, rate and estimate set on the Provisional Tax tab. The P&L Year, Owner and Scope filters do not apply.' },
+  { id: 'pnl',         label: 'P&L Report',      scope: 'Follows the Scope, Year, Owner and tax-rate controls below; the year-over-year chart shows every year for the selected Scope and Owner.' }
+];
+const TAX_TAB_KEY = 'btf:tax_dash_tab';
+
 let gYear  = null;
 let gOwner = '';
-let gTab   = 'pnl'; // 'pnl' | 'provisional'
+let gTab   = loadDashboardTab(TAX_TAB_KEY, TAX_TABS);
 let gScope = 'company'; // 'company' | 'all'
 
 // ── Module export ──────────────────────────────────────────────────────────────
@@ -82,33 +92,24 @@ function buildView() {
       'Annual P&L reporting and provisional corporation tax calculator')
   ));
 
-  // Tab bar
-  const tabBar = el('div', {
-    style: 'display:flex;gap:0;margin-bottom:24px;border-bottom:1px solid var(--border)'
-  });
-  for (const [key, label] of [['pnl', 'P&L Report'], ['provisional', 'Provisional Tax']]) {
-    const isActive = gTab === key;
-    const btn = el('button', {
-      style: [
-        'padding:9px 20px;border:none;border-bottom:2px solid',
-        isActive
-          ? 'var(--accent);color:var(--accent);font-weight:600;background:none'
-          : 'transparent;color:var(--text-muted);background:none',
-        ';cursor:pointer;font-size:13px;margin-bottom:-1px;transition:color 120ms,border-color 120ms'
-      ].join(' ')
-    }, label);
-    btn.onclick = () => {
-      if (gTab !== key) {
-        CHART_IDS.forEach(id => charts.destroy(id));
-        gTab = key;
-        rebuildView();
-      }
-    };
-    tabBar.appendChild(btn);
-  }
-  wrap.appendChild(tabBar);
+  // ── Tabs ───────────────────────────────────────────────────────────────────
+  // One tab is built per render (switching rebuilds the view), so the YoY
+  // chart canvas only exists while the P&L tab is shown.
+  wrap.appendChild(mkDashboardTabs(TAX_TABS, gTab, id => { gTab = id; rebuildView(); }, TAX_TAB_KEY));
 
-  // Scope toggle (Company only / All incl. personal)
+  if (gTab === 'provisional') wrap.appendChild(buildProvisionalTax());
+  if (gTab === 'checks')      wrap.appendChild(buildYearEndChecks());
+  if (gTab === 'pnl') {
+    wrap.appendChild(buildScopeBar());
+    wrap.appendChild(buildPnLContent(years));
+  }
+
+  return wrap;
+}
+
+// Scope toggle (Company only / All incl. personal) — P&L tab only; the
+// provisional-tax tabs always use company records.
+function buildScopeBar() {
   const scopeBar = el('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:12px' });
   scopeBar.appendChild(el('span', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)' }, 'Scope'));
   for (const [val, label] of [['company', 'Company only'], ['all', 'All (incl. personal)']]) {
@@ -124,15 +125,7 @@ function buildView() {
     btn.onclick = () => { if (gScope !== val) { gScope = val; rebuildView(); } };
     scopeBar.appendChild(btn);
   }
-  wrap.appendChild(scopeBar);
-
-  if (gTab === 'pnl') {
-    wrap.appendChild(buildPnLContent(years));
-  } else {
-    wrap.appendChild(buildProvisionalTax());
-  }
-
-  return wrap;
+  return scopeBar;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1060,8 +1053,8 @@ function buildPnLContent(years) {
   }
 
   const data = getYearData(gYear, gOwner);
-  wrap.appendChild(buildPnLTable(data, taxRate, gYear));
   wrap.appendChild(buildKpiCards(data, gYear, taxRate));
+  wrap.appendChild(buildPnLTable(data, taxRate, gYear));
   wrap.appendChild(buildCharts(data, gYear));
   wrap.appendChild(buildTaxExportSection(data, gYear));
 
@@ -1471,7 +1464,7 @@ function modalInstalment(which) {
   body.appendChild(el('div', { style: 'margin-top:12px;padding:12px;border-radius:6px;background:rgba(251,191,36,0.08);border-left:3px solid var(--warning);font-size:12px;color:var(--text-muted);line-height:1.6' },
     isJuly
       ? `Pay ${fmtE(amount)} to the Cyprus Tax Department by 31 July ${year}. Late payment attracts a 10% additional charge. The 2nd instalment is due 31 December ${year}.`
-      : `Pay ${fmtE(amount)} by 31 December ${year}. Before paying, use the December Revision section to check whether this amount needs adjusting based on updated year-end estimates. Late payment attracts a 10% additional charge.`
+      : `Pay ${fmtE(amount)} by 31 December ${year}. Before paying, use the December Revision Check on the Year-end Checks tab to check whether this amount needs adjusting based on updated year-end estimates. Late payment attracts a 10% additional charge.`
   ));
   openModal({ title: `${isJuly ? '1st' : '2nd'} Instalment — ${isJuly ? '31 Jul' : '31 Dec'} ${year}`, body, large: true });
 }
@@ -1825,7 +1818,7 @@ function ptBuildResultsCard(c, s) {
   if (c.totalRevenue === 0 && c.totalDeductible === 0) {
     const emptyBody = el('div', { style: 'padding:32px 24px;text-align:center' });
     emptyBody.appendChild(el('div', { style: 'font-size:28px;margin-bottom:10px' }, '📊'));
-    emptyBody.appendChild(el('div', { style: 'font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px' }, 'Enter your income estimates above to see the tax calculation'));
+    emptyBody.appendChild(el('div', { style: 'font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px' }, 'Enter your income estimates below to see the tax calculation'));
     emptyBody.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted);line-height:1.6;max-width:420px;margin:0 auto' },
       'Fill in the Annual Estimate card with actual and forecast revenue and expenses, or click "Prefill from actuals & forecast" to auto-populate from your recorded data.'
     ));
@@ -1849,7 +1842,7 @@ function ptBuildResultsCard(c, s) {
           { label: 'Est. Annual Revenue', value: fmtE(c.totalRevenue) }
         ],
         source: 'analytics-tax.js:768 calcAll()',
-        note: 'Actual/forecast figures come from the Annual Estimate card above — manually entered or prefilled from recorded payments/invoices/forecasts.'
+        note: 'Actual/forecast figures come from the Annual Estimate card below — manually entered or prefilled from recorded payments/invoices/forecasts.'
       }
     }),
     mkKpiCard({
@@ -1930,7 +1923,7 @@ function ptBuildResultsCard(c, s) {
         title: '2nd Instalment (December)', formula: 'Est. Corporation Tax ÷ 2',
         inputs: [{ label: 'Est. Corporation Tax', value: fmtE(c.corpTax) }, { label: '2nd Instalment', value: fmtE(c.decPayment) }],
         source: 'analytics-tax.js:775 calcAll()',
-        note: 'Split evenly 50/50 with the July instalment. Use the December Revision card if year-end estimates change before the payment is due.'
+        note: 'Split evenly 50/50 with the July instalment. Use the December Revision Check (Year-end Checks tab) if year-end estimates change before the payment is due.'
       }
     }),
     mkKpiCard({ label: `Final Balance — 1 Aug ${nextYear}`, value: '—',                 subtitle: 'Based on actual audited profit',  onClick: modalFinalBalance })
@@ -1940,21 +1933,21 @@ function ptBuildResultsCard(c, s) {
   return card;
 }
 
-function ptBuildSafetyCard(displayEl, renderDisplay, onChange) {
+function ptBuildSafetyCard(displayEl, renderDisplay) {
   const s    = cfg();
   const card = el('div', { class: 'card mb-16' });
   card.appendChild(el('div', { class: 'card-header' },
     el('div', {}, el('div', { class: 'card-title' }, '75% Safety Check'), el('div', { class: 'card-subtitle' }, 'Provisional tax must cover ≥ 75% of actual final tax to avoid the 10% penalty'))
   ));
   const body = el('div', { style: 'padding:0 16px 16px' });
-  const finalTaxI = mkCurrencyInput(s.estimatedFinalTax, 'width:220px', v => { persist({ estimatedFinalTax: v }); renderDisplay(); onChange(); }, { debounce: 300 });
+  const finalTaxI = mkCurrencyInput(s.estimatedFinalTax, 'width:220px', v => { persist({ estimatedFinalTax: v }); renderDisplay(); }, { debounce: 300 });
   body.appendChild(formRow('Estimated final actual tax liability (€)', finalTaxI, 'Your best estimate of the audited year-end tax. Leave 0 if unknown.'));
   body.appendChild(displayEl);
   card.appendChild(body);
   return card;
 }
 
-function ptBuildDecRevisionCard(displayEl, renderDisplay, onChange) {
+function ptBuildDecRevisionCard(displayEl, renderDisplay) {
   const s    = cfg();
   const year = s.year || String(new Date().getFullYear());
   const card = el('div', { class: 'card mb-16' });
@@ -1988,10 +1981,30 @@ function ptBuildDecRevisionCard(displayEl, renderDisplay, onChange) {
   return card;
 }
 
+// Provisional Tax tab: settings, the result (amounts and deadlines) and the
+// estimate inputs that drive it.
 function buildProvisionalTax() {
   const wrap = el('div', { style: 'padding:0;max-width:1100px' });
 
-  const resultsEl       = el('div');
+  const resultsEl = el('div');
+  const recalc = () => {
+    resultsEl.innerHTML = '';
+    resultsEl.appendChild(ptBuildResultsCard(calcAll(cfg()), cfg()));
+  };
+
+  wrap.appendChild(ptBuildSettingsCard(recalc));
+  wrap.appendChild(resultsEl);
+  wrap.appendChild(ptBuildEstimateCard(recalc));
+
+  recalc();
+  return wrap;
+}
+
+// Year-end Checks tab: 75% safety check and December revision, for the tax
+// year / rate / estimate set on the Provisional Tax tab.
+function buildYearEndChecks() {
+  const wrap = el('div', { style: 'padding:0;max-width:1100px' });
+
   const safetyDisplayEl = el('div');
 
   const renderSafetyDisplay = () => {
@@ -2076,7 +2089,7 @@ function buildProvisionalTax() {
           title: 'Already Paid in July', formula: 'User-entered "amount already paid in July" (clamped to ≥ 0)',
           inputs: [{ label: 'Already Paid in July', value: fmtE(c.alreadyPaid) }],
           source: 'analytics-tax.js:783 calcAll()',
-          note: 'This is a manually entered actual payment (Prior Payment section below), independent of the 1st Instalment estimate shown on the main Provisional Tax Result card — enter what you actually paid.'
+          note: 'This is a manually entered actual payment (Prior Payment section above), independent of the 1st Instalment estimate shown on the Provisional Tax Result card (Provisional Tax tab) — enter what you actually paid.'
         }
       })
     ));
@@ -2102,20 +2115,11 @@ function buildProvisionalTax() {
     ));
   };
 
-  const recalc = () => {
-    resultsEl.innerHTML = '';
-    resultsEl.appendChild(ptBuildResultsCard(calcAll(cfg()), cfg()));
-    renderSafetyDisplay();
-    renderDecDisplay();
-  };
+  wrap.appendChild(ptBuildSafetyCard(safetyDisplayEl, renderSafetyDisplay));
+  wrap.appendChild(ptBuildDecRevisionCard(decDisplayEl, renderDecDisplay));
 
-  wrap.appendChild(ptBuildSettingsCard(recalc));
-  wrap.appendChild(ptBuildEstimateCard(recalc));
-  wrap.appendChild(resultsEl);
-  wrap.appendChild(ptBuildSafetyCard(safetyDisplayEl, renderSafetyDisplay, recalc));
-  wrap.appendChild(ptBuildDecRevisionCard(decDisplayEl, renderDecDisplay, recalc));
-
-  recalc();
+  renderSafetyDisplay();
+  renderDecDisplay();
   return wrap;
 }
 

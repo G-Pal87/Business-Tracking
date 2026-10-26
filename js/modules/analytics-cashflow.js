@@ -10,7 +10,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine, resolveStream
 } from './analytics-filters.js';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, expStream, safePct, fmtK, mkInsightsBanner, mkTh, mkDrillValue, groupByMonthKey } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, expStream, safePct, fmtK, mkInsightsBanner, mkDashboardTabs, loadDashboardTab, mkTh, mkDrillValue, groupByMonthKey } from './analytics-helpers.js';
 
 // Per-stream bucket for a cash-in record: the single stream resolver
 // (record.stream → linked property's type), else 'other' — so a payment
@@ -47,8 +47,18 @@ function monthlyNetMap({ payments, invoices, opExpenses, capExpenses }, onlyKeys
 let gF = createFilterState();
 let gScope = 'company'; // 'company' | 'all'
 
-const CHART_IDS = ['cf-cumulative-line', 'cf-month-bar', 'cf-net-donut', 'cf-net-month-bar'];
+const CHART_IDS = ['cf-cumulative-line', 'cf-month-bar', 'cf-net-month-bar'];
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+// Dashboard tabs; `scope` tells which filters apply to the tab's figures.
+const CF_TABS = [
+  { id: 'overview',    label: 'Overview',                scope: 'Headline figures and alerts. Everything follows the period filter; the comparison filter adds deltas to the cash in/out, net and by-stream tiles.' },
+  { id: 'trends',      label: 'Trends & Transactions',   scope: 'Everything on this tab follows the period filter.' },
+  { id: 'seasonality', label: 'Seasonality',             scope: 'Every month on record. Scope / Owner / Stream / Property / Client filters apply; the period filters do not.' }
+];
+const CF_TAB_KEY = 'btf:cf_dash_tab';
+let gTab = loadDashboardTab(CF_TAB_KEY, CF_TABS);
+let gNetView = 'monthly'; // net cash flow chart: 'monthly' | 'cumulative'
 
 let _cfSortCol = -1, _cfSortDir = 1, _cfSearch = '';
 
@@ -415,7 +425,7 @@ function computeCashFlowInsights(curData, cmpData, cmpRange) {
       severity: 'At Risk',
       title: 'NEGATIVE OPERATING CASH FLOW',
       text: `Operating cash flow is ${formatEUR(opCashFlow)} — operating expenses exceed cash in before CapEx.`,
-      inspect: 'Transactions',
+      inspect: 'Trends & Transactions → Transactions',
       onClick: () => openOperatingCashFlowModal(curData, cmpData, cmpRange)
     });
   }
@@ -426,7 +436,7 @@ function computeCashFlowInsights(curData, cmpData, cmpRange) {
       severity: 'Watch',
       title: 'NEGATIVE NET CASH FLOW',
       text: `Net cash flow is ${formatEUR(net)} after investment spend. Operating cash flow is positive.`,
-      inspect: 'Transactions',
+      inspect: 'Trends & Transactions → Transactions',
       onClick: () => openNetCashFlowModal(curData, cmpData, cmpRange)
     });
   } else if (net < 0 && opCashFlow < 0) {
@@ -455,7 +465,7 @@ function computeCashFlowInsights(curData, cmpData, cmpRange) {
         severity: 'Watch',
         title: 'THIN CASH BUFFER',
         text: `Cash out consumes ${burnRate.toFixed(0)}% of cash in. Buffer is very thin.`,
-        inspect: 'Monthly Cash In vs Cash Out',
+        inspect: 'Trends & Transactions → Monthly Cash In vs Cash Out',
         onClick: () => openNetCashFlowModal(curData, cmpData, cmpRange)
       });
     }
@@ -481,7 +491,7 @@ function computeCashFlowInsights(curData, cmpData, cmpRange) {
       severity: negCount === allMonths.length ? 'At Risk' : 'Watch',
       title: 'NEGATIVE MONTHS',
       text: `${negCount} of ${allMonths.length} months have negative net cash flow.`,
-      inspect: 'Monthly Net Cash Flow',
+      inspect: 'Trends & Transactions → Monthly Net Cash Flow',
       onClick: () => openNetCashFlowModal(curData, cmpData, cmpRange)
     });
   }
@@ -961,9 +971,8 @@ function buildView() {
   // which in turn overstates Net Coverage Days and Cash Runway.
   const opexMonthCount = new Set(opExpenses.map(e => e.date?.slice(0, 7)).filter(Boolean)).size;
 
-  // Comparison line
+  // Comparison line (Overview tab)
   const compLine = buildComparisonLine(curRange, cmpRange);
-  if (compLine) wrap.appendChild(compLine);
 
   // Deltas (only when comparison is available and safe)
   const deltaCashIn    = safePct(cashIn,        cmpData?.cashIn);
@@ -996,6 +1005,7 @@ function buildView() {
       // Summary: Payments vs Invoices totals
       const totalPay = payments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
       const totalInv = invoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+      const inCount  = payments.length + invoices.length;
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
       if (cmpData) {
@@ -1011,10 +1021,13 @@ function buildView() {
           { label: 'From Invoices',
             curVal: mkDrillValue(formatEUR(totalInv), () => drillDownModal('Cash In — From Invoices', buildCashFlowRows([], invoices, [], []), CF_DRILL_COLS)),
             cmpVal: mkDrillValue(formatEUR(cmpTotalInv), () => drillDownModal(`Cash In — From Invoices — ${cmpRange?.label || 'Comparison'}`, buildCashFlowRows([], cmpData.invoices, [], []), CF_DRILL_COLS)) },
+          { label: 'Avg per Item',
+            curVal: formatEUR(inCount > 0 ? cashIn / inCount : 0),
+            cmpVal: formatEUR(cmpData.payments.length + cmpData.invoices.length > 0 ? cmpData.cashIn / (cmpData.payments.length + cmpData.invoices.length) : 0) },
         ], 'Current Period', cmpRange?.label || ''));
       } else {
         // Summary boxes
-        const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
+        const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:10px' });
         summaryGrid.appendChild(mkSummaryBox('Total Cash In',
           mkDrillValue(formatEUR(cashIn), () => drillDownModal('Cash In', buildCashFlowRows(payments, invoices, [], []), CF_DRILL_COLS)),
           `${payments.length + invoices.length} items`));
@@ -1024,6 +1037,7 @@ function buildView() {
         summaryGrid.appendChild(mkSummaryBox('From Invoices',
           mkDrillValue(formatEUR(totalInv), () => drillDownModal('Cash In — From Invoices', buildCashFlowRows([], invoices, [], []), CF_DRILL_COLS)),
           `${invoices.length} invoices`));
+        summaryGrid.appendChild(mkSummaryBox('Avg per Item', formatEUR(inCount > 0 ? cashIn / inCount : 0), 'per record'));
         body.appendChild(summaryGrid);
       }
 
@@ -1044,6 +1058,48 @@ function buildView() {
         streamEntries.map(([k, v]) => [k, formatEUR(v), cashIn > 0 ? (v / cashIn * 100).toFixed(1) + '%' : '—'])
       ));
       body.appendChild(streamSection);
+
+      // By property / client (all of them), plus the top 5 largest for context
+      const allIn = [
+        ...payments.map(p => ({
+          date: p.date,
+          entity: byId('properties', p.propertyId)?.name || p.source || '—',
+          description: 'Payment',
+          _eur: toEUR(p.amount, p.currency, p.date)
+        })),
+        ...invoices.map(i => ({
+          date: i.issueDate || i.date,
+          entity: byId('clients', i.clientId)?.name || '—',
+          description: 'Invoice',
+          _eur: toEUR(i.total, i.currency, i.issueDate)
+        }))
+      ];
+      if (allIn.length > 0) {
+        const entityMap = new Map();
+        allIn.forEach(r => entityMap.set(r.entity, (entityMap.get(r.entity) || 0) + r._eur));
+        const entityEntries = [...entityMap.entries()].sort((a, b) => b[1] - a[1]);
+        body.appendChild(mkSectionLabel('By Property / Client'));
+        body.appendChild(mkModalTable(
+          [
+            { label: 'Property / Client', tip: 'Property (from payments) or client (from invoices) generating cash in.' },
+            { label: 'Amount', right: true, tip: 'Cash in from this property/client in the period, in EUR.' },
+            { label: '% of Total', right: true, tip: "This property/client's share of total Cash In." }
+          ],
+          entityEntries.map(([k, v]) => [k, formatEUR(v), cashIn > 0 ? (v / cashIn * 100).toFixed(1) + '%' : '—'])
+        ));
+
+        const top5In = [...allIn].sort((a, b) => b._eur - a._eur).slice(0, 5);
+        body.appendChild(mkSectionLabel('Top 5 Largest'));
+        body.appendChild(mkModalTable(
+          [
+            { label: 'Date', tip: 'Date of the payment or invoice.' },
+            { label: 'Entity / Description', tip: 'Property or client the cash in is linked to.' },
+            { label: 'Type', tip: 'Record type — Payment or Invoice.' },
+            { label: 'Amount', right: true, tip: 'Cash in amount, in EUR.' }
+          ],
+          top5In.map(r => [fmtDate(r.date), r.entity, r.description, formatEUR(r._eur)])
+        ));
+      }
 
       openModal({ title: 'Cash In — Breakdown', body, large: true });
     }
@@ -1179,7 +1235,6 @@ function buildView() {
     },
     onClick:   () => openOperatingCashFlowModal(curData, cmpData, cmpRange)
   }));
-  wrap.appendChild(kpiRow1);
 
   // ── KPI row 2: Investment Cash Out, Net Cash Flow, Avg Monthly Net ─────────
   const kpiRow2 = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px' });
@@ -1310,10 +1365,10 @@ function buildView() {
       openModal({ title: 'Avg Monthly Net — Breakdown', body, large: true });
     }
   }));
-  wrap.appendChild(kpiRow2);
 
-  // ── KPI row 3: Net Coverage Days, Invoice Collection Lag ─────────────────
-  const kpiRow3 = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px' });
+  // ── Liquidity row: Net Coverage Days, Invoice Collection Lag, Cash Runway,
+  // Working Capital (period figures; no comparison) ──────────────────────────
+  const liquidityRow = el('div', { class: 'grid grid-4 mb-16' });
 
   // Net Coverage Days: (periodNetCashFlow / avgMonthlyOpEx) × 30
   {
@@ -1329,7 +1384,7 @@ function buildView() {
     const daysOnHand = isNegativeBalance ? 0 : (avgMonthlyOpex > 0 ? Math.round(running / avgMonthlyOpex * 30) : null);
 
     const dohVariant = isNegativeBalance ? 'danger' : (daysOnHand === null ? '' : daysOnHand >= 90 ? 'success' : daysOnHand >= 30 ? 'warning' : 'danger');
-    kpiRow3.appendChild(mkKpiCard({
+    liquidityRow.appendChild(mkKpiCard({
       label:    'Net Coverage Days',
       value:    isNegativeBalance ? '0 days' : (daysOnHand !== null ? `${daysOnHand} days` : 'N/A'),
       subtitle: isNegativeBalance ? 'Negative period net — cash shortfall' : 'Period net ÷ avg monthly OpEx',
@@ -1403,7 +1458,7 @@ function buildView() {
     const ccc = svcInvoiced > 0 ? Math.round(outstandingSvc / svcInvoiced * 30) : null;
 
     const cccVariant = ccc === null ? '' : ccc <= 15 ? 'success' : ccc <= 30 ? 'warning' : 'danger';
-    kpiRow3.appendChild(mkKpiCard({
+    liquidityRow.appendChild(mkKpiCard({
       label:    'Invoice Collection Lag',
       value:    ccc !== null ? `${ccc} days` : 'N/A',
       subtitle: 'Outstanding ÷ Invoiced × 30 (proxy)',
@@ -1478,10 +1533,6 @@ function buildView() {
     }));
   }
 
-  wrap.appendChild(kpiRow3);
-
-  // ── KPI row 4: Cash Runway Projection + Working Capital ───────────────────
-  const kpiRow4 = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px' });
 
   // Cash Runway
   {
@@ -1490,7 +1541,7 @@ function buildView() {
     const runwayVariant  = runwayMonths === null ? '' : runwayMonths < 0 ? 'danger' : runwayMonths < 3 ? 'danger' : runwayMonths < 6 ? 'warning' : 'success';
     const runwayValue    = runwayMonths === null ? 'N/A' : runwayMonths < 0 ? 'Negative' : `${runwayMonths.toFixed(1)} mo`;
 
-    kpiRow4.appendChild(mkKpiCard({
+    liquidityRow.appendChild(mkKpiCard({
       label:    'Cash Runway',
       value:    runwayValue,
       subtitle: 'Period net ÷ avg monthly OpEx',
@@ -1572,7 +1623,7 @@ function buildView() {
     const payables       = 0; // AP tracking not enabled
     const workingCapital = receivables - payables;
 
-    kpiRow4.appendChild(mkKpiCard({
+    liquidityRow.appendChild(mkKpiCard({
       label:    'Working Capital',
       value:    formatEUR(workingCapital),
       subtitle: 'Receivables − Payables',
@@ -1630,54 +1681,81 @@ function buildView() {
     }));
   }
 
-  wrap.appendChild(kpiRow4);
 
-  const streamKpiRow = buildCashflowStreamKpiRow(curData, cmpData, cmpRange?.label);
-  if (streamKpiRow) wrap.appendChild(streamKpiRow);
+  // ── Tabs ───────────────────────────────────────────────────────────────────
+  // One tab is built per render (switching rebuilds the view), so each chart
+  // canvas exists once.
+  wrap.appendChild(mkDashboardTabs(CF_TABS, gTab, id => { gTab = id; rebuildView(); }, CF_TAB_KEY));
 
-  // ── Cash Flow Insights ─────────────────────────────────────────────────────
-  wrap.appendChild(mkInsightsBanner(computeCashFlowInsights(curData, cmpData, cmpRange), 'Cash Flow Insights'));
+  const renders = [];
 
-  // ── Cash Movement Trends ───────────────────────────────────────────────────
-  wrap.appendChild(el('div', { style: 'margin:8px 0 12px' },
-    el('h3', { style: 'margin:0;font-size:14px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px' }, 'Cash Movement Trends')
-  ));
+  if (gTab === 'overview') {
+    if (compLine) wrap.appendChild(compLine);
+    wrap.appendChild(kpiRow1);
+    wrap.appendChild(kpiRow2);
+    wrap.appendChild(mkInsightsBanner(computeCashFlowInsights(curData, cmpData, cmpRange), 'Cash Flow Insights'));
+    wrap.appendChild(liquidityRow);
+    const streamKpiRow = buildCashflowStreamKpiRow(curData, cmpData, cmpRange?.label);
+    if (streamKpiRow) wrap.appendChild(streamKpiRow);
+  }
 
-  wrap.appendChild(el('div', { class: 'card mb-16' },
+  if (gTab === 'trends') {
+    const { keys: monthKeys } = getMonthKeysForRange(start, end);
+    wrap.appendChild(el('div', { class: 'card mb-16' },
+      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Monthly Cash In vs Cash Out')),
+      el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'cf-month-bar' }))
+    ));
+    wrap.appendChild(buildNetCashFlowCard());
+    wrap.appendChild(buildTransactionsCard(curData));
+    renders.push(
+      () => renderMonthBar(curData, monthKeys),
+      gNetView === 'cumulative' ? () => renderCumulativeLine(curData, monthKeys) : () => renderNetMonthBar(curData, monthKeys)
+    );
+  }
+
+  if (gTab === 'seasonality') {
+    const heatmap = buildCashSeasonalityHeatmap();
+    wrap.appendChild(heatmap || mkEmptyState('No cash flow recorded for the selected filters.'));
+  }
+
+  setTimeout(() => renders.forEach(fn => fn()), 0);
+  return wrap;
+}
+
+// ── Net cash flow by month (one chart, Monthly / Cumulative switch) ───────────
+function buildNetCashFlowCard() {
+  const toggle = el('div', { class: 'flex gap-8' });
+  for (const [val, label] of [['monthly', 'Monthly'], ['cumulative', 'Cumulative']]) {
+    const isActive = gNetView === val;
+    const btn = el('button', {
+      type: 'button',
+      style: [
+        'padding:3px 12px;border-radius:14px;border:1px solid;font-size:12px;cursor:pointer',
+        isActive
+          ? 'border-color:var(--accent);background:var(--accent);color:#fff;font-weight:600'
+          : 'border-color:var(--border);background:transparent;color:var(--text-muted)'
+      ].join(';')
+    }, label);
+    btn.onclick = () => { if (gNetView !== val) { gNetView = val; rebuildView(); } };
+    toggle.appendChild(btn);
+  }
+  const isCum = gNetView === 'cumulative';
+  return el('div', { class: 'card mb-16' },
     el('div', { class: 'card-header' },
-      el('div', { class: 'card-title' }, 'Cumulative Net Cash Flow'),
-      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click a point for that month\'s transactions')
+      el('div', {},
+        el('div', { class: 'card-title' }, isCum ? 'Cumulative Net Cash Flow' : 'Monthly Net Cash Flow'),
+        el('div', { style: 'font-size:12px;color:var(--text-muted)' }, isCum
+          ? 'Running total of each month\'s net · Click a point for that month\'s transactions'
+          : 'Green = surplus · Red = deficit · Click for transactions')
+      ),
+      toggle
     ),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'cf-cumulative-line' }))
-  ));
+    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: isCum ? 'cf-cumulative-line' : 'cf-net-month-bar' }))
+  );
+}
 
-  const row2 = el('div', { style: 'display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px' });
-  row2.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Monthly Cash In vs Cash Out')),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'cf-month-bar' }))
-  ));
-  row2.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' },
-      el('div', { class: 'card-title' }, 'Net Cash Flow Split'),
-      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Cash In vs OpEx vs CapEx · Click for detail')
-    ),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'cf-net-donut' }))
-  ));
-  wrap.appendChild(row2);
-
-  wrap.appendChild(el('div', { class: 'card mb-16' },
-    el('div', { class: 'card-header' },
-      el('div', { class: 'card-title' }, 'Monthly Net Cash Flow'),
-      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Green = surplus · Red = deficit · Click for transactions')
-    ),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'cf-net-month-bar' }))
-  ));
-
-  // ── Cash Seasonality Heatmap ───────────────────────────────────────────────
-  const heatmap = buildCashSeasonalityHeatmap();
-  if (heatmap) wrap.appendChild(heatmap);
-
-  // ── Transactions ───────────────────────────────────────────────────────────
+// ── Transactions card (collapsible) ───────────────────────────────────────────
+function buildTransactionsCard(curData) {
   const tableCard = el('div', { class: 'card' });
   const cfTableHeader = el('div', { class: 'card-header', style: 'cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between' });
   const cfHeaderLeft = el('div', { style: 'display:flex;align-items:center;gap:16px' });
@@ -1706,17 +1784,7 @@ function buildView() {
     cfTableBody.style.display = cfCollapsed ? 'none' : '';
     cfChevron.style.transform = cfCollapsed ? 'rotate(-90deg)' : '';
   };
-  wrap.appendChild(tableCard);
-
-  const { keys: monthKeys } = getMonthKeysForRange(start, end);
-  setTimeout(() => {
-    renderCumulativeLine(curData, monthKeys);
-    renderMonthBar(curData, monthKeys);
-    renderNetStreamDonut(curData);
-    renderNetMonthBar(curData, monthKeys);
-  }, 0);
-
-  return wrap;
+  return tableCard;
 }
 
 // ── Chart 1: Line — Cumulative Net Cash Flow ──────────────────────────────────
@@ -1906,185 +1974,7 @@ function renderMonthBar({ payments, invoices, opExpenses, capExpenses }, monthKe
   });
 }
 
-// ── Chart 3: Donut — Net Cash Flow by Category (Cash In / OpEx / CapEx) ─────────
-function renderNetStreamDonut({ payments, invoices, opExpenses, capExpenses }) {
-  const totalCashIn      = payments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)
-                         + invoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
-  const totalOpCashOut   = opExpenses.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-  const totalInvCashOut  = capExpenses.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-
-  if (totalCashIn === 0 && totalOpCashOut === 0 && totalInvCashOut === 0) return;
-
-  // Build three slices: Cash In, Op Cash Out, Invest Cash Out
-  const sliceLabels = ['Cash In', 'Op Cash Out', 'Invest Cash Out'];
-  const sliceData   = [Math.round(totalCashIn), Math.round(totalOpCashOut), Math.round(totalInvCashOut)];
-  const sliceColors = ['rgba(16,185,129,0.85)', 'rgba(239,68,68,0.85)', 'rgba(185,28,28,0.85)'];
-
-  // Remove zero slices
-  const filtered = sliceLabels
-    .map((lbl, i) => ({ lbl, val: sliceData[i], color: sliceColors[i], idx: i }))
-    .filter(s => s.val > 0);
-
-  if (!filtered.length) return;
-
-  charts.doughnut('cf-net-donut', {
-    labels: filtered.map(s => s.lbl),
-    data:   filtered.map(s => s.val),
-    colors: filtered.map(s => s.color),
-    onClickItem: (_label, clickIdx) => {
-      const slice = filtered[clickIdx];
-      if (!slice) return;
-
-      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-
-      if (slice.idx === 0) {
-        // Cash In: payments + invoices, rolled up by property/client (all N), plus top 5 largest for context
-        const allIn = [
-          ...payments.map(p => ({
-            date: p.date,
-            entity: byId('properties', p.propertyId)?.name || p.source || '—',
-            description: 'Payment',
-            _eur: toEUR(p.amount, p.currency, p.date)
-          })),
-          ...invoices.map(i => ({
-            date: i.issueDate || i.date,
-            entity: byId('clients', i.clientId)?.name || '—',
-            description: 'Invoice',
-            _eur: toEUR(i.total, i.currency, i.issueDate)
-          }))
-        ];
-
-        const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(2,1fr);gap:10px' });
-        summaryGrid.appendChild(mkSummaryBox('Total Cash In',
-          mkDrillValue(formatEUR(totalCashIn), () => drillDownModal('Cash In', buildCashFlowRows(payments, invoices, [], []), CF_DRILL_COLS)),
-          `${allIn.length} items`));
-        summaryGrid.appendChild(mkSummaryBox('Avg per Item', formatEUR(allIn.length > 0 ? totalCashIn / allIn.length : 0), 'per record'));
-        body.appendChild(summaryGrid);
-
-        const entityMap = new Map();
-        allIn.forEach(r => entityMap.set(r.entity, (entityMap.get(r.entity) || 0) + r._eur));
-        const entityEntries = [...entityMap.entries()].sort((a, b) => b[1] - a[1]);
-        body.appendChild(mkSectionLabel('By Property / Client'));
-        body.appendChild(mkModalTable(
-          [
-            { label: 'Property / Client', tip: 'Property (from payments) or client (from invoices) generating cash in.' },
-            { label: 'Amount', right: true, tip: 'Cash in from this property/client in the period, in EUR.' },
-            { label: '% of Total', right: true, tip: "This property/client's share of total Cash In." }
-          ],
-          entityEntries.map(([k, v]) => [k, formatEUR(v), totalCashIn > 0 ? (v / totalCashIn * 100).toFixed(1) + '%' : '—'])
-        ));
-
-        const top5In = [...allIn].sort((a, b) => b._eur - a._eur).slice(0, 5);
-        body.appendChild(mkSectionLabel('Top 5 Largest'));
-        body.appendChild(mkModalTable(
-          [
-            { label: 'Date', tip: 'Date of the payment or invoice.' },
-            { label: 'Entity / Description', tip: 'Property or client the cash in is linked to.' },
-            { label: 'Type', tip: 'Record type — Payment or Invoice.' },
-            { label: 'Amount', right: true, tip: 'Cash in amount, in EUR.' }
-          ],
-          top5In.map(r => [fmtDate(r.date), r.entity, r.description, formatEUR(r._eur)])
-        ));
-
-      } else if (slice.idx === 1) {
-        // Op Cash Out: all opExpenses rolled up by category, plus top 5 largest for context
-        const catMap = new Map();
-        opExpenses.forEach(e => {
-          const key = resolveExpenseFields(e).costCategory;
-          const cat = COST_CATEGORIES[key]?.label || key || 'Uncategorized';
-          catMap.set(cat, (catMap.get(cat) || 0) + toEUR(e.amount, e.currency, e.date));
-        });
-        const catEntries = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
-
-        const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(2,1fr);gap:10px' });
-        summaryGrid.appendChild(mkSummaryBox('Total OpEx Out',
-          mkDrillValue(formatEUR(totalOpCashOut), () => drillDownModal('Operating Cash Out', buildCashFlowRows([], [], opExpenses, []), CF_DRILL_COLS)),
-          `${opExpenses.length} expenses`));
-        summaryGrid.appendChild(mkSummaryBox('Avg per Item', formatEUR(opExpenses.length > 0 ? totalOpCashOut / opExpenses.length : 0), 'per expense'));
-        body.appendChild(summaryGrid);
-
-        body.appendChild(mkSectionLabel('By Category'));
-        body.appendChild(mkModalTable(
-          [
-            { label: 'Category', tip: 'Cost category assigned to the operating expense.' },
-            { label: 'Amount', right: true, tip: 'Operating expense total in this category, in EUR.' },
-            { label: '% of Total', right: true, tip: "This category's share of total Operating Cash Out." }
-          ],
-          catEntries.map(([k, v]) => [k, formatEUR(v), totalOpCashOut > 0 ? (v / totalOpCashOut * 100).toFixed(1) + '%' : '—'])
-        ));
-
-        const top5Op = [...opExpenses]
-          .sort((a, b) => toEUR(b.amount, b.currency, b.date) - toEUR(a.amount, a.currency, a.date))
-          .slice(0, 5);
-        body.appendChild(mkSectionLabel('Top 5 Largest'));
-        body.appendChild(mkModalTable(
-          [
-            { label: 'Date', tip: 'Date of the expense.' },
-            { label: 'Entity / Property', tip: 'Property or vendor the expense is linked to.' },
-            { label: 'Description', tip: 'Expense description or category.' },
-            { label: 'Amount', right: true, tip: 'Expense amount, in EUR.' }
-          ],
-          top5Op.map(e => [
-            fmtDate(e.date),
-            e.propertyId ? (byId('properties', e.propertyId)?.name || e.propertyId) : (e.vendorId ? (byId('vendors', e.vendorId)?.name || e.vendorId) : '—'),
-            e.description || e.category || '—',
-            formatEUR(toEUR(e.amount, e.currency, e.date))
-          ])
-        ));
-
-      } else {
-        // Investment Cash Out: all capExpenses rolled up by category, plus top 5 largest for context
-        const catMap = new Map();
-        capExpenses.forEach(e => {
-          const key = resolveExpenseFields(e).costCategory;
-          const cat = COST_CATEGORIES[key]?.label || key || 'Uncategorized';
-          catMap.set(cat, (catMap.get(cat) || 0) + toEUR(e.amount, e.currency, e.date));
-        });
-        const catEntries = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
-
-        const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(2,1fr);gap:10px' });
-        summaryGrid.appendChild(mkSummaryBox('Total Invest. Out',
-          mkDrillValue(formatEUR(totalInvCashOut), () => drillDownModal('Investment Cash Out', buildCashFlowRows([], [], [], capExpenses), CF_DRILL_COLS)),
-          `${capExpenses.length} items`));
-        summaryGrid.appendChild(mkSummaryBox('Avg per Item', formatEUR(capExpenses.length > 0 ? totalInvCashOut / capExpenses.length : 0), 'per item'));
-        body.appendChild(summaryGrid);
-
-        body.appendChild(mkSectionLabel('By Category'));
-        body.appendChild(mkModalTable(
-          [
-            { label: 'Category', tip: 'Cost category assigned to the CapEx expense.' },
-            { label: 'Amount', right: true, tip: 'CapEx spend in this category, in EUR.' },
-            { label: '% of Total', right: true, tip: "This category's share of total Investment Cash Out." }
-          ],
-          catEntries.map(([k, v]) => [k, formatEUR(v), totalInvCashOut > 0 ? (v / totalInvCashOut * 100).toFixed(1) + '%' : '—'])
-        ));
-
-        const top5Cap = [...capExpenses]
-          .sort((a, b) => toEUR(b.amount, b.currency, b.date) - toEUR(a.amount, a.currency, a.date))
-          .slice(0, 5);
-        body.appendChild(mkSectionLabel('Top 5 Largest'));
-        body.appendChild(mkModalTable(
-          [
-            { label: 'Date', tip: 'Date of the CapEx expense.' },
-            { label: 'Entity / Property', tip: 'Property or vendor the CapEx expense is linked to.' },
-            { label: 'Description', tip: 'Expense description or category.' },
-            { label: 'Amount', right: true, tip: 'CapEx amount, in EUR.' }
-          ],
-          top5Cap.map(e => [
-            fmtDate(e.date),
-            e.propertyId ? (byId('properties', e.propertyId)?.name || e.propertyId) : (e.vendorId ? (byId('vendors', e.vendorId)?.name || e.vendorId) : '—'),
-            e.description || e.category || '—',
-            formatEUR(toEUR(e.amount, e.currency, e.date))
-          ])
-        ));
-      }
-
-      openModal({ title: `${slice.lbl} — Breakdown`, body, large: true });
-    }
-  });
-}
-
-// ── Chart 4: Bar — Monthly Net Cash Flow ─────────────────────────────────────
+// ── Chart 3: Bar — Monthly Net Cash Flow ─────────────────────────────────────
 function renderNetMonthBar({ payments, invoices, opExpenses, capExpenses }, monthKeys) {
   if (!monthKeys.length) return;
 

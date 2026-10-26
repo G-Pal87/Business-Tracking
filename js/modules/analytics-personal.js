@@ -9,7 +9,7 @@ import {
 } from './analytics-filters.js';
 import {
   mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge,
-  mkEmptyState, mkKpiCard, mkCmpGrid, mkInsightsBanner, safePct, fmtK, mkDrillValue,
+  mkEmptyState, mkKpiCard, mkCmpGrid, mkInsightsBanner, mkDashboardTabs, loadDashboardTab, safePct, fmtK, mkDrillValue,
   GHS_RATE, ghsByDividend, sdcForDividend, periodDays, DAYS_PER_MONTH, DAYS_PER_YEAR, groupByMonthKey, partnerKey
 } from './analytics-helpers.js';
 import { EXPENSE_CATEGORIES } from '../core/config.js';
@@ -84,6 +84,15 @@ function rentForMonth(history, monthKey) {
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
 let gScope = 'all'; // 'all' | 'company' | 'personal'
+
+// Dashboard tabs; `scope` tells which filters apply to the tab's figures.
+const PI_TABS = [
+  { id: 'overview',  label: 'Overview',  scope: 'Headline totals and insights. Everything on this tab follows the period, comparison and Scope filters.' },
+  { id: 'breakdown', label: 'Breakdown', scope: 'Per-director income streams and the monthly trend. Everything on this tab follows the period, comparison and Scope filters.' }
+];
+const PI_TAB_KEY = 'btf:personal_dash_tab';
+let gTab = loadDashboardTab(PI_TAB_KEY, PI_TABS);
+let gMonthlySplit = 'stream'; // monthly chart: 'stream' (pi-stream-monthly) | 'partner' (pi-person-monthly)
 
 // ── Module export ─────────────────────────────────────────────────────────────
 export default {
@@ -2070,6 +2079,32 @@ function renderPersonMonthly(youData, ritaData, months) {
   });
 }
 
+// Monthly income card with a By stream / By director switch.
+function buildMonthlyCard() {
+  const toggle = el('div', { class: 'flex gap-8' });
+  for (const [val, label] of [['stream', 'By stream'], ['partner', 'By director']]) {
+    const isActive = gMonthlySplit === val;
+    const btn = el('button', {
+      type: 'button',
+      style: [
+        'padding:3px 12px;border-radius:14px;border:1px solid;font-size:12px;cursor:pointer',
+        isActive
+          ? 'border-color:var(--accent);background:var(--accent);color:#fff;font-weight:600'
+          : 'border-color:var(--border);background:transparent;color:var(--text-muted)'
+      ].join(';')
+    }, label);
+    btn.onclick = () => { if (gMonthlySplit !== val) { gMonthlySplit = val; rebuildView(); } };
+    toggle.appendChild(btn);
+  }
+  return el('div', { class: 'card mb-16' },
+    el('div', { class: 'card-header' },
+      el('div', { class: 'card-title' }, gMonthlySplit === 'partner' ? 'Partner Comparison — Monthly' : 'Income by Stream — Monthly'),
+      toggle
+    ),
+    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: gMonthlySplit === 'partner' ? 'pi-person-monthly' : 'pi-stream-monthly' }))
+  );
+}
+
 // ── Rebuild ───────────────────────────────────────────────────────────────────
 function rebuildView() {
   CHART_IDS.forEach(id => charts.destroy(id));
@@ -2135,36 +2170,35 @@ function buildView() {
   const compLine = buildComparisonLine(curRange, cmpRange);
   if (compLine) wrap.appendChild(compLine);
 
-  wrap.appendChild(buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, cmpMonths, curRange.isIncomplete));
+  // ── Tabs ───────────────────────────────────────────────────────────────────
+  // One tab is built per render (switching rebuilds the view), so only the
+  // active tab's chart canvas exists and is drawn.
+  wrap.appendChild(mkDashboardTabs(PI_TABS, gTab, id => { gTab = id; rebuildView(); }, PI_TAB_KEY));
+  const renders = [];
 
-  // ── Person columns ──────────────────────────────────────────────────────────
-  const colGrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px' });
-  colGrid.appendChild(buildPersonColumn(YOU_LABEL,  YOU_HEX,  youData,  months, youCmp));
-  colGrid.appendChild(buildPersonColumn(RITA_LABEL, RITA_HEX, ritaData, months, ritaCmp));
-  wrap.appendChild(colGrid);
+  if (gTab === 'overview') {
+    wrap.appendChild(buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, cmpMonths, curRange.isIncomplete));
+    const insightsEl = buildInsights(youData, ritaData, youCmp, ritaCmp, cmpRange);
+    if (insightsEl) wrap.appendChild(insightsEl);
+  }
 
-  // ── Insights ────────────────────────────────────────────────────────────────
-  const insightsEl = buildInsights(youData, ritaData, youCmp, ritaCmp, cmpRange);
-  if (insightsEl) wrap.appendChild(insightsEl);
+  if (gTab === 'breakdown') {
+    // ── Person columns ────────────────────────────────────────────────────────
+    const colGrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px' });
+    colGrid.appendChild(buildPersonColumn(YOU_LABEL,  YOU_HEX,  youData,  months, youCmp));
+    colGrid.appendChild(buildPersonColumn(RITA_LABEL, RITA_HEX, ritaData, months, ritaCmp));
+    wrap.appendChild(colGrid);
 
-  // ── Charts — Row 1: stacked stream ──────────────────────────────────────────
-  // (Composition donuts were dropped here — they just restated percentages
-  // already shown as text in each person's column above.)
-  const row1 = el('div', { class: 'mb-16' });
-
-  row1.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Income by Stream — Monthly')),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'pi-stream-monthly' }))
-  ));
-  wrap.appendChild(row1);
-
-  // ── Charts — Row 2: partner comparison (full width) ─────────────────────────
-  const row2 = el('div', { class: 'mb-16' });
-  row2.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Partner Comparison — Monthly')),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'pi-person-monthly' }))
-  ));
-  wrap.appendChild(row2);
+    // ── Monthly chart — by stream or by director ──────────────────────────────
+    // (Composition donuts were dropped here — they just restated percentages
+    // already shown as text in each person's column above. The stream and
+    // partner monthly charts split the same combined monthly income, so they
+    // share one card with a switch.)
+    wrap.appendChild(buildMonthlyCard());
+    renders.push(gMonthlySplit === 'partner'
+      ? () => renderPersonMonthly(youData, ritaData, months)
+      : () => renderStreamMonthly(youData, ritaData, months));
+  }
 
   // ── Footnote ────────────────────────────────────────────────────────────────
   wrap.appendChild(el('div', { style: 'font-size:11px;color:var(--text-dim);padding:4px 0 16px' },
@@ -2172,10 +2206,7 @@ function buildView() {
     'Dividends shown net of the GHS/GESY contribution (2.65%, on the first €180,000 per person per year). Social contributions (GESY) paid by the company are not personal income and are excluded.'
   ));
 
-  setTimeout(() => {
-    renderStreamMonthly(youData, ritaData, months);
-    renderPersonMonthly(youData, ritaData, months);
-  }, 0);
+  setTimeout(() => renders.forEach(fn => fn()), 0);
 
   return wrap;
 }

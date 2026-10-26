@@ -17,15 +17,26 @@ import {
   getMonthKeysForRange, makeMatchers, resolveStream,
   buildFilterBar, buildComparisonLine
 } from './analytics-filters.js';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, mkTh, mkDrillValue, groupByMonthKey } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, mkDashboardTabs, loadDashboardTab, safePct, mkTh, mkDrillValue, groupByMonthKey } from './analytics-helpers.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CHART_IDS = [
-  'anf-fc-actual', 'anf-fc-var-pct', 'anf-net-compare',
-  'anf-stream-rev', 'anf-stream-compare', 'anf-prop-compare',
-  'anf-pending-pipeline', 'anf-pending-by-prop',
-  'anf-accuracy-trend'
+  'anf-monthly', 'anf-accuracy-trend',
+  'anf-stream', 'anf-prop-compare',
+  'anf-pending-pipeline', 'anf-pending-by-prop'
 ];
+
+// Dashboard tabs; `scope` tells which filters apply to the tab's figures.
+const FC_TABS = [
+  { id: 'overview',  label: 'Overview',             scope: 'Headline figures and alerts for the selected period, with comparison deltas. Property ROI adds forecast for the rest of the period; the data-quality check covers all forecast records.' },
+  { id: 'monthly',   label: 'Monthly Trend',        scope: 'Everything on this tab follows the period and the Owner / Stream / Property / Scope filters; the comparison period does not apply.' },
+  { id: 'breakdown', label: 'Streams & Properties', scope: 'Everything on this tab follows the period and the Owner / Stream / Property / Scope filters; the comparison period does not apply.' },
+  { id: 'pipeline',  label: 'Airbnb Pipeline',      scope: 'Pending Airbnb reservations. The charts show every pending reservation whatever its date; the table lists those checking in within the period. Owner / Stream / Property / Scope filters apply.' }
+];
+const FC_TAB_KEY = 'btf:forecast_dash_tab';
+let gTab = loadDashboardTab(FC_TAB_KEY, FC_TABS);
+let gMonthlyView = 'revenue'; // monthly chart: 'revenue' | 'variance' | 'net'
+let gStreamView  = 'compare'; // stream chart: 'compare' (actual vs forecast) | 'mix' (forecast share)
 
 const REV_COLS = [
   { key: 'date',   label: 'Date',   format: v => fmtDate(v), tip: 'Date the payment or invoice was recorded.' },
@@ -1861,7 +1872,7 @@ function buildDataQualityWarnings() {
 function makeChartSection(title, panels) {
   const card = el('div', { class: 'card mb-16' });
   card.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, title)));
-  const grid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:0 16px 16px' });
+  const grid = el('div', { class: `grid grid-${panels.length}`, style: 'gap:16px;padding:0 16px 16px' });
   for (const [panelTitle, canvasId] of panels) {
     const panel = el('div');
     const labelRow = el('div', { style: 'display:flex;align-items:center;justify-content:space-between;margin-bottom:8px' },
@@ -1873,6 +1884,34 @@ function makeChartSection(title, panels) {
   }
   card.appendChild(grid);
   return card;
+}
+
+// One chart per card, with an optional view switch in the header (e.g. the
+// monthly chart's Revenue / Variance % / Net). Switching rebuilds the view.
+function chartCard(title, canvasId, toggle = null) {
+  return el('div', { class: 'card mb-16' },
+    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, title), toggle),
+    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: canvasId }))
+  );
+}
+
+function mkViewToggle(options, current, onPick) {
+  const toggle = el('div', { class: 'flex gap-8' });
+  for (const [val, label] of options) {
+    const isActive = current === val;
+    const btn = el('button', {
+      type: 'button',
+      style: [
+        'padding:3px 12px;border-radius:14px;border:1px solid;font-size:12px;cursor:pointer',
+        isActive
+          ? 'border-color:var(--accent);background:var(--accent);color:#fff;font-weight:600'
+          : 'border-color:var(--border);background:transparent;color:var(--text-muted)'
+      ].join(';')
+    }, label);
+    btn.onclick = () => { if (current !== val) { onPick(val); rebuildView(); } };
+    toggle.appendChild(btn);
+  }
+  return toggle;
 }
 
 function cardSection(title, content) {
@@ -2321,8 +2360,9 @@ function openStreamDetailModal(s, data) {
 }
 
 // Per-stream KPI card row — one card per stream with forecast and/or actual
-// revenue this period, so the split is visible at a glance instead of only
-// through the "Revenue Breakdown" charts/table further down the page.
+// revenue this period, so the split is visible at a glance on the Overview.
+// It replaces the old Stream Breakdown table (same figures: actual, forecast,
+// variance % here; variance € in the card's explain and click-through).
 function buildStreamKpiRow(data) {
   const streams = data.streamBreakdown.filter(s => s.fcRev > 0 || s.actRev > 0);
   if (streams.length === 0) return null;
@@ -2359,9 +2399,9 @@ function buildStreamKpiRow(data) {
 }
 
 // ── Chart rendering ───────────────────────────────────────────────────────────
-function renderCharts(data) {
-  const { months, fcMonthlyRev, fcMonthlyExp,
-          streamBreakdown, propertyBreakdown } = data;
+// One render function per tab — only the active tab's canvases exist.
+function renderMonthlyCharts(data) {
+  const { months, fcMonthlyRev, fcMonthlyExp } = data;
 
   const labels = months.map(m => m.label);
 
@@ -2376,9 +2416,9 @@ function renderCharts(data) {
     return p !== null ? Math.round(p * 10) / 10 : 0;
   });
 
-  // 1. Actual vs Forecast Revenue
-  if (fcRevData.some(v => v > 0) || revData.some(v => v > 0)) {
-    charts.line('anf-fc-actual', {
+  // 1. Actual vs Forecast Revenue (monthly chart, Revenue view)
+  if (gMonthlyView === 'revenue' && (fcRevData.some(v => v > 0) || revData.some(v => v > 0))) {
+    charts.line('anf-monthly', {
       labels,
       datasets: [
         { label: 'Actual',   data: revData,   borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.08)', fill: true },
@@ -2434,9 +2474,9 @@ function renderCharts(data) {
     });
   }
 
-  // 2. Forecast Variance % — render whenever forecast or actual data exists (zero variance is meaningful)
-  if (fcRevData.some(v => v > 0) || revData.some(v => v > 0)) {
-    charts.bar('anf-fc-var-pct', {
+  // 2. Forecast Variance % (Variance % view) — render whenever forecast or actual data exists (zero variance is meaningful)
+  if (gMonthlyView === 'variance' && (fcRevData.some(v => v > 0) || revData.some(v => v > 0))) {
+    charts.bar('anf-monthly', {
       labels,
       datasets: [{
         label: 'Variance %',
@@ -2493,9 +2533,9 @@ function renderCharts(data) {
     });
   }
 
-  // 3. Forecast Net vs Actual Net
-  if (fcNetData.some(v => v !== 0) || netData.some(v => v !== 0)) {
-    charts.line('anf-net-compare', {
+  // 3. Forecast Net vs Actual Net (Net view)
+  if (gMonthlyView === 'net' && (fcNetData.some(v => v !== 0) || netData.some(v => v !== 0))) {
+    charts.line('anf-monthly', {
       labels,
       datasets: [
         { label: 'Actual Net',   data: netData,   borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.08)', fill: true },
@@ -2534,258 +2574,7 @@ function renderCharts(data) {
     });
   }
 
-  // 4. Forecast Revenue by Stream (doughnut)
-  const fcStreams = streamBreakdown.filter(s => s.fcRev > 0);
-  if (fcStreams.length > 0) {
-    charts.doughnut('anf-stream-rev', {
-      labels: fcStreams.map(s => s.label),
-      data:   fcStreams.map(s => Math.round(s.fcRev)),
-      colors: fcStreams.map(s => STREAMS[s.key]?.color || '#6366f1'),
-      onClickItem: (_lbl, idx) => {
-        const s = fcStreams[idx];
-        if (s) openStreamDetailModal(s, data);
-      }
-    });
-  }
-
-  // 5. Actual vs Forecast by Stream
-  if (streamBreakdown.length > 0) {
-    charts.bar('anf-stream-compare', {
-      labels: streamBreakdown.map(s => s.label),
-      datasets: [
-        { label: 'Actual',   data: streamBreakdown.map(s => Math.round(s.actRev)), backgroundColor: '#10b981' },
-        { label: 'Forecast', data: streamBreakdown.map(s => Math.round(s.fcRev)),  backgroundColor: '#6366f1' }
-      ],
-      onClickItem: (_lbl, idx) => {
-        const s = streamBreakdown[idx];
-        if (!s) return;
-        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-
-        // Actual vs Budget summary
-        const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
-        summaryBoxes.appendChild(mkSummaryBox('Actual Revenue', formatEUR(s.actRev)));
-        summaryBoxes.appendChild(mkSummaryBox('Budget (Forecast)', formatEUR(s.fcRev)));
-        summaryBoxes.appendChild(mkSummaryBox('Variance', fmtVar(s.actRev, s.fcRevCmp), fmtVarPct(s.actRev, s.fcRevCmp), {
-          title: 'Variance', formula: 'Actual Revenue − Forecast Revenue for this stream.',
-          inputs: [
-            { label: 'Actual Revenue', value: formatEUR(s.actRev) },
-            { label: 'Budget (Forecast)', value: formatEUR(s.fcRev) },
-            { label: 'Variance', value: fmtVar(s.actRev, s.fcRevCmp) }
-          ],
-          source: 'analytics-forecast.js:558 computeStreamBreakdown()'
-        }));
-        body.appendChild(mkSectionLabel('Actual vs Budget'));
-        body.appendChild(summaryBoxes);
-
-        // Monthly trend for this stream
-        const monthlyRows = data.monthlyBreakdown.map(m => {
-          let mAct = 0;
-          m.payments.forEach(p => { if ((resolveStream(p) || 'other') === s.key) mAct += toEUR(p.amount, p.currency, p.date); });
-          m.invoices.forEach(i => { if ((resolveStream(i) || 'other') === s.key) mAct += toEUR((i.subtotal ?? i.total) || i.amount, i.currency, i.issueDate || i.date); });
-          return [m.label, formatEUR(mAct)];
-        }).filter(([, val]) => val !== formatEUR(0));
-        if (monthlyRows.length > 0) {
-          body.appendChild(mkSectionLabel('Monthly Trend'));
-          body.appendChild(mkModalTable(
-            [
-              { label: 'Month' },
-              { label: 'Actual Revenue', right: true, tip: 'Sum of actual payments and invoices for this stream in the month.' }
-            ],
-            monthlyRows
-          ));
-        }
-
-        openModal({ title: `${s.label} — Stream Detail`, body, large: true });
-      }
-    });
-  }
-
-  // 6. Actual vs Forecast by Property (horizontal, top 10)
-  const topProps = propertyBreakdown.slice(0, 10);
-  if (topProps.length > 0) {
-    charts.bar('anf-prop-compare', {
-      labels: topProps.map(p => p.label),
-      datasets: [
-        { label: 'Actual',   data: topProps.map(p => Math.round(p.actRev)), backgroundColor: '#10b981' },
-        { label: 'Forecast', data: topProps.map(p => Math.round(p.fcRev)),  backgroundColor: '#6366f1' }
-      ],
-      horizontal: true,
-      onClickItem: (_lbl, idx) => {
-        const prop = topProps[idx];
-        if (!prop) return;
-        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-
-        // Actual vs Budget summary
-        const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
-        summaryBoxes.appendChild(mkSummaryBox('Actual Revenue', formatEUR(prop.actRev)));
-        summaryBoxes.appendChild(mkSummaryBox('Budget (Forecast)', formatEUR(prop.fcRev)));
-        summaryBoxes.appendChild(mkSummaryBox('Variance', fmtVar(prop.actRev, prop.fcRevCmp), fmtVarPct(prop.actRev, prop.fcRevCmp), {
-          title: 'Variance', formula: 'Actual Revenue − Forecast Revenue for this property.',
-          inputs: [
-            { label: 'Actual Revenue', value: formatEUR(prop.actRev) },
-            { label: 'Budget (Forecast)', value: formatEUR(prop.fcRev) },
-            { label: 'Variance', value: fmtVar(prop.actRev, prop.fcRevCmp) }
-          ],
-          source: 'analytics-forecast.js:618 computePropertyBreakdown()'
-        }));
-        body.appendChild(mkSectionLabel('Actual vs Budget'));
-        body.appendChild(summaryBoxes);
-
-        // Monthly revenue breakdown for this property
-        const monthlyRows = data.monthlyBreakdown.map(m => {
-          const mAct = m.payments
-            .filter(p => p.propertyId === prop.propId)
-            .reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
-          const mFc = data.fcPropMonthlyRev.get(m.key + '_' + prop.propId) || 0;
-          return [m.label, formatEUR(mAct), formatEUR(mFc || 0), fmtVar(mAct, mFc || 0)];
-        }).filter(([, act]) => act !== formatEUR(0));
-        if (monthlyRows.length > 0) {
-          body.appendChild(mkSectionLabel('Monthly Revenue Breakdown'));
-          body.appendChild(mkModalTable(
-            [
-              { label: 'Month' },
-              { label: 'Actual', right: true, tip: 'Actual revenue recorded for this property in the month.' },
-              { label: 'Forecast', right: true, tip: 'Forecast revenue for this property in the month.' },
-              { label: 'Variance', right: true, tip: 'Actual minus Forecast for the month.' }
-            ],
-            monthlyRows
-          ));
-        }
-
-        openModal({ title: `${prop.label} — Property Detail`, body, large: true });
-      }
-    });
-  }
-
-  // 7. Pending Pipeline by Check-in Month — all entity-filtered pending (forward-looking)
-  const pendingMap = new Map();
-  data.allPendingReservations.forEach(p => {
-    const mk = (p.airbnbCheckIn || p.date || '').slice(0, 7);
-    if (!mk) return;
-    pendingMap.set(mk, (pendingMap.get(mk) || 0) + toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date));
-  });
-  const ML9 = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const sortedPendingKeys = [...pendingMap.keys()].sort();
-  if (sortedPendingKeys.length > 0) {
-    charts.bar('anf-pending-pipeline', {
-      labels: sortedPendingKeys.map(mk => {
-        const [y, m] = mk.split('-');
-        return `${ML9[parseInt(m) - 1]} '${y.slice(2)}`;
-      }),
-      datasets: [{ label: 'Pending', data: sortedPendingKeys.map(mk => Math.round(pendingMap.get(mk) || 0)), backgroundColor: '#3b82f6' }],
-      onClickItem: (_lbl, idx) => {
-        const mk = sortedPendingKeys[idx];
-        if (!mk) return;
-        const monthPending = data.allPendingReservations.filter(p => (p.airbnbCheckIn || p.date || '').slice(0, 7) === mk);
-        const [y, m] = mk.split('-');
-        const monthLabel = `${ML9[parseInt(m) - 1]} ${y}`;
-        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-
-        const total = monthPending.reduce((s, p) => s + toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date), 0);
-        const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(2,1fr);gap:8px' });
-        summaryBoxes.appendChild(mkSummaryBox('Total Pending', formatEUR(total), null, {
-          title: 'Total Pending', formula: 'Sum of pending Airbnb reservation amounts with check-in date in this month, converted to EUR.',
-          inputs: [
-            { label: 'Reservations', value: String(monthPending.length) },
-            { label: 'Total', value: formatEUR(total) }
-          ],
-          source: 'analytics-forecast.js:2077 renderCharts() (anf-pending-pipeline onClickItem)'
-        }));
-        summaryBoxes.appendChild(mkSummaryBox('Reservations', String(monthPending.length)));
-        body.appendChild(mkSectionLabel('Pipeline Summary'));
-        body.appendChild(summaryBoxes);
-
-        const pendingRows = monthPending
-          .sort((a, b) => (a.airbnbCheckIn || '').localeCompare(b.airbnbCheckIn || ''))
-          .map(p => [
-            byId('properties', p.propertyId)?.name || '—',
-            p.confirmationCode || p.airbnbRef || '—',
-            p.airbnbCheckIn || '—',
-            String(p.airbnbNights || '—'),
-            formatEUR(toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date))
-          ]);
-        if (pendingRows.length > 0) {
-          body.appendChild(mkSectionLabel('Pending Invoices'));
-          body.appendChild(mkModalTable(
-            [
-              { label: 'Property', tip: 'Property the reservation belongs to.' },
-              { label: 'Confirmation', right: true, tip: 'Airbnb confirmation/reference code for the reservation.' },
-              { label: 'Check-in', right: true, tip: 'Reservation check-in date.' },
-              { label: 'Nights', right: true, tip: 'Number of nights booked.' },
-              { label: 'Amount', right: true, tip: 'Reservation payout amount, converted to EUR, pending collection.' }
-            ],
-            pendingRows
-          ));
-        }
-
-        openModal({ title: `Pending Pipeline — ${monthLabel}`, body, large: true });
-      }
-    });
-  }
-
-  // 8. Pending by Property — all entity-filtered pending (forward-looking)
-  const propPendingMap = new Map(); // propId -> { label, total, reservations[] }
-  data.allPendingReservations.forEach(p => {
-    if (!p.propertyId) return;
-    const label = byId('properties', p.propertyId)?.name || p.propertyId;
-    const entry = propPendingMap.get(p.propertyId) || { label, total: 0, reservations: [] };
-    entry.total += toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date);
-    entry.reservations.push(p);
-    propPendingMap.set(p.propertyId, entry);
-  });
-  const propPendingEntries = [...propPendingMap.entries()].sort((a, b) => b[1].total - a[1].total);
-  if (propPendingEntries.length > 0) {
-    charts.bar('anf-pending-by-prop', {
-      labels: propPendingEntries.map(([, e]) => e.label),
-      datasets: [{ label: 'Pending Pipeline', data: propPendingEntries.map(([, e]) => Math.round(e.total)), backgroundColor: '#3b82f6' }],
-      horizontal: true,
-      onClickItem: (_lbl, idx) => {
-        const [, entry] = propPendingEntries[idx];
-        if (!entry) return;
-        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-
-        const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(2,1fr);gap:8px' });
-        summaryBoxes.appendChild(mkSummaryBox('Total Pending', formatEUR(entry.total), null, {
-          title: 'Total Pending', formula: 'Sum of pending Airbnb reservation amounts for this property, converted to EUR.',
-          inputs: [
-            { label: 'Reservations', value: String(entry.reservations.length) },
-            { label: 'Total', value: formatEUR(entry.total) }
-          ],
-          source: 'analytics-forecast.js:2077 renderCharts() (anf-pending-by-prop onClickItem)'
-        }));
-        summaryBoxes.appendChild(mkSummaryBox('Reservations', String(entry.reservations.length)));
-        body.appendChild(mkSectionLabel('Pipeline Summary'));
-        body.appendChild(summaryBoxes);
-
-        const pendingRows = entry.reservations
-          .sort((a, b) => (a.airbnbCheckIn || '').localeCompare(b.airbnbCheckIn || ''))
-          .map(p => [
-            p.confirmationCode || p.airbnbRef || '—',
-            p.airbnbCheckIn || '—',
-            p.airbnbCheckOut || '—',
-            String(p.airbnbNights || '—'),
-            formatEUR(toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date))
-          ]);
-        if (pendingRows.length > 0) {
-          body.appendChild(mkSectionLabel('Pending Invoices'));
-          body.appendChild(mkModalTable(
-            [
-              { label: 'Confirmation', tip: 'Airbnb confirmation/reference code for the reservation.' },
-              { label: 'Check-in', right: true, tip: 'Reservation check-in date.' },
-              { label: 'Check-out', right: true, tip: 'Reservation check-out date.' },
-              { label: 'Nights', right: true, tip: 'Number of nights booked.' },
-              { label: 'Amount', right: true, tip: 'Reservation payout amount, converted to EUR, pending collection.' }
-            ],
-            pendingRows
-          ));
-        }
-
-        openModal({ title: `${entry.label} — Pending Pipeline`, body, large: true });
-      }
-    });
-  }
-
-  // 9. Forecast Accuracy Trend — line chart of per-month absolute % error
+  // 4. Forecast Accuracy Trend — line chart of per-month absolute % error
   const accuracyTrendMonths = data.monthlyBreakdown.filter(m => m.fcRev > 0 && m.elapsedFrac >= 1);
   if (accuracyTrendMonths.length > 0) {
     const accLabels = accuracyTrendMonths.map(m => m.label);
@@ -2894,6 +2683,263 @@ function renderCharts(data) {
   }
 }
 
+function renderBreakdownCharts(data) {
+  const { streamBreakdown, propertyBreakdown } = data;
+
+  // 5. Forecast Revenue by Stream (doughnut — stream chart, Forecast Mix view)
+  const fcStreams = streamBreakdown.filter(s => s.fcRev > 0);
+  if (gStreamView === 'mix' && fcStreams.length > 0) {
+    charts.doughnut('anf-stream', {
+      labels: fcStreams.map(s => s.label),
+      data:   fcStreams.map(s => Math.round(s.fcRev)),
+      colors: fcStreams.map(s => STREAMS[s.key]?.color || '#6366f1'),
+      onClickItem: (_lbl, idx) => {
+        const s = fcStreams[idx];
+        if (s) openStreamDetailModal(s, data);
+      }
+    });
+  }
+
+  // 6. Actual vs Forecast by Stream (stream chart, Actual vs Forecast view)
+  if (gStreamView === 'compare' && streamBreakdown.length > 0) {
+    charts.bar('anf-stream', {
+      labels: streamBreakdown.map(s => s.label),
+      datasets: [
+        { label: 'Actual',   data: streamBreakdown.map(s => Math.round(s.actRev)), backgroundColor: '#10b981' },
+        { label: 'Forecast', data: streamBreakdown.map(s => Math.round(s.fcRev)),  backgroundColor: '#6366f1' }
+      ],
+      onClickItem: (_lbl, idx) => {
+        const s = streamBreakdown[idx];
+        if (!s) return;
+        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+        // Actual vs Budget summary
+        const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
+        summaryBoxes.appendChild(mkSummaryBox('Actual Revenue', formatEUR(s.actRev)));
+        summaryBoxes.appendChild(mkSummaryBox('Budget (Forecast)', formatEUR(s.fcRev)));
+        summaryBoxes.appendChild(mkSummaryBox('Variance', fmtVar(s.actRev, s.fcRevCmp), fmtVarPct(s.actRev, s.fcRevCmp), {
+          title: 'Variance', formula: 'Actual Revenue − Forecast Revenue for this stream.',
+          inputs: [
+            { label: 'Actual Revenue', value: formatEUR(s.actRev) },
+            { label: 'Budget (Forecast)', value: formatEUR(s.fcRev) },
+            { label: 'Variance', value: fmtVar(s.actRev, s.fcRevCmp) }
+          ],
+          source: 'analytics-forecast.js:558 computeStreamBreakdown()'
+        }));
+        body.appendChild(mkSectionLabel('Actual vs Budget'));
+        body.appendChild(summaryBoxes);
+
+        // Monthly trend for this stream
+        const monthlyRows = data.monthlyBreakdown.map(m => {
+          let mAct = 0;
+          m.payments.forEach(p => { if ((resolveStream(p) || 'other') === s.key) mAct += toEUR(p.amount, p.currency, p.date); });
+          m.invoices.forEach(i => { if ((resolveStream(i) || 'other') === s.key) mAct += toEUR((i.subtotal ?? i.total) || i.amount, i.currency, i.issueDate || i.date); });
+          return [m.label, formatEUR(mAct)];
+        }).filter(([, val]) => val !== formatEUR(0));
+        if (monthlyRows.length > 0) {
+          body.appendChild(mkSectionLabel('Monthly Trend'));
+          body.appendChild(mkModalTable(
+            [
+              { label: 'Month' },
+              { label: 'Actual Revenue', right: true, tip: 'Sum of actual payments and invoices for this stream in the month.' }
+            ],
+            monthlyRows
+          ));
+        }
+
+        openModal({ title: `${s.label} — Stream Detail`, body, large: true });
+      }
+    });
+  }
+
+  // 7. Actual vs Forecast by Property (horizontal, top 10)
+  const topProps = propertyBreakdown.slice(0, 10);
+  if (topProps.length > 0) {
+    charts.bar('anf-prop-compare', {
+      labels: topProps.map(p => p.label),
+      datasets: [
+        { label: 'Actual',   data: topProps.map(p => Math.round(p.actRev)), backgroundColor: '#10b981' },
+        { label: 'Forecast', data: topProps.map(p => Math.round(p.fcRev)),  backgroundColor: '#6366f1' }
+      ],
+      horizontal: true,
+      onClickItem: (_lbl, idx) => {
+        const prop = topProps[idx];
+        if (!prop) return;
+        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+        // Actual vs Budget summary
+        const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
+        summaryBoxes.appendChild(mkSummaryBox('Actual Revenue', formatEUR(prop.actRev)));
+        summaryBoxes.appendChild(mkSummaryBox('Budget (Forecast)', formatEUR(prop.fcRev)));
+        summaryBoxes.appendChild(mkSummaryBox('Variance', fmtVar(prop.actRev, prop.fcRevCmp), fmtVarPct(prop.actRev, prop.fcRevCmp), {
+          title: 'Variance', formula: 'Actual Revenue − Forecast Revenue for this property.',
+          inputs: [
+            { label: 'Actual Revenue', value: formatEUR(prop.actRev) },
+            { label: 'Budget (Forecast)', value: formatEUR(prop.fcRev) },
+            { label: 'Variance', value: fmtVar(prop.actRev, prop.fcRevCmp) }
+          ],
+          source: 'analytics-forecast.js:618 computePropertyBreakdown()'
+        }));
+        body.appendChild(mkSectionLabel('Actual vs Budget'));
+        body.appendChild(summaryBoxes);
+
+        // Monthly revenue breakdown for this property
+        const monthlyRows = data.monthlyBreakdown.map(m => {
+          const mAct = m.payments
+            .filter(p => p.propertyId === prop.propId)
+            .reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
+          const mFc = data.fcPropMonthlyRev.get(m.key + '_' + prop.propId) || 0;
+          return [m.label, formatEUR(mAct), formatEUR(mFc || 0), fmtVar(mAct, mFc || 0)];
+        }).filter(([, act]) => act !== formatEUR(0));
+        if (monthlyRows.length > 0) {
+          body.appendChild(mkSectionLabel('Monthly Revenue Breakdown'));
+          body.appendChild(mkModalTable(
+            [
+              { label: 'Month' },
+              { label: 'Actual', right: true, tip: 'Actual revenue recorded for this property in the month.' },
+              { label: 'Forecast', right: true, tip: 'Forecast revenue for this property in the month.' },
+              { label: 'Variance', right: true, tip: 'Actual minus Forecast for the month.' }
+            ],
+            monthlyRows
+          ));
+        }
+
+        openModal({ title: `${prop.label} — Property Detail`, body, large: true });
+      }
+    });
+  }
+}
+
+function renderPipelineCharts(data) {
+  // 8. Pending Pipeline by Check-in Month — all entity-filtered pending (forward-looking)
+  const pendingMap = new Map();
+  data.allPendingReservations.forEach(p => {
+    const mk = (p.airbnbCheckIn || p.date || '').slice(0, 7);
+    if (!mk) return;
+    pendingMap.set(mk, (pendingMap.get(mk) || 0) + toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date));
+  });
+  const ML9 = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const sortedPendingKeys = [...pendingMap.keys()].sort();
+  if (sortedPendingKeys.length > 0) {
+    charts.bar('anf-pending-pipeline', {
+      labels: sortedPendingKeys.map(mk => {
+        const [y, m] = mk.split('-');
+        return `${ML9[parseInt(m) - 1]} '${y.slice(2)}`;
+      }),
+      datasets: [{ label: 'Pending', data: sortedPendingKeys.map(mk => Math.round(pendingMap.get(mk) || 0)), backgroundColor: '#3b82f6' }],
+      onClickItem: (_lbl, idx) => {
+        const mk = sortedPendingKeys[idx];
+        if (!mk) return;
+        const monthPending = data.allPendingReservations.filter(p => (p.airbnbCheckIn || p.date || '').slice(0, 7) === mk);
+        const [y, m] = mk.split('-');
+        const monthLabel = `${ML9[parseInt(m) - 1]} ${y}`;
+        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+        const total = monthPending.reduce((s, p) => s + toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date), 0);
+        const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(2,1fr);gap:8px' });
+        summaryBoxes.appendChild(mkSummaryBox('Total Pending', formatEUR(total), null, {
+          title: 'Total Pending', formula: 'Sum of pending Airbnb reservation amounts with check-in date in this month, converted to EUR.',
+          inputs: [
+            { label: 'Reservations', value: String(monthPending.length) },
+            { label: 'Total', value: formatEUR(total) }
+          ],
+          source: 'analytics-forecast.js renderPipelineCharts() (anf-pending-pipeline onClickItem)'
+        }));
+        summaryBoxes.appendChild(mkSummaryBox('Reservations', String(monthPending.length)));
+        body.appendChild(mkSectionLabel('Pipeline Summary'));
+        body.appendChild(summaryBoxes);
+
+        const pendingRows = monthPending
+          .sort((a, b) => (a.airbnbCheckIn || '').localeCompare(b.airbnbCheckIn || ''))
+          .map(p => [
+            byId('properties', p.propertyId)?.name || '—',
+            p.confirmationCode || p.airbnbRef || '—',
+            p.airbnbCheckIn || '—',
+            String(p.airbnbNights || '—'),
+            formatEUR(toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date))
+          ]);
+        if (pendingRows.length > 0) {
+          body.appendChild(mkSectionLabel('Pending Invoices'));
+          body.appendChild(mkModalTable(
+            [
+              { label: 'Property', tip: 'Property the reservation belongs to.' },
+              { label: 'Confirmation', right: true, tip: 'Airbnb confirmation/reference code for the reservation.' },
+              { label: 'Check-in', right: true, tip: 'Reservation check-in date.' },
+              { label: 'Nights', right: true, tip: 'Number of nights booked.' },
+              { label: 'Amount', right: true, tip: 'Reservation payout amount, converted to EUR, pending collection.' }
+            ],
+            pendingRows
+          ));
+        }
+
+        openModal({ title: `Pending Pipeline — ${monthLabel}`, body, large: true });
+      }
+    });
+  }
+
+  // 9. Pending by Property — all entity-filtered pending (forward-looking)
+  const propPendingMap = new Map(); // propId -> { label, total, reservations[] }
+  data.allPendingReservations.forEach(p => {
+    if (!p.propertyId) return;
+    const label = byId('properties', p.propertyId)?.name || p.propertyId;
+    const entry = propPendingMap.get(p.propertyId) || { label, total: 0, reservations: [] };
+    entry.total += toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date);
+    entry.reservations.push(p);
+    propPendingMap.set(p.propertyId, entry);
+  });
+  const propPendingEntries = [...propPendingMap.entries()].sort((a, b) => b[1].total - a[1].total);
+  if (propPendingEntries.length > 0) {
+    charts.bar('anf-pending-by-prop', {
+      labels: propPendingEntries.map(([, e]) => e.label),
+      datasets: [{ label: 'Pending Pipeline', data: propPendingEntries.map(([, e]) => Math.round(e.total)), backgroundColor: '#3b82f6' }],
+      horizontal: true,
+      onClickItem: (_lbl, idx) => {
+        const [, entry] = propPendingEntries[idx];
+        if (!entry) return;
+        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+        const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(2,1fr);gap:8px' });
+        summaryBoxes.appendChild(mkSummaryBox('Total Pending', formatEUR(entry.total), null, {
+          title: 'Total Pending', formula: 'Sum of pending Airbnb reservation amounts for this property, converted to EUR.',
+          inputs: [
+            { label: 'Reservations', value: String(entry.reservations.length) },
+            { label: 'Total', value: formatEUR(entry.total) }
+          ],
+          source: 'analytics-forecast.js renderPipelineCharts() (anf-pending-by-prop onClickItem)'
+        }));
+        summaryBoxes.appendChild(mkSummaryBox('Reservations', String(entry.reservations.length)));
+        body.appendChild(mkSectionLabel('Pipeline Summary'));
+        body.appendChild(summaryBoxes);
+
+        const pendingRows = entry.reservations
+          .sort((a, b) => (a.airbnbCheckIn || '').localeCompare(b.airbnbCheckIn || ''))
+          .map(p => [
+            p.confirmationCode || p.airbnbRef || '—',
+            p.airbnbCheckIn || '—',
+            p.airbnbCheckOut || '—',
+            String(p.airbnbNights || '—'),
+            formatEUR(toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date))
+          ]);
+        if (pendingRows.length > 0) {
+          body.appendChild(mkSectionLabel('Pending Invoices'));
+          body.appendChild(mkModalTable(
+            [
+              { label: 'Confirmation', tip: 'Airbnb confirmation/reference code for the reservation.' },
+              { label: 'Check-in', right: true, tip: 'Reservation check-in date.' },
+              { label: 'Check-out', right: true, tip: 'Reservation check-out date.' },
+              { label: 'Nights', right: true, tip: 'Number of nights booked.' },
+              { label: 'Amount', right: true, tip: 'Reservation payout amount, converted to EUR, pending collection.' }
+            ],
+            pendingRows
+          ));
+        }
+
+        openModal({ title: `${entry.label} — Pending Pipeline`, body, large: true });
+      }
+    });
+  }
+}
+
 // ── Main view builder ─────────────────────────────────────────────────────────
 function buildView() {
   const wrap = el('div', { class: 'view active' });
@@ -2931,7 +2977,6 @@ function buildView() {
 
   const curRange = getCurrentPeriodRange(gF);
   const cmpRange = getComparisonRange(gF, curRange);
-  wrap.appendChild(buildComparisonLine(curRange, cmpRange));
 
   const data    = calculateDashboardData(curRange);
   const cmpData = cmpRange ? calculateDashboardData(cmpRange) : null;
@@ -2943,68 +2988,79 @@ function buildView() {
 
   const hasAnyData = data.forecastRev > 0 || data.actualRev > 0 || data.pendingPipeline > 0;
 
-  wrap.appendChild(buildKpiGrid(data, cmpData, cmpRange));
+  // ── Tabs ───────────────────────────────────────────────────────────────────
+  // One tab is built per render (switching rebuilds the view), so each chart
+  // canvas exists once.
+  wrap.appendChild(mkDashboardTabs(FC_TABS, gTab, id => { gTab = id; rebuildView(); }, FC_TAB_KEY));
 
-  const streamKpiRow = buildStreamKpiRow(data);
-  if (streamKpiRow) wrap.appendChild(streamKpiRow);
-
-  wrap.appendChild(buildForecastInsights(data, cmpData, cmpRange));
-
-  const dqSection = buildDataQualityWarnings();
-  if (dqSection) wrap.appendChild(dqSection);
-
-  if (!hasAnyData) {
-    const emptyCard = el('div', { class: 'card mb-16' });
-    const emptyBody = el('div', { style: 'padding:48px 32px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:16px' });
-    emptyBody.appendChild(el('div', { style: 'font-size:40px;opacity:0.25;line-height:1' }, '◈'));
-    emptyBody.appendChild(el('div', { style: 'font-size:16px;font-weight:600;color:var(--text)' }, 'No Forecast or Actual Data'));
-    emptyBody.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted);max-width:420px;line-height:1.6' },
-      'No forecast or actual revenue data was found for the selected period and filters. Set up forecasts in the Forecast section to enable this comparison.'
-    ));
-    const goToFcBtn = el('button', {
-      class: 'btn',
-      style: 'margin-top:8px',
-      onclick: () => {
-        const nav = document.querySelector('[data-view="forecast"], [data-module="forecast"], a[href="#forecast"]');
-        if (nav) nav.click();
-      }
-    }, 'Go to Forecast Section');
-    emptyBody.appendChild(goToFcBtn);
-    emptyCard.appendChild(emptyBody);
-    wrap.appendChild(emptyCard);
+  if (gTab === 'overview') {
+    wrap.appendChild(buildComparisonLine(curRange, cmpRange));
+    wrap.appendChild(buildKpiGrid(data, cmpData, cmpRange));
+    const streamKpiRow = buildStreamKpiRow(data);
+    if (streamKpiRow) wrap.appendChild(streamKpiRow);
+    wrap.appendChild(buildForecastInsights(data, cmpData, cmpRange));
+    const dqSection = buildDataQualityWarnings();
+    if (dqSection) wrap.appendChild(dqSection);
+    wrap.appendChild(hasAnyData ? buildWhatIfCard(data) : buildNoDataCard());
     return wrap;
   }
 
-  wrap.appendChild(makeChartSection('Forecast Performance', [
-    ['Actual vs Forecast Revenue', 'anf-fc-actual'],
-    ['Forecast Variance %',        'anf-fc-var-pct'],
-    ['Forecast Net vs Actual Net', 'anf-net-compare']
-  ]));
+  if (!hasAnyData) {
+    wrap.appendChild(buildNoDataCard());
+    return wrap;
+  }
 
-  wrap.appendChild(makeChartSection('Revenue Breakdown', [
-    ['Forecast Revenue by Stream',    'anf-stream-rev'],
-    ['Actual vs Forecast by Stream',  'anf-stream-compare'],
-    ['Actual vs Forecast by Property','anf-prop-compare']
-  ]));
+  if (gTab === 'monthly') {
+    const titles = { revenue: 'Actual vs Forecast Revenue', variance: 'Forecast Variance %', net: 'Forecast Net vs Actual Net' };
+    wrap.appendChild(chartCard(titles[gMonthlyView], 'anf-monthly',
+      mkViewToggle([['revenue', 'Revenue'], ['variance', 'Variance %'], ['net', 'Net']], gMonthlyView, v => { gMonthlyView = v; })));
+    wrap.appendChild(chartCard('Forecast Accuracy Trend', 'anf-accuracy-trend'));
+    wrap.appendChild(cardSection('Monthly Forecast Breakdown', buildMonthlyTable(data)));
+    setTimeout(() => renderMonthlyCharts(data), 0);
+  }
 
-  wrap.appendChild(makeChartSection('Pending Pipeline', [
-    ['STR Pending Pipeline by Month',    'anf-pending-pipeline'],
-    ['STR Pending Pipeline by Property', 'anf-pending-by-prop']
-  ]));
+  if (gTab === 'breakdown') {
+    const streamTitle = gStreamView === 'mix' ? 'Forecast Revenue by Stream' : 'Actual vs Forecast by Stream';
+    wrap.appendChild(el('div', { class: 'grid grid-2', style: 'gap:16px' },
+      chartCard(streamTitle, 'anf-stream',
+        mkViewToggle([['compare', 'Actual vs Forecast'], ['mix', 'Forecast Mix']], gStreamView, v => { gStreamView = v; })),
+      chartCard('Actual vs Forecast by Property', 'anf-prop-compare')
+    ));
+    wrap.appendChild(cardSection('Property Breakdown', buildPropertyTable(data)));
+    setTimeout(() => renderBreakdownCharts(data), 0);
+  }
 
-  wrap.appendChild(makeChartSection('Forecast Accuracy', [
-    ['Forecast Accuracy Trend', 'anf-accuracy-trend']
-  ]));
-
-  wrap.appendChild(cardSection('Monthly Forecast Breakdown', buildMonthlyTable(data)));
-  wrap.appendChild(cardSection('Stream Breakdown',            buildStreamTable(data)));
-  wrap.appendChild(cardSection('Property Breakdown',          buildPropertyTable(data)));
-  wrap.appendChild(cardSection('Pending Airbnb Reservations', buildPendingTable(data)));
-  wrap.appendChild(buildWhatIfCard(data));
-
-  setTimeout(() => renderCharts(data), 0);
+  if (gTab === 'pipeline') {
+    wrap.appendChild(makeChartSection('Pending Pipeline', [
+      ['STR Pending Pipeline by Month',    'anf-pending-pipeline'],
+      ['STR Pending Pipeline by Property', 'anf-pending-by-prop']
+    ]));
+    wrap.appendChild(cardSection('Pending Airbnb Reservations', buildPendingTable(data)));
+    setTimeout(() => renderPipelineCharts(data), 0);
+  }
 
   return wrap;
+}
+
+function buildNoDataCard() {
+  const emptyCard = el('div', { class: 'card mb-16' });
+  const emptyBody = el('div', { style: 'padding:48px 32px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:16px' });
+  emptyBody.appendChild(el('div', { style: 'font-size:40px;opacity:0.25;line-height:1' }, '◈'));
+  emptyBody.appendChild(el('div', { style: 'font-size:16px;font-weight:600;color:var(--text)' }, 'No Forecast or Actual Data'));
+  emptyBody.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted);max-width:420px;line-height:1.6' },
+    'No forecast or actual revenue data was found for the selected period and filters. Set up forecasts in the Forecast section to enable this comparison.'
+  ));
+  const goToFcBtn = el('button', {
+    class: 'btn',
+    style: 'margin-top:8px',
+    onclick: () => {
+      const nav = document.querySelector('[data-view="forecast"], [data-module="forecast"], a[href="#forecast"]');
+      if (nav) nav.click();
+    }
+  }, 'Go to Forecast Section');
+  emptyBody.appendChild(goToFcBtn);
+  emptyCard.appendChild(emptyBody);
+  return emptyCard;
 }
 
 // ── What-If Analysis ──────────────────────────────────────────────────────────

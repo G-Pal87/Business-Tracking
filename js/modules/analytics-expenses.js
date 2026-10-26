@@ -11,7 +11,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js';
-import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkKpiCard, mkCmpGrid, mkEmptyState, expStream, safePct, mkInsightsBanner, mkTh, mkDrillValue, invoiceNetEUR } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkKpiCard, mkCmpGrid, mkEmptyState, expStream, safePct, mkInsightsBanner, mkDashboardTabs, loadDashboardTab, mkTh, mkDrillValue, invoiceNetEUR } from './analytics-helpers.js';
 import { daysInMonth } from '../core/dates.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
@@ -25,7 +25,16 @@ let gExpFilters = {
   accountingTypes: new Set()
 };
 
-const CHART_IDS  = ['exp-cat-bar', 'exp-stream-donut', 'exp-vendor-bar', 'exp-cat-hbar', 'exp-type-donut', 'exp-prop-hbar'];
+const CHART_IDS  = ['exp-cat-bar', 'exp-vendor-bar', 'exp-cat-hbar', 'exp-type-donut', 'exp-prop-hbar'];
+
+// Dashboard tabs; `scope` tells which filters apply to the tab's figures.
+const EXP_TABS = [
+  { id: 'overview',  label: 'Overview',  scope: 'Headline figures and alerts. Everything follows the period, comparison, scope and expense filters (Expense Ratio\'s revenue ignores the category / vendor / type filters).' },
+  { id: 'breakdown', label: 'Breakdown', scope: 'Everything on this tab follows the period, comparison, scope and expense filters.' },
+  { id: 'records',   label: 'Records',   scope: 'Individual expenses in the selected period matching all filters; the comparison period is not shown.' }
+];
+const EXP_TAB_KEY = 'btf:exp_dash_tab';
+let gTab = loadDashboardTab(EXP_TAB_KEY, EXP_TABS);
 
 // Derives the set of costCategory keys that contain at least one CapEx expense.
 // Replaces the old hardcoded CAPEX_CATS constant so new accountingType-based
@@ -570,29 +579,6 @@ function buildView() {
     return wrap;
   }
 
-  // ── CapEx/OpEx split banner ────────────────────────────────────────────────
-  if (total > 0) {
-    const opPct  = Math.round((opTotal  / total) * 100);
-    const capPct = 100 - opPct;
-    const banner = el('div', {
-      style: 'display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:10px 16px;background:var(--bg-elev-1);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px'
-    });
-    const bar = el('div', { style: 'flex:1;height:6px;border-radius:3px;background:var(--bg-elev-2);overflow:hidden;min-width:120px' });
-    bar.appendChild(el('div', { style: `width:${opPct}%;height:100%;background:#ef4444;border-radius:3px 0 0 3px;display:inline-block` }));
-    bar.appendChild(el('div', { style: `width:${capPct}%;height:100%;background:#f59e0b;border-radius:0 3px 3px 0;display:inline-block` }));
-    banner.appendChild(el('span', { style: 'color:var(--text-muted);white-space:nowrap' }, 'Cost split:'));
-    banner.appendChild(el('span', { style: 'display:flex;align-items:center;gap:4px' },
-      el('span', { style: 'width:8px;height:8px;border-radius:50%;background:#ef4444;display:inline-block' }),
-      el('span', {}, `OpEx ${opPct}%`)
-    ));
-    banner.appendChild(bar);
-    banner.appendChild(el('span', { style: 'display:flex;align-items:center;gap:4px' },
-      el('span', { style: 'width:8px;height:8px;border-radius:50%;background:#f59e0b;display:inline-block' }),
-      el('span', {}, `CapEx ${capPct}%`)
-    ));
-    wrap.appendChild(banner);
-  }
-
   // ── KPI row 1: Total Expenses | Operating Expenses | CapEx | Expense Ratio ──
   const kpiRow1 = el('div', { class: 'grid grid-4 mb-16' });
 
@@ -966,7 +952,6 @@ function buildView() {
     }
   }));
 
-  wrap.appendChild(kpiRow1);
 
   // ── KPI row 2: CapEx Share | Top Vendor | Top Cost Category | Properties w/ Costs ──
   const kpiRow2 = el('div', { class: 'grid grid-4 mb-16' });
@@ -1125,31 +1110,48 @@ function buildView() {
     }
   }));
 
-  wrap.appendChild(kpiRow2);
+  // ── Tabs ───────────────────────────────────────────────────────────────────
+  // One tab is built per render (switching rebuilds the view), so each chart
+  // canvas exists once and tiles built above can be placed on any tab.
+  wrap.appendChild(mkDashboardTabs(EXP_TABS, gTab, id => { gTab = id; rebuildView(); }, EXP_TAB_KEY));
 
-  const streamKpiRow = buildExpenseStreamKpiRow(cur, cmp, cmpLabel);
-  if (streamKpiRow) wrap.appendChild(streamKpiRow);
+  if (gTab === 'overview') {
+    wrap.appendChild(kpiRow1);
+    wrap.appendChild(kpiRow2);
+    const expBanner = mkInsightsBanner(computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue, curRange, cmpData: cmp }), 'Expense Insights');
+    if (expBanner) wrap.appendChild(expBanner);
+  }
 
-  // Inline insights
-  const expBanner = mkInsightsBanner(computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue, curRange, cmpData: cmp }), 'Expense Insights');
-  if (expBanner) wrap.appendChild(expBanner);
+  if (gTab === 'breakdown') {
+    buildBreakdownTab(wrap, cur, cmp, cmpLabel);
+    setTimeout(() => {
+      renderCatBar(cur, curRange);
+      renderCatHBar(cur);
+      renderVendorBar(cur);
+      renderTypeDonut(cur);
+      renderPropHBar(cur);
+    }, 0);
+  }
 
-  // ── Chart row 1: Stacked bar (2/3) + Stream donut (1/3) ───────────────────
-  const row1 = el('div', { style: 'display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px' });
-  row1.appendChild(el('div', { class: 'card' },
+  if (gTab === 'records') buildRecordsTab(wrap, cur);
+
+  return wrap;
+}
+
+// ── Breakdown tab ─────────────────────────────────────────────────────────────
+function buildBreakdownTab(wrap, cur, cmp, cmpLabel) {
+  wrap.appendChild(el('div', { class: 'card mb-16' },
     el('div', { class: 'card-header' },
       el('div', { class: 'card-title' }, 'Monthly Expenses by Category'),
       el('div', { style: 'font-size:11px;color:var(--text-muted)' }, '● Amber = CapEx')
     ),
     el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'exp-cat-bar' }))
   ));
-  row1.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Expenses by Stream')),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'exp-stream-donut' }))
-  ));
-  wrap.appendChild(row1);
 
-  // ── Chart row 2: Category hbar (1/2) + Vendor hbar (1/2) ──────────────────
+  const streamKpiRow = buildExpenseStreamKpiRow(cur, cmp, cmpLabel);
+  if (streamKpiRow) wrap.appendChild(streamKpiRow);
+
+  // ── Category hbar (1/2) + Vendor hbar (1/2) ───────────────────────────────
   const row2 = el('div', { class: 'grid grid-2 mb-16' });
   row2.appendChild(el('div', { class: 'card' },
     el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Total by Category')),
@@ -1161,7 +1163,7 @@ function buildView() {
   ));
   wrap.appendChild(row2);
 
-  // ── Chart row 3: OpEx vs CapEx donut (1/3) + Cost by Property hbar (2/3) ──
+  // ── OpEx vs CapEx donut (1/3) + Cost by Property hbar (2/3) ───────────────
   const row3 = el('div', { style: 'display:grid;grid-template-columns:1fr 2fr;gap:16px;margin-bottom:16px' });
   row3.appendChild(el('div', { class: 'card' },
     el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'OpEx vs CapEx')),
@@ -1172,16 +1174,18 @@ function buildView() {
     el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'exp-prop-hbar' }))
   ));
   wrap.appendChild(row3);
+}
 
-  // ── Expense table (collapsible) ───────────────────────────────────────────
+// ── Records tab ───────────────────────────────────────────────────────────────
+// The tables are this tab's only content, so they start expanded.
+function buildRecordsTab(wrap, cur) {
+  const { capEx } = cur;
   const tableCard   = el('div', { class: 'card' });
-  const tableBody   = el('div', { style: 'display:none' });
-  const tableToggle = el('button', { style: 'background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:0' }, 'Show Records');
-  // Built on first expand (it starts collapsed) — see analytics-revenue.js.
-  let tableBuilt = false;
+  const tableBody   = el('div');
+  const tableToggle = el('button', { style: 'background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:0' }, 'Hide Records');
+  buildExpenseTable(tableBody, cur);
   tableToggle.onclick = () => {
     const hidden = tableBody.style.display === 'none';
-    if (hidden && !tableBuilt) { tableBuilt = true; buildExpenseTable(tableBody, cur); }
     tableBody.style.display = hidden ? '' : 'none';
     tableToggle.textContent = hidden ? 'Hide Records' : 'Show Records';
   };
@@ -1206,17 +1210,6 @@ function buildView() {
 
   // ── CapEx Detail section (collapsible) ────────────────────────────────────
   if (capEx.length > 0) buildCapExDetailSection(wrap, cur);
-
-  setTimeout(() => {
-    renderCatBar(cur, curRange);
-    renderStreamDonut(cur);
-    renderCatHBar(cur);
-    renderVendorBar(cur);
-    renderTypeDonut(cur);
-    renderPropHBar(cur);
-  }, 0);
-
-  return wrap;
 }
 
 // ── Chart 1: Stacked bar — Month × Category ───────────────────────────────────
@@ -1279,9 +1272,8 @@ function renderCatBar({ allExp }, curRange) {
   });
 }
 
-// Expense drill-down for one stream (by category, by property) — shared by
-// the per-stream KPI card row and the "Expenses by Stream" donut's click
-// handler so both surfaces open the identical detail view.
+// Expense drill-down for one stream (by category, by property), opened from
+// the per-stream KPI cards.
 function openExpenseStreamModal(sk, allExp, cmp, cmpLabel) {
   const streamExp   = allExp.filter(e => expStream(e) === sk);
   const streamTotal = streamExp.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
@@ -1329,9 +1321,7 @@ function openExpenseStreamModal(sk, allExp, cmp, cmpLabel) {
   openModal({ title: `${STREAMS[sk]?.label || sk} Expenses — ${formatEUR(streamTotal)}`, body, large: true });
 }
 
-// Per-stream KPI card row — one card per stream with expenses this period, so
-// the split is visible at a glance instead of only through the donut chart
-// further down the page.
+// Per-stream KPI card row — one card per stream with expenses this period.
 function buildExpenseStreamKpiRow(cur, cmp, cmpLabel) {
   const streamMap = new Map();
   cur.allExp.forEach(e => { const s = expStream(e); streamMap.set(s, (streamMap.get(s) || 0) + toEUR(e.amount, e.currency, e.date)); });
@@ -1371,27 +1361,7 @@ function buildExpenseStreamKpiRow(cur, cmp, cmpLabel) {
   return el('div', {}, mkSectionLabel('Expenses by Stream'), grid);
 }
 
-// ── Chart 2: Donut — Expenses by Stream ──────────────────────────────────────
-function renderStreamDonut({ allExp }) {
-  const streamMap = new Map();
-  allExp.forEach(e => {
-    const s = expStream(e);
-    streamMap.set(s, (streamMap.get(s) || 0) + toEUR(e.amount, e.currency, e.date));
-  });
-
-  const entries    = [...streamMap.entries()].filter(([, v]) => v > 0);
-  const streamKeys = entries.map(([k]) => k);
-  if (!entries.length) return;
-
-  charts.doughnut('exp-stream-donut', {
-    labels: entries.map(([k]) => STREAMS[k]?.label || k),
-    data:   entries.map(([, v]) => Math.round(v)),
-    colors: streamKeys.map(k => STREAMS[k]?.color || '#8b93b0'),
-    onClickItem: (_label, idx) => openExpenseStreamModal(streamKeys[idx], allExp)
-  });
-}
-
-// ── Chart 3: Horizontal bar — Category totals ─────────────────────────────────
+// ── Chart 2: Horizontal bar — Category totals ─────────────────────────────────
 function renderCatHBar({ allExp }) {
   const capExCats = getCapExCatKeys(allExp);
   const catMap = new Map();
@@ -1468,7 +1438,7 @@ function renderCatHBar({ allExp }) {
   });
 }
 
-// ── Chart 4: Horizontal bar — Vendor totals ───────────────────────────────────
+// ── Chart 3: Horizontal bar — Vendor totals ───────────────────────────────────
 function renderVendorBar({ allExp }) {
   const map = new Map();
   allExp.forEach(e => {
@@ -1531,7 +1501,7 @@ function renderVendorBar({ allExp }) {
   });
 }
 
-// ── Chart 5: Donut — OpEx vs CapEx ───────────────────────────────────────────
+// ── Chart 4: Donut — OpEx vs CapEx ───────────────────────────────────────────
 function renderTypeDonut({ opTotal, capTotal, opEx, capEx }) {
   if (opTotal + capTotal === 0) return;
   charts.doughnut('exp-type-donut', {
@@ -1579,7 +1549,7 @@ function renderTypeDonut({ opTotal, capTotal, opEx, capEx }) {
   });
 }
 
-// ── Chart 6: Horizontal bar — Cost by Property ────────────────────────────────
+// ── Chart 5: Horizontal bar — Cost by Property ────────────────────────────────
 function renderPropHBar({ allExp }) {
   const propMap = new Map();
   allExp.forEach(e => {
@@ -1660,8 +1630,8 @@ function renderPropHBar({ allExp }) {
 function buildCapExDetailSection(container, { capEx, total }) {
   const card     = el('div', { class: 'card', style: 'margin-top:16px' });
   const capTotal = capEx.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-  const body     = el('div', { style: 'display:none' });
-  const toggle   = el('button', { style: 'background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:0' }, 'Show Records');
+  const body     = el('div');
+  const toggle   = el('button', { style: 'background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:0' }, 'Hide Records');
   toggle.onclick = () => {
     const hidden = body.style.display === 'none';
     body.style.display = hidden ? '' : 'none';

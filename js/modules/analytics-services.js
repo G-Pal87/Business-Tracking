@@ -41,9 +41,10 @@ let _invoiceTableSortCol = -1, _invoiceTableSortDir = 1, _invoiceTableSearch = '
 // (gF, curRange, cmpRange) instead of building a second independent filter
 // bar, and the host page's own rebuild callback since this section's local
 // Status filter needs to re-render the *host* page, not manage #content
-// itself.
-export function buildServicesSection(gF, curRange, cmpRange, onChange) {
-  return buildView(gF, curRange, cmpRange, onChange);
+// itself. `collectionCard` (optional) is a host chart card placed beside the
+// Outstanding Aging chart in the Invoice Collection row.
+export function buildServicesSection(gF, curRange, cmpRange, onChange, collectionCard) {
+  return buildView(gF, curRange, cmpRange, onChange, collectionCard);
 }
 
 export function destroyServiceCharts() {
@@ -381,15 +382,9 @@ function streamClientModal(title, invs, valueKey) {
 }
 
 // ── Main view ─────────────────────────────────────────────────────────────────
-function buildView(gF, curRange, cmpRange, onChange) {
+function buildView(gF, curRange, cmpRange, onChange, collectionCard) {
   const wrap = el('div', {});
-
-  // Header
-  wrap.appendChild(el('div', { style: 'margin-bottom:16px' },
-    el('h3', { style: 'margin:0 0 4px;font-size:16px;font-weight:700' }, 'Services (Customer Success & Marketing)'),
-    el('p',  { style: 'margin:0;font-size:13px;color:var(--text-muted)' },
-      'Invoice revenue, client concentration, and collection for these two streams specifically — Period/Owner/Client/Stream filters and comparison above apply here too')
-  ));
+  // (No header of its own: the host's tab label and scope note introduce it.)
 
   // Local invoice status filter — the one filter dimension with no Revenue-side
   // equivalent, so it's the only filter control this section still owns.
@@ -1132,13 +1127,14 @@ function buildView(gF, curRange, cmpRange, onChange) {
   wrap.appendChild(el('div', { style: 'margin:8px 0 12px' },
     el('h3', { style: 'margin:0;font-size:14px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px' }, 'Invoice Collection')
   ));
-  wrap.appendChild(el('div', { class: 'card mb-16' },
+  const agingCard = el('div', { class: collectionCard ? 'card' : 'card mb-16' },
     el('div', { class: 'card-header' },
       el('div', { class: 'card-title' }, 'Outstanding Aging'),
       el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Aged by due date — click a bucket for invoices')
     ),
-    el('div', { class: 'chart-wrap' }, el('canvas', { id: 'svc-aging-bar' }))
-  ));
+    el('div', { class: collectionCard ? 'chart-wrap tall' : 'chart-wrap' }, el('canvas', { id: 'svc-aging-bar' }))
+  );
+  wrap.appendChild(collectionCard ? el('div', { class: 'grid grid-2 mb-16' }, collectionCard, agingCard) : agingCard);
 
   // ── Invoice Records ────────────────────────────────────────────────────────
   const tableCard = el('div', { class: 'card' });
@@ -1436,7 +1432,7 @@ function renderOutstandingBar({ outstanding }) {
 function renderAgingBar({ outstanding }) {
   // Shared aging rule (analytics-helpers invoiceAgingBucket): days past the
   // due date (issue date + 30 when none is set); not-yet-due invoices get
-  // their own "Not due" bucket. Same rule as the Revenue aging chart.
+  // their own "Not due" bucket.
   const BUCKETS = AGING_BUCKETS.map(label => ({ label, items: [] }));
   const AGING_COLORS = [
     'rgba(99,102,241,0.7)',

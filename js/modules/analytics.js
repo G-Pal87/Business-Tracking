@@ -14,11 +14,19 @@ import {
 } from './analytics-filters.js';
 import {
   mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid,
-  safePct, fmtK, mkDrillValue, groupByMonthKey, invoiceNetEUR, invoiceGrossEUR, invoiceBuckets, invoiceDueDate, expStream
+  safePct, fmtK, mkDrillValue, groupByMonthKey, invoiceNetEUR, invoiceGrossEUR, invoiceBuckets, invoiceDueDate, expStream,
+  loadDashboardTab, mkDashboardTabs
 } from './analytics-helpers.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const CHART_IDS = ['exec-rev-exp-bar', 'exec-mix-donut', 'exec-net-line'];
+const CHART_IDS = ['exec-rev-exp-bar', 'exec-net-line'];
+
+// Dashboard tabs; `scope` tells which filters apply to the tab's figures.
+const EXEC_TABS = [
+  { id: 'overview', label: 'Overview',       scope: 'Headline figures and alerts. Everything follows the period, comparison, owner and scope filters; overdue status is judged as of today.' },
+  { id: 'trends',   label: 'Mix & Trends',   scope: 'Everything on this tab follows the period, comparison, owner and scope filters.' }
+];
+const EXEC_TAB_KEY = 'btf:exec_dash_tab';
 
 const REV_COLS = [
   { key: 'date',   label: 'Date',   format: v => fmtDate(v), tip: 'Date the payment or invoice was recorded.' },
@@ -44,6 +52,7 @@ const NET_COLS = [
 // ── Module-level state ────────────────────────────────────────────────────────
 let gF = createFilterState();
 let gScope = 'company'; // 'company' | 'all'
+let gTab = loadDashboardTab(EXEC_TAB_KEY, EXEC_TABS);
 
 // ── Module export ─────────────────────────────────────────────────────────────
 export default {
@@ -1134,15 +1143,13 @@ function renderRevExpBar(cur, months) {
   });
 }
 
-// ── Chart: Business Mix Donut ─────────────────────────────────────────────────
-// Labels/colors come from the single STREAMS definition in config.js, plus
-// the 'other' bucket for records with no resolvable stream.
+// ── Revenue by Stream ─────────────────────────────────────────────────────────
+// Labels come from the single STREAMS definition in config.js, plus the
+// 'other' bucket for records with no resolvable stream.
 const STREAM_LABELS = { ...Object.fromEntries(Object.entries(STREAMS).map(([k, v]) => [k, v.label])), other: 'Other' };
-const STREAM_COLORS = { ...Object.fromEntries(Object.entries(STREAMS).map(([k, v]) => [k, v.color])), other: '#8b93b0' };
 
 // Revenue drill-down for one stream — shared by the per-stream KPI card row
-// and the "Business Mix" donut's click handler so both surfaces open the
-// identical detail view.
+// and the Total Revenue breakdown so both surfaces open the identical view.
 function openStreamRevenueModal(streamKey, streamTotal, totalRevMix, cur, cmp, cmpLabel) {
   const streamLabel = STREAM_LABELS[streamKey] || streamKey;
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
@@ -1236,9 +1243,8 @@ function openStreamRevenueModal(streamKey, streamTotal, totalRevMix, cur, cmp, c
   openModal({ title: `${streamLabel} — Revenue Detail`, body, large: true });
 }
 
-// Per-stream KPI card row — one card per stream with revenue this period, so
-// the business mix is visible at a glance instead of only through the donut
-// chart further down the page.
+// Per-stream KPI card row — one card per stream with revenue this period
+// (value, % of mix and comparison delta).
 function buildStreamKpiRow(cur, cmp, cmpRange) {
   const entries = [...cur.streamMap.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
   if (!entries.length) return null;
@@ -1272,24 +1278,6 @@ function buildStreamKpiRow(cur, cmp, cmpRange) {
     }));
   }
   return el('div', {}, mkSectionLabel('Revenue by Stream'), grid);
-}
-
-function renderMixDonut(cur) {
-  const { streamMap } = cur;
-  const entries = [...streamMap.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
-  if (!entries.length) return;
-
-  const totalRevMix = entries.reduce((s, [, v]) => s + v, 0);
-
-  charts.doughnut('exec-mix-donut', {
-    labels: entries.map(([k]) => STREAM_LABELS[k] || k),
-    data:   entries.map(([, v]) => Math.round(v)),
-    colors: entries.map(([k]) => STREAM_COLORS[k] || '#8b93b0'),
-    onClickItem: (label, index) => {
-      const [streamKey, streamTotal] = entries[index];
-      openStreamRevenueModal(streamKey, streamTotal, totalRevMix, cur);
-    }
-  });
 }
 
 // ── Chart: Net Cash Flow Trend Line ──────────────────────────────────────────
@@ -1411,47 +1399,39 @@ function buildView() {
     }
   }
 
-  // KPI Grid (2 rows of 4)
-  wrap.appendChild(buildKpiGrid(curData, cmpData, cmpRange));
+  // ── Tabs ───────────────────────────────────────────────────────────────────
+  // One tab is built per render (switching rebuilds the view), so only the
+  // active tab's charts exist and are drawn.
+  wrap.appendChild(mkDashboardTabs(EXEC_TABS, gTab, id => { gTab = id; rebuildView(); }, EXEC_TAB_KEY));
 
-  const streamKpiRow = buildStreamKpiRow(curData, cmpData, cmpRange);
-  if (streamKpiRow) wrap.appendChild(streamKpiRow);
-
-  // Insights Banner
-  wrap.appendChild(buildInsights(curData, cmpData, cmpRange, curRange.start, curRange.end));
-
-  const { keys: months } = getMonthKeysForRange(curRange.start, curRange.end);
-
-  // Chart row 1: Revenue vs Expenses Bar + Business Mix Donut
-  const row1 = el('div', { class: 'grid grid-2 mb-16' });
-
-  row1.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Revenue vs Expenses (Monthly)')),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'exec-rev-exp-bar' }))
-  ));
-
-  {
-    const donutCard = el('div', { class: 'card' });
-    donutCard.appendChild(el('div', { class: 'card-header' },
-      el('div', { class: 'card-title' }, 'Revenue by Business Line')
-    ));
-    donutCard.appendChild(el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'exec-mix-donut' })));
-    row1.appendChild(donutCard);
+  if (gTab === 'overview') {
+    wrap.appendChild(buildKpiGrid(curData, cmpData, cmpRange));
+    wrap.appendChild(buildInsights(curData, cmpData, cmpRange, curRange.start, curRange.end));
   }
 
-  wrap.appendChild(row1);
+  if (gTab === 'trends') {
+    const streamKpiRow = buildStreamKpiRow(curData, cmpData, cmpRange);
+    if (streamKpiRow) wrap.appendChild(streamKpiRow);
 
-  // Chart row 2: Net Cash Flow Line (full width)
-  wrap.appendChild(el('div', { class: 'card mb-16' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Net Cash Flow Trend')),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'exec-net-line' }))
-  ));
+    const { keys: months } = getMonthKeysForRange(curRange.start, curRange.end);
 
-  setTimeout(() => {
-    renderRevExpBar(curData, months);
-    renderMixDonut(curData);
-    renderNetLine(curData, months);
-  }, 0);
+    // Revenue vs Expenses Bar + Net Cash Flow Line
+    wrap.appendChild(el('div', { class: 'grid grid-2 mb-16' },
+      el('div', { class: 'card' },
+        el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Revenue vs Expenses (Monthly)')),
+        el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'exec-rev-exp-bar' }))
+      ),
+      el('div', { class: 'card' },
+        el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Net Cash Flow Trend')),
+        el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'exec-net-line' }))
+      )
+    ));
+
+    setTimeout(() => {
+      renderRevExpBar(curData, months);
+      renderNetLine(curData, months);
+    }, 0);
+  }
 
   return wrap;
 }

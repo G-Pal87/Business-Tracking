@@ -12,12 +12,21 @@ import {
 import {
   mkKpiCard, mkSummaryGrid, mkSummaryBox, mkModalTable, mkSectionLabel,
   mkEmptyState, mkVarianceBadge, mkProgressBar, fmtK, safePct, mkTh, mkDrillValue,
-  mkCmpGrid
+  mkCmpGrid, loadDashboardTab, mkDashboardTabs
 } from './analytics-helpers.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CHART_IDS = ['str-rev-trend', 'str-spotlight-adr', 'str-spotlight-occ'];
 const PROP_COLORS = ['#6366f1','#14b8a6','#f59e0b','#ec4899','#22c55e'];
+
+// Tabs — period figures (portfolio, then one property) are kept apart from the
+// forward-looking pipeline, so each tab's scope note is accurate.
+const STR_TABS = [
+  { id: 'overview',  label: 'Overview',          scope: 'Everything on this tab follows the period filters; the comparison period drives the KPI deltas.' },
+  { id: 'spotlight', label: 'Property Spotlight', scope: 'One property, month by month, for the selected period. The comparison period does not apply.' },
+  { id: 'pipeline',  label: 'Next 90 Days',       scope: 'Today plus the next 90 days. The period and comparison filters do not apply; owner, property and scope do.' }
+];
+const STR_TAB_KEY = 'btf:str_dash_tab';
 
 // Reused drill-down column shapes (same fields already used by the file's
 // existing drillDownModal calls — heatmap/month-revenue/month-spotlight footers).
@@ -42,6 +51,7 @@ const BOOKING_COLS_WITH_PROPERTY = [
 let gF = createFilterState({ period: 'this-year', compareTo: 'prev-year' });
 let gScope = 'company'; // 'company' | 'all' — same Scope rule as the other dashboards
 let gSpotlightPropId = null;
+let gTab = loadDashboardTab(STR_TAB_KEY, STR_TABS);
 
 // ── Module export ─────────────────────────────────────────────────────────────
 export default {
@@ -618,26 +628,22 @@ function buildView() {
     return _container;
   }
 
-  // ── Section 1: Portfolio KPI row
-  _container.appendChild(buildPortfolioKpis(data));
+  // ── Tabs — only the active tab's content (and charts) is built.
+  _container.appendChild(mkDashboardTabs(STR_TABS, gTab, id => { gTab = id; rebuildView(); }, STR_TAB_KEY));
 
-  // ── Section 2: Revenue trend + Occupancy side-by-side
-  const twoCol = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px' });
-  twoCol.appendChild(buildRevTrendCard(data));
-  twoCol.appendChild(buildOccupancyCard(data, curRange));
-  _container.appendChild(twoCol);
+  if (gTab === 'overview') {
+    // KPI row, revenue trend, per-property comparison (incl. occupancy %; the
+    // occupied/open/blocked split is in the Avg Occupancy tile's drill-down),
+    // then the property × month occupancy heatmap.
+    _container.appendChild(buildPortfolioKpis(data));
+    _container.appendChild(buildRevTrendCard(data));
+    _container.appendChild(buildComparisonTable(data, curRange));
+    _container.appendChild(buildStrOccupancyHeatmap(data));
+  }
 
-  // ── Section 2b: Occupancy heatmap (property × month)
-  _container.appendChild(buildStrOccupancyHeatmap(data));
+  if (gTab === 'spotlight') _container.appendChild(buildSpotlightSection(data.props, curRange));
 
-  // ── Section 3: Property comparison table
-  _container.appendChild(buildComparisonTable(data, curRange));
-
-  // ── Section 4: Property spotlight
-  _container.appendChild(buildSpotlightSection(data.props, curRange));
-
-  // ── Section 5: Forward pipeline
-  _container.appendChild(buildForwardPipelineCard());
+  if (gTab === 'pipeline') _container.appendChild(buildForwardPipelineCard());
 
   return _container;
 }
@@ -751,7 +757,7 @@ function buildPortfolioKpis(data) {
 // ── Revenue trend chart card ──────────────────────────────────────────────────
 function buildRevTrendCard(data) {
   const { revByMonth, props, monthKeys } = data;
-  const card = el('div', { class: 'card' });
+  const card = el('div', { class: 'card', style: 'margin-bottom:16px' });
   card.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, 'Monthly Revenue')
   ));
@@ -775,47 +781,6 @@ function buildRevTrendCard(data) {
       onClickItem: (label, idx) => openMonthRevenueModal(idx, data)
     });
   });
-  return card;
-}
-
-// ── Occupancy chart card ──────────────────────────────────────────────────────
-function buildOccupancyCard(data, curRange) {
-  const { occByProp, props } = data;
-  const card = el('div', { class: 'card' });
-  card.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'Occupancy Rate by Property'),
-    el('div', { style: 'font-size:11px;color:var(--text-muted)' }, 'Rate = Occupied ÷ Available')
-  ));
-  const body = el('div', { style: 'padding:0 16px 16px' });
-
-  // Terminology legend so the three night types are unambiguous.
-  body.appendChild(el('div', { style: 'display:flex;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--text-muted);padding:8px 0 4px' },
-    el('span', {}, '● Occupied — sold or reserved (earns revenue)'),
-    el('span', {}, '○ Open — available but unsold'),
-    el('span', {}, '▦ Blocked — owner-closed, off-market (no revenue, excluded from rate)')
-  ));
-
-  // Mini occupancy bars
-  const list = el('div', { style: 'display:flex;flex-direction:column;gap:10px;padding:8px 0' });
-  props.forEach((p, i) => {
-    const occ = occByProp.get(p.id) || { pct: 0, occupied: 0, available: 0, open: 0, blocked: 0 };
-    const row = el('div', { style: 'cursor:pointer', title: 'Click for property detail' });
-    row.onclick = () => openPropertyRangeModal(p.id, curRange);
-    const labelRow = el('div', { style: 'display:flex;justify-content:space-between;margin-bottom:4px' });
-    labelRow.appendChild(el('span', { style: 'font-size:12px;color:var(--text)' }, shortName(p.name)));
-    labelRow.appendChild(el('span', { style: 'font-size:12px;font-weight:600;color:var(--text)' },
-      occ.pct.toFixed(1) + '%'
-    ));
-    row.appendChild(labelRow);
-    row.appendChild(mkProgressBar(occ.pct, PROP_COLORS[i % PROP_COLORS.length]));
-    const sub = el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:3px' },
-      `${occ.occupied} occupied · ${occ.open} open · ${occ.blocked} blocked`
-    );
-    row.appendChild(sub);
-    list.appendChild(row);
-  });
-  body.appendChild(list);
-  card.appendChild(body);
   return card;
 }
 
@@ -1635,10 +1600,10 @@ function openTargetModal(data) {
   openModal({ title: `Revenue vs Target — ${data.rangeLabel}`, body, large: true });
 }
 
-// Full-range breakdown for a single property — shared by the mini occupancy
-// bars and the Property Comparison table so both entry points open the same
-// modal (ADR/target/occupancy/bookings per month, mirroring openMonthSpotlightModal
-// but covering the whole current range instead of a single month).
+// Full-range breakdown for a single property — opened from the Property
+// Comparison table rows (ADR/target/occupancy/bookings per month, mirroring
+// openMonthSpotlightModal but covering the whole current range instead of a
+// single month).
 function openPropertyRangeModal(propId, curRange) {
   const prop = byId('properties', propId);
   const { months, totalRev, totalNights, avgADR, targetRev } = getSpotlightData(propId, curRange);

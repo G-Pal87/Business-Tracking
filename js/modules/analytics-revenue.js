@@ -11,16 +11,26 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine, resolveStream
 } from './analytics-filters.js';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, fmtK, groupByMonthKey, mkTh, mkDrillValue, invoiceNetEUR, invoiceGrossEUR, invoiceBuckets, invoiceOwner, invoiceDueDate, invoiceAgingBucket, AGING_BUCKETS } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, mkDashboardTabs, loadDashboardTab, safePct, fmtK, groupByMonthKey, mkTh, mkDrillValue, invoiceNetEUR, invoiceGrossEUR, invoiceBuckets, invoiceOwner } from './analytics-helpers.js';
 import { buildServicesSection, destroyServiceCharts, resetServiceStatusFilter } from './analytics-services.js';
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const OWNER_COLORS = { you: '#6366f1', rita: '#ec4899', both: '#14b8a6' };
 const CHART_IDS    = [
   'rev-trend', 'rev-stream-bar', 'rev-prop-bar', 'rev-owner-donut',
-  'rev-mix-evolution', 'rev-growth-trend', 'rev-paid-outstanding',
-  'rev-concentration', 'rev-aging'
+  'rev-growth-trend', 'rev-paid-outstanding', 'rev-concentration'
 ];
+
+// Dashboard tabs; `scope` tells which filters apply to the tab's figures.
+const REV_TABS = [
+  { id: 'overview',     label: 'Overview',               scope: 'Headline figures, alerts and the monthly trend. Everything on this tab follows the period and comparison filters.' },
+  { id: 'breakdown',    label: 'Breakdown',              scope: 'Where revenue comes from — stream, owner, property and contributor. Everything on this tab follows the period filter.' },
+  { id: 'services',     label: 'Services & Collections', scope: 'Customer Success and Marketing invoices. Everything follows the period and comparison filters; the Status filter below only narrows the monthly chart and the invoice records.' },
+  { id: 'seasonality',  label: 'Seasonality',            scope: 'Every year on record, month by month. Owner / Stream / Property / Client and Scope filters apply; the period filters do not.' }
+];
+const REV_TAB_KEY = 'btf:rev_dash_tab';
+let gTab = loadDashboardTab(REV_TAB_KEY, REV_TABS);
+let gStreamSplit = 'stream'; // monthly revenue-by-stream chart: 'stream' | 'mix' (rental vs service)
 const REV_COLS = [
   { key: 'date',   label: 'Date',   format: v => fmtDate(v), tip: 'Date the payment was received or the invoice was issued.' },
   { key: 'type',   label: 'Type',   tip: 'Record type — Payment (rental) or Invoice (service).' },
@@ -217,11 +227,10 @@ function buildKpiSection(cur, cmp, cmpRange) {
   }
 
   // Comparison deltas
-  let dTotal, dRental, dService;
+  let dTotal, dRental;
   if (cmp) {
     dTotal   = safePct(total,   cmp.total);
     dRental  = safePct(propRev, cmp.propRev);
-    dService = safePct(svcRev,  cmp.svcRev);
   }
 
   const pct = (num, den) => den > 0 ? (num / den * 100).toFixed(0) + '%' : '—';
@@ -490,28 +499,9 @@ function buildKpiSection(cur, cmp, cmpRange) {
     ]
   }));
 
-  compGrid.appendChild(mkKpiCard({
-    label: 'Service Revenue', value: formatEUR(svcRev),
-    delta: dService, compLabel: cl, compValue: cmp ? formatEUR(cmp.svcRev) : undefined,
-    onClick: serviceRevDrill,
-    explain: {
-      title: 'Service Revenue',
-      formula: 'Sum of paid invoices (Customer Success + Marketing Services) in the selected period.',
-      inputs: [
-        { label: 'Customer Success', value: formatEUR(csRev) },
-        { label: 'Marketing Services', value: formatEUR(mktRev) }
-      ],
-      source: 'analytics-revenue.js:149 getData()',
-      note: 'Only invoices with status \'paid\' count here; \'sent\'/\'overdue\' invoices show up as Outstanding instead.'
-    },
-    lines: [
-      { label: 'Customer Success',   value: formatEUR(csRev),  pct: pct(csRev,  svcRev),
-        onClick: () => openStreamDrill('Customer Success',   [], invoices.filter(i => streamKey(i) === 'customer_success')) },
-      { label: 'Marketing Services', value: formatEUR(mktRev), pct: pct(mktRev, svcRev),
-        onClick: () => openStreamDrill('Marketing Services', [], invoices.filter(i => streamKey(i) === 'marketing_services')) },
-    ]
-  }));
-
+  // (No separate Service Revenue tile: the same figure, with its CS / Marketing
+  // split and comparison delta, is the Paid Revenue tile on the Services tab,
+  // and the Services line above opens the same breakdown.)
   compGrid.appendChild(mkKpiCard({
     label: 'Rental Revenue', value: formatEUR(propRev),
     delta: dRental, compLabel: cl, compValue: cmp ? formatEUR(cmp.propRev) : undefined,
@@ -1072,7 +1062,7 @@ function renderMixEvolution({ payments, invoices, payByMonth, invByMonth }, mont
   const rental  = months.map(m => Math.round((payByMonth.get(m.key) || []).reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)));
   const service = months.map(m => Math.round((invByMonth.get(m.key) || []).reduce((s, i) => s + invoiceNetEUR(i), 0)));
   if (!rental.some(v => v > 0) && !service.some(v => v > 0)) return;
-  charts.bar('rev-mix-evolution', {
+  charts.bar('rev-stream-bar', { // same canvas as renderStreamBar — one chart, two splits
     labels: months.map(m => m.label),
     datasets: [
       { label: 'Rental',  data: rental,  backgroundColor: '#6366f1' },
@@ -1263,60 +1253,6 @@ function renderConcentration({ payments, invoices }) {
   });
 }
 
-function renderAging({ outstanding }) {
-  if (!outstanding.length) return;
-  // Shared aging rule (analytics-helpers invoiceAgingBucket): days past the
-  // due date (issue date + 30 when none is set); not-yet-due invoices get
-  // their own "Not due" bucket. Same rule as the Services aging chart.
-  const buckets = AGING_BUCKETS.map(() => 0);
-  const items   = AGING_BUCKETS.map(() => []);
-  outstanding.forEach(i => {
-    const b = invoiceAgingBucket(i);
-    buckets[b] += invoiceGrossEUR(i);
-    items[b].push(i);
-  });
-  if (!buckets.some(v => v > 0)) return;
-  charts.bar('rev-aging', {
-    labels:   AGING_BUCKETS,
-    datasets: [{ label: 'Outstanding (EUR, incl. VAT)', data: buckets.map(Math.round), backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#f97316', '#ef4444'] }],
-    onClickItem: (label, idx) => {
-      const AGING_COLS = [
-        { key: 'source', label: 'Client',    tip: 'Client billed on this outstanding invoice.' },
-        { key: 'date',   label: 'Issued',    tip: 'Date the invoice was issued.' },
-        { key: 'due',    label: 'Due Date',  tip: 'Date payment is due (issue date + 30 days when no due date is set).' },
-        { key: 'eur',    label: 'EUR', right: true, format: v => formatEUR(v), tip: 'Outstanding invoice amount (incl. VAT) converted to EUR.' }
-      ];
-      const bucketInvs = items[idx];
-      const eur = buckets[idx];
-      const body = el('div');
-      body.appendChild(mkSummaryGrid([
-        { label: 'Outstanding', value: formatEUR(eur) },
-        { label: 'Invoices',    value: String(bucketInvs.length) }
-      ], 2));
-      const clients = revByClient(bucketInvs);
-      if (clients.length) {
-        body.appendChild(mkSectionLabel('By Client'));
-        body.appendChild(mkModalTable(
-          [
-            { label: 'Client', tip: 'Client on the invoice(s).' },
-            { label: 'Invoices', right: true, muted: true, tip: 'Number of invoices in this bucket for this client.' },
-            { label: 'Amount', right: true, tip: 'Total EUR amount for this client in this bucket.' }
-          ],
-          clients.map(c => [c.name, String(c.count), formatEUR(c.eur)])
-        ));
-      }
-      appendRawLink(body, bucketInvs.length, () => drillDownModal(`Outstanding — ${label}`,
-        bucketInvs.map(i => ({
-          source: byId('clients', i.clientId)?.name || '',
-          date:   i.issueDate || '',
-          due:    invoiceDueDate(i) || '—',
-          eur:    invoiceGrossEUR(i)
-        })), AGING_COLS));
-      openModal({ title: `Outstanding — ${label}`, body, large: true });
-    }
-  });
-}
-
 // ── Seasonality heatmap (DOM table, shows all available years for context) ────
 function buildSeasonalityHeatmap() {
   const { mStream, mOwner, mProperty } = makeMatchers(gF);
@@ -1483,121 +1419,103 @@ function buildView() {
   const curData  = getData(curRange.start, curRange.end);
   const cmpData  = cmpRange ? getData(cmpRange.start, cmpRange.end) : null;
 
-  wrap.appendChild(buildComparisonLine(curRange, cmpRange));
-
-  wrap.appendChild(buildKpiSection(curData, cmpData, cmpRange));
-  wrap.appendChild(buildRevenueInsights(curData, cmpData, cmpRange));
+  // ── Tabs ───────────────────────────────────────────────────────────────────
+  // One tab is built per render (switching rebuilds the view), so each chart
+  // canvas exists once.
+  wrap.appendChild(mkDashboardTabs(REV_TABS, gTab, id => { gTab = id; rebuildView(); }, REV_TAB_KEY));
 
   const { keys: months } = getMonthKeysForRange(curRange.start, curRange.end);
+  const chartCard = (title, id, extra) => el('div', { class: 'card' },
+    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, title), extra || null),
+    el('div', { class: 'chart-wrap tall' }, el('canvas', { id }))
+  );
+  const renders = [];
 
-  // Row 1: Revenue Trend + Stream
-  const row1 = el('div', { class: 'grid grid-2 mb-16' });
-  row1.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Revenue Trend')),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'rev-trend' }))
-  ));
-  row1.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Revenue by Stream')),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'rev-stream-bar' }))
-  ));
-  wrap.appendChild(row1);
-
-  // Row 2: Mix Evolution + Growth Trend
-  const row2 = el('div', { class: 'grid grid-2 mb-16' });
-  row2.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Revenue Mix Evolution')),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'rev-mix-evolution' }))
-  ));
-  row2.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Revenue Growth % (MoM)')),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'rev-growth-trend' }))
-  ));
-  wrap.appendChild(row2);
-
-  // Row 3: Property
-  // (Revenue by Client was dropped here — it duplicated Services' client
-  // chart below, which has the richer per-client drill-down: outstanding,
-  // collection rate, and stream breakdown.)
-  const row3 = el('div', { class: 'mb-16' });
-  row3.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Revenue by Property')),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'rev-prop-bar' }))
-  ));
-  wrap.appendChild(row3);
-
-  // Row 4: Concentration + Owner
-  const row4 = el('div', { class: 'grid grid-2 mb-16' });
-  {
-    row4.appendChild(el('div', { class: 'card' },
-      el('div', { class: 'card-header' },
-        el('div', { class: 'card-title' }, 'Revenue Concentration (Top 5)')),
-      el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'rev-concentration' }))
+  if (gTab === 'overview') {
+    wrap.appendChild(buildComparisonLine(curRange, cmpRange));
+    wrap.appendChild(buildKpiSection(curData, cmpData, cmpRange));
+    wrap.appendChild(buildRevenueInsights(curData, cmpData, cmpRange));
+    wrap.appendChild(el('div', { class: 'grid grid-2 mb-16' },
+      chartCard('Revenue Trend', 'rev-trend'),
+      chartCard('Revenue Growth % (MoM)', 'rev-growth-trend')
     ));
+    renders.push(() => renderTrend(curData, months), () => renderGrowthTrend(curData, months));
   }
-  {
-    row4.appendChild(el('div', { class: 'card' },
-      el('div', { class: 'card-header' },
-        el('div', { class: 'card-title' }, 'Revenue by Owner')),
-      el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'rev-owner-donut' }))
+
+  if (gTab === 'breakdown') {
+    // Revenue by Stream and the former Revenue Mix Evolution chart were the same
+    // monthly stacked bars at two levels of detail — one chart with a switch.
+    const splitToggle = el('div', { class: 'flex gap-8' });
+    for (const [val, label] of [['stream', 'By stream'], ['mix', 'Rental vs Service']]) {
+      const isActive = gStreamSplit === val;
+      const btn = el('button', {
+        type: 'button',
+        style: [
+          'padding:3px 12px;border-radius:14px;border:1px solid;font-size:12px;cursor:pointer',
+          isActive
+            ? 'border-color:var(--accent);background:var(--accent);color:#fff;font-weight:600'
+            : 'border-color:var(--border);background:transparent;color:var(--text-muted)'
+        ].join(';')
+      }, label);
+      btn.onclick = () => { if (gStreamSplit !== val) { gStreamSplit = val; rebuildView(); } };
+      splitToggle.appendChild(btn);
+    }
+    wrap.appendChild(el('div', { class: 'grid grid-2 mb-16' },
+      chartCard('Revenue by Stream', 'rev-stream-bar', splitToggle),
+      chartCard('Revenue by Owner', 'rev-owner-donut')
     ));
+    // (Revenue by Client was dropped here — it duplicated the Services tab's
+    // client chart, which has the richer per-client drill-down: outstanding,
+    // collection rate, and stream breakdown.)
+    wrap.appendChild(el('div', { class: 'grid grid-2 mb-16' },
+      chartCard('Revenue by Property', 'rev-prop-bar'),
+      chartCard('Revenue Concentration (Top 5)', 'rev-concentration')
+    ));
+
+    // Revenue records (collapsed)
+    const tableCard = el('div', { class: 'card' });
+    const tableBody = el('div', { style: 'display:none' });
+    const toggleBtn = el('button', { style: 'background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:0' }, 'Show Revenue Records');
+    // Built on first expand — the full record list (thousands of rows for "All
+    // time") used to be rendered on every rebuild even though it starts
+    // collapsed. The whole table is still built at once, so sort/search cover
+    // every row.
+    let tableBuilt = false;
+    toggleBtn.onclick = () => {
+      const hidden = tableBody.style.display === 'none';
+      if (hidden && !tableBuilt) { tableBuilt = true; buildRevenueTable(tableBody, curData); }
+      tableBody.style.display = hidden ? '' : 'none';
+      toggleBtn.textContent   = hidden ? 'Hide Revenue Records' : 'Show Revenue Records';
+    };
+    tableCard.appendChild(el('div', { class: 'card-header', style: 'display:flex;align-items:center;justify-content:space-between' },
+      el('div', { class: 'card-title' }, 'Revenue Records'), toggleBtn
+    ));
+    tableCard.appendChild(tableBody);
+    wrap.appendChild(tableCard);
+
+    renders.push(
+      () => gStreamSplit === 'mix' ? renderMixEvolution(curData, months) : renderStreamBar(curData, months),
+      () => renderOwnerDonut(curData), () => renderPropBar(curData), () => renderConcentration(curData)
+    );
   }
-  wrap.appendChild(row4);
 
-  // Row 5: Paid vs Outstanding + Aging
-  const row5 = el('div', { class: 'grid grid-2 mb-16' });
-  row5.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Paid vs Outstanding (Invoices, incl. VAT)')),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'rev-paid-outstanding' }))
-  ));
-  row5.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Outstanding Aging (incl. VAT)')),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'rev-aging' }))
-  ));
-  wrap.appendChild(row5);
+  if (gTab === 'services') {
+    // ── Services (Customer Success & Marketing) ─────────────────────────────
+    // Folded in from the former standalone Services dashboard — same section,
+    // same KPIs/charts/table, sharing this page's filters. Revenue's own Paid vs
+    // Outstanding chart sits in its Invoice Collection row (its Outstanding
+    // Aging chart was the same figures as the Services one and was dropped).
+    const paidOutCard = chartCard('Paid vs Outstanding (Invoices, incl. VAT)', 'rev-paid-outstanding');
+    wrap.appendChild(buildServicesSection(gF, curRange, cmpRange, rebuildView, paidOutCard));
+    renders.push(() => renderPaidOutstanding(curData, months));
+  }
 
-  // Seasonality heatmap
-  const heatmap = buildSeasonalityHeatmap();
-  if (heatmap) wrap.appendChild(heatmap);
+  if (gTab === 'seasonality') {
+    const heatmap = buildSeasonalityHeatmap();
+    wrap.appendChild(heatmap || mkEmptyState('No paid revenue recorded for the selected filters.'));
+  }
 
-  // Revenue records (collapsed)
-  const tableCard = el('div', { class: 'card' });
-  const tableBody = el('div', { style: 'display:none' });
-  const toggleBtn = el('button', { style: 'background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:0' }, 'Show Revenue Records');
-  // Built on first expand — the full record list (thousands of rows for "All
-  // time") used to be rendered on every rebuild even though it starts
-  // collapsed. The whole table is still built at once, so sort/search cover
-  // every row.
-  let tableBuilt = false;
-  toggleBtn.onclick = () => {
-    const hidden = tableBody.style.display === 'none';
-    if (hidden && !tableBuilt) { tableBuilt = true; buildRevenueTable(tableBody, curData); }
-    tableBody.style.display = hidden ? '' : 'none';
-    toggleBtn.textContent   = hidden ? 'Hide Revenue Records' : 'Show Revenue Records';
-  };
-  tableCard.appendChild(el('div', { class: 'card-header', style: 'display:flex;align-items:center;justify-content:space-between' },
-    el('div', { class: 'card-title' }, 'Revenue Records'), toggleBtn
-  ));
-  tableCard.appendChild(tableBody);
-  wrap.appendChild(tableCard);
-
-  // ── Services (Customer Success & Marketing) ───────────────────────────────
-  // Folded in from the former standalone Services dashboard — same section,
-  // same filters/KPIs/charts/table, just composed onto this page instead of
-  // its own nav item, since it was really "Revenue filtered to two streams
-  // plus client-collections depth (DSO, cohorts, aging) Revenue doesn't have."
-  wrap.appendChild(buildServicesSection(gF, curRange, cmpRange, rebuildView));
-
-  setTimeout(() => {
-    renderTrend(curData, months);
-    renderStreamBar(curData, months);
-    renderMixEvolution(curData, months);
-    renderGrowthTrend(curData, months);
-    renderPropBar(curData);
-    renderConcentration(curData);
-    renderOwnerDonut(curData);
-    renderPaidOutstanding(curData, months);
-    renderAging(curData);
-  }, 0);
+  setTimeout(() => renders.forEach(fn => fn()), 0);
 
   return wrap;
 }

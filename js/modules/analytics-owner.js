@@ -8,6 +8,7 @@ import {
 } from './analytics-filters.js';
 import {
   mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, mkExplainButton, mkDrillValue,
+  mkDashboardTabs, loadDashboardTab,
   invoiceOwner, invoiceNetEUR, recordOwner, partnerKey, groupByMonthKey
 } from './analytics-helpers.js';
 import { SERVICE_STREAMS, STREAMS, PROPERTY_STREAMS } from '../core/config.js';
@@ -20,6 +21,15 @@ const RITA_COLOR   = 'var(--stream-mkt, #ec4899)';
 const RITA_HEX     = '#ec4899';
 let YOU_LABEL  = 'Giorgos';
 let RITA_LABEL = 'Rita';
+
+// Dashboard tabs; `scope` tells which filters apply to the tab's figures.
+const OWN_TABS = [
+  { id: 'overview',  label: 'Overview',  scope: 'Revenue, expenses, profit and settlement follow the period and comparison filters. The Shared Properties count is as of today.' },
+  { id: 'breakdown', label: 'Breakdown', scope: 'Everything on this tab follows the period filter.' },
+  { id: 'portfolio', label: 'Portfolio', scope: 'Current portfolio as of today (sold properties excluded). Stream / Property / Scope filters apply; the period filters do not.' }
+];
+const OWN_TAB_KEY = 'btf:owner_dash_tab';
+let gTab = loadDashboardTab(OWN_TAB_KEY, OWN_TABS);
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -496,12 +506,12 @@ const OWNER_MIXED_COLS = [
 ];
 
 // ── Partner column card ───────────────────────────────────────────────────────
-function buildPartnerColumn(label, color, data, cmpData, propsData, curRange, cmpRange, isYou) {
+// Period figures only — each partner's property count and book value are on
+// the Portfolio tab (Portfolio Summary), which is as of today.
+function buildPartnerColumn(label, color, data, cmpData, curRange, cmpRange, isYou) {
   const rev    = isYou ? data.revSplit.you  : data.revSplit.rita;
   const exp    = isYou ? data.expSplit.you  : data.expSplit.rita;
   const net    = isYou ? data.netSplit.you  : data.netSplit.rita;
-  const count  = isYou ? propsData.youCount : propsData.ritaCount;
-  const value  = isYou ? propsData.youValue : propsData.ritaValue;
   const owner  = isYou ? 'you' : 'rita';
   const revRecords = data.revRecords;
 
@@ -550,21 +560,6 @@ function buildPartnerColumn(label, color, data, cmpData, propsData, curRange, cm
           { label: 'Operating Expenses', value: formatEUR(exp) }
         ],
         source: 'analytics-owner.js:126 getData() — `netSplit`'
-      }
-    },
-    { label: 'Portfolio Properties',
-      value: mkDrillValue(String(count), () => openValueSplitModal(label, isYou ? 0 : 1, propsData)),
-      sub: null
-    },
-    { label: 'Portfolio Book Value',
-      value: mkDrillValue(formatEUR(value), () => openValueSplitModal(label, isYou ? 0 : 1, propsData)),
-      sub: null, onClick: () => openValueSplitModal(label, isYou ? 0 : 1, propsData),
-      explain: {
-        title: `${label} Portfolio Book Value`,
-        formula: "Sum of each owned property's purchase price (converted to EUR); properties with owner='both' contribute 50% to each partner.",
-        inputs: [{ label: 'Book Value', value: formatEUR(value) }],
-        source: 'analytics-owner.js:146 getPropertiesData() — `bookValue()`',
-        note: 'Based on purchasePrice only — does not net out mortgage balance or reflect current market value.'
       }
     },
   ];
@@ -726,13 +721,13 @@ function buildKpiSection(data, cmpData, propsData, cmpRange) {
 }
 
 // ── Partner comparison layout ─────────────────────────────────────────────────
-function buildPartnerComparison(data, cmpData, propsData, curRange, cmpRange) {
+function buildPartnerComparison(data, cmpData, curRange, cmpRange) {
   const section = el('div', { class: 'mb-16' });
   section.appendChild(mkSectionLabel('Partner Overview'));
 
   const grid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px' });
-  grid.appendChild(buildPartnerColumn(YOU_LABEL, YOU_COLOR, data, cmpData, propsData, curRange, cmpRange, true));
-  grid.appendChild(buildPartnerColumn(RITA_LABEL, RITA_COLOR, data, cmpData, propsData, curRange, cmpRange, false));
+  grid.appendChild(buildPartnerColumn(YOU_LABEL, YOU_COLOR, data, cmpData, curRange, cmpRange, true));
+  grid.appendChild(buildPartnerColumn(RITA_LABEL, RITA_COLOR, data, cmpData, curRange, cmpRange, false));
   section.appendChild(grid);
   return section;
 }
@@ -1328,113 +1323,116 @@ function buildView() {
   const propsData = getPropertiesData(gF);
 
   const compLine = buildComparisonLine(curRange, cmpRange);
-  if (compLine) wrap.appendChild(compLine);
 
-  // KPI cards
-  wrap.appendChild(buildKpiSection(data, cmpData, propsData, cmpRange));
+  // ── Tabs ───────────────────────────────────────────────────────────────────
+  // One tab is built per render (switching rebuilds the view), so each chart
+  // canvas exists once.
+  wrap.appendChild(mkDashboardTabs(OWN_TABS, gTab, id => { gTab = id; rebuildView(); }, OWN_TAB_KEY));
+  const renders = [];
 
-  // Partner side-by-side columns
-  wrap.appendChild(buildPartnerComparison(data, cmpData, propsData, curRange, cmpRange));
+  if (gTab === 'overview') {
+    if (compLine) wrap.appendChild(compLine);
 
-  // ── Charts row 1: Revenue by Owner (monthly bar) ──────────────────────────
-  const row1 = el('div', { class: 'grid grid-2 mb-16' });
+    // KPI cards
+    wrap.appendChild(buildKpiSection(data, cmpData, propsData, cmpRange));
 
-  row1.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Revenue by Owner (Monthly)')),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'own-rev-bar' }))
-  ));
+    // Partner side-by-side columns
+    wrap.appendChild(buildPartnerComparison(data, cmpData, curRange, cmpRange));
 
-  // Profit by Property (horizontal bar)
-  row1.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Profit by Property & Owner')),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'own-profit-hbar' }))
-  ));
+    // Settlement (what one partner owes the other this period)
+    wrap.appendChild(buildSettlementSection(data, curRange));
+  }
 
-  wrap.appendChild(row1);
-
-  // ── Charts row 2: Portfolio Value donut ───────────────────────────────────
-  const row2 = el('div', { class: 'grid grid-2 mb-16' });
-
-  {
-    row2.appendChild(el('div', { class: 'card' },
-      el('div', { class: 'card-header' },
-        el('div', { class: 'card-title' }, 'Portfolio Value Split')
+  if (gTab === 'breakdown') {
+    // Revenue by Owner (monthly bar) + Profit by Property (horizontal bar)
+    wrap.appendChild(el('div', { class: 'grid grid-2 mb-16' },
+      el('div', { class: 'card' },
+        el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Revenue by Owner (Monthly)')),
+        el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'own-rev-bar' }))
       ),
+      el('div', { class: 'card' },
+        el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Profit by Property & Owner')),
+        el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'own-profit-hbar' }))
+      )
+    ));
+
+    // Service Revenue by Stream
+    const svcStreamSection = buildServiceStreamSection(data.annotatedInvoices, curRange);
+    if (svcStreamSection) wrap.appendChild(svcStreamSection);
+
+    renders.push(() => renderRevBar(data.revRecords, months), () => renderProfitHBar(data.revRecords, data.annotatedExpenses));
+  }
+
+  if (gTab === 'portfolio') {
+    // Portfolio Value donut + summary
+    const portfolioRow = el('div', { class: 'grid grid-2 mb-16' });
+    portfolioRow.appendChild(el('div', { class: 'card' },
+      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Portfolio Value Split')),
       el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'own-value-donut' }))
     ));
-  }
 
-  // Portfolio summary card (plain info, no chart)
-  {
-    const infoCard = el('div', { class: 'card' });
-    infoCard.appendChild(el('div', { class: 'card-header' },
-      el('div', { class: 'card-title' }, 'Portfolio Summary')
-    ));
-    const infoBody = el('div', { style: 'padding:0 16px 16px' });
-
-    const totalProps = propsData.allProps.length;
-    const pGrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px' });
-    pGrid.appendChild(mkSummaryBox(YOU_LABEL, `${propsData.youCount} propert${propsData.youCount !== 1 ? 'ies' : 'y'}`,
-      mkDrillValue(formatEUR(propsData.youValue), () => openValueSplitModal(YOU_LABEL, 0, propsData)), {
-      title: `${YOU_LABEL} Book Value`,
-      formula: "Sum of purchase price (EUR) for properties fully owned by Giorgos, plus 50% of purchase price for jointly-owned ('both') properties.",
-      inputs: [
-        { label: 'Book Value', value: formatEUR(propsData.youValue) },
-        { label: 'Properties (incl. shared)', value: String(propsData.youCount) }
-      ],
-      source: 'analytics-owner.js:153 getPropertiesData() — `youValue`',
-      note: 'A shared property is counted in both youCount and ritaCount, and its value split 50/50 between both — it is not double-counted in the portfolio total.'
-    }));
-    pGrid.appendChild(mkSummaryBox(RITA_LABEL, `${propsData.ritaCount} propert${propsData.ritaCount !== 1 ? 'ies' : 'y'}`,
-      mkDrillValue(formatEUR(propsData.ritaValue), () => openValueSplitModal(RITA_LABEL, 1, propsData)), {
-      title: `${RITA_LABEL} Book Value`,
-      formula: "Sum of purchase price (EUR) for properties fully owned by Rita, plus 50% of purchase price for jointly-owned ('both') properties.",
-      inputs: [
-        { label: 'Book Value', value: formatEUR(propsData.ritaValue) },
-        { label: 'Properties (incl. shared)', value: String(propsData.ritaCount) }
-      ],
-      source: 'analytics-owner.js:154 getPropertiesData() — `ritaValue`',
-      note: 'A shared property is counted in both youCount and ritaCount, and its value split 50/50 between both — it is not double-counted in the portfolio total.'
-    }));
-    infoBody.appendChild(pGrid);
-
-    if (propsData.bothProps.length > 0) {
-      infoBody.appendChild(mkSectionLabel('Shared Properties (50/50)'));
-      const rows = propsData.bothProps.map(p => {
-        const eur = toEUR(p.purchasePrice || 0, p.currency || 'EUR', p.purchaseDate || null);
-        return [p.name, formatEUR(eur), formatEUR(eur * 0.5)];
-      });
-      infoBody.appendChild(mkModalTable(
-        [
-          { label: 'Property', tip: "Jointly-owned (owner='both') property." },
-          { label: 'Total Value', right: true, tip: "Full purchase price of the property, converted to EUR." },
-          { label: 'Per Partner', right: true, tip: "Each partner's 50% share of the property's purchase price." }
-        ],
-        rows, { highlight: 2 }
+    // Portfolio summary card (plain info, no chart)
+    {
+      const infoCard = el('div', { class: 'card' });
+      infoCard.appendChild(el('div', { class: 'card-header' },
+        el('div', { class: 'card-title' }, 'Portfolio Summary')
       ));
-    } else {
-      infoBody.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted)' }, `${totalProps} total propert${totalProps !== 1 ? 'ies' : 'y'} · no shared properties`));
+      const infoBody = el('div', { style: 'padding:0 16px 16px' });
+
+      const totalProps = propsData.allProps.length;
+      const pGrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px' });
+      pGrid.appendChild(mkSummaryBox(YOU_LABEL, `${propsData.youCount} propert${propsData.youCount !== 1 ? 'ies' : 'y'}`,
+        mkDrillValue(formatEUR(propsData.youValue), () => openValueSplitModal(YOU_LABEL, 0, propsData)), {
+        title: `${YOU_LABEL} Book Value`,
+        formula: "Sum of purchase price (EUR) for properties fully owned by Giorgos, plus 50% of purchase price for jointly-owned ('both') properties.",
+        inputs: [
+          { label: 'Book Value', value: formatEUR(propsData.youValue) },
+          { label: 'Properties (incl. shared)', value: String(propsData.youCount) }
+        ],
+        source: 'analytics-owner.js:153 getPropertiesData() — `youValue`',
+        note: 'A shared property is counted in both youCount and ritaCount, and its value split 50/50 between both — it is not double-counted in the portfolio total.'
+      }));
+      pGrid.appendChild(mkSummaryBox(RITA_LABEL, `${propsData.ritaCount} propert${propsData.ritaCount !== 1 ? 'ies' : 'y'}`,
+        mkDrillValue(formatEUR(propsData.ritaValue), () => openValueSplitModal(RITA_LABEL, 1, propsData)), {
+        title: `${RITA_LABEL} Book Value`,
+        formula: "Sum of purchase price (EUR) for properties fully owned by Rita, plus 50% of purchase price for jointly-owned ('both') properties.",
+        inputs: [
+          { label: 'Book Value', value: formatEUR(propsData.ritaValue) },
+          { label: 'Properties (incl. shared)', value: String(propsData.ritaCount) }
+        ],
+        source: 'analytics-owner.js:154 getPropertiesData() — `ritaValue`',
+        note: 'A shared property is counted in both youCount and ritaCount, and its value split 50/50 between both — it is not double-counted in the portfolio total.'
+      }));
+      infoBody.appendChild(pGrid);
+
+      if (propsData.bothProps.length > 0) {
+        infoBody.appendChild(mkSectionLabel('Shared Properties (50/50)'));
+        const rows = propsData.bothProps.map(p => {
+          const eur = toEUR(p.purchasePrice || 0, p.currency || 'EUR', p.purchaseDate || null);
+          return [p.name, formatEUR(eur), formatEUR(eur * 0.5)];
+        });
+        infoBody.appendChild(mkModalTable(
+          [
+            { label: 'Property', tip: "Jointly-owned (owner='both') property." },
+            { label: 'Total Value', right: true, tip: "Full purchase price of the property, converted to EUR." },
+            { label: 'Per Partner', right: true, tip: "Each partner's 50% share of the property's purchase price." }
+          ],
+          rows, { highlight: 2 }
+        ));
+      } else {
+        infoBody.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted)' }, `${totalProps} total propert${totalProps !== 1 ? 'ies' : 'y'} · no shared properties`));
+      }
+
+      infoCard.appendChild(infoBody);
+      portfolioRow.appendChild(infoCard);
     }
 
-    infoCard.appendChild(infoBody);
-    row2.appendChild(infoCard);
+    wrap.appendChild(portfolioRow);
+    renders.push(() => renderValueDonut(propsData));
   }
 
-  wrap.appendChild(row2);
-
-  // ── Service Revenue by Stream ─────────────────────────────────────────────
-  const svcStreamSection = buildServiceStreamSection(data.annotatedInvoices, curRange);
-  if (svcStreamSection) wrap.appendChild(svcStreamSection);
-
-  // ── Settlement section ────────────────────────────────────────────────────
-  wrap.appendChild(buildSettlementSection(data, curRange));
-
   // Render charts after DOM is ready
-  setTimeout(() => {
-    renderRevBar(data.revRecords, months);
-    renderProfitHBar(data.revRecords, data.annotatedExpenses);
-    renderValueDonut(propsData);
-  }, 0);
+  setTimeout(() => renders.forEach(fn => fn()), 0);
 
   return wrap;
 }
