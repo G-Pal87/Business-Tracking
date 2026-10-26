@@ -102,12 +102,12 @@ Tests: `scripts/tests/data-branch.test.mjs`.
 
 | Workflow                 | Data branch handling                                                                                                                                                                                                                                  |
 |--------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `backup.yml`             | Reads the branch from `data/github-config.json` on the default branch. It reads `db.json` there, and writes and trims `backups/` there. It fails rather than guessing if the config is malformed.                                                   |
+| `backup.yml`             | Daily at 20:13 UTC (runs often start hours late; this lands them at night in Cyprus). Reads the branch from `data/github-config.json` on the default branch. It reads `db.json` there, and writes and trims `backups/` there. It fails rather than guessing if the config is malformed, retries a write/delete once on a 409 conflict, and warns when the newest backup is more than 14 days old. Shares the `data-branch-writers` concurrency group with `squash-data.yml`. |
 | `export-daily-rates.yml` | Copies `db.json` from the data branch into the checkout before running the script. This step is a no-op while the data is on `main`. The feeds still go to `rates-feed`.                                                                             |
 | `notify-str-rebuild.yml` | Reads no data. Unchanged.                                                                                                                                                                                                                             |
 | `pages.yml`, `tests.yml` | Run on `main` only. Unchanged. The Pages deploy after the cutover commit publishes the new bootstrap config.                                                                                                                                          |
 | `privacy-guard.yml`      | See below.                                                                                                                                                                                                                                            |
-| `squash-data.yml`        | New. Every Sunday it replaces `data` with one parentless commit of its current files (same blobs, force-with-lease). It runs only when the config says `data` and the branch exists and holds `db.json`; otherwise it does nothing.                  |
+| `squash-data.yml`        | Every Saturday at 22:47 UTC (30 minutes after `squash-presence.yml` at 22:17) it replaces `data` with one parentless commit of its current files (same blobs, force-with-lease). It runs only when the config says `data` and the branch exists and holds `db.json`; otherwise it does nothing. A refused push is retried 3 times (60/120/180 s apart, tree rebuilt from the new tip and re-checked each time); if all are refused the job fails. It also fails, after squashing, if the branch had more than 500 commits (earlier squashes must have failed). Shares the `data-branch-writers` concurrency group with `backup.yml`. |
 
 `.github/scripts/data-location.py` is the shared helper that reads the
 bootstrap config (the same name rules as the app).
@@ -119,13 +119,16 @@ A push runs only the workflows in the pushed branch's own tree. That is why
 `.github/scripts/privacy-guard.py` and `.github/privacy-guard-known.txt`: every
 app save to `data` is still checked. The guard's `data` policy (`check_data`)
 applies the normal rules, so every data file must be one of the app's
-encrypted formats. It also rejects app code and docs on that branch. The daily
+encrypted formats, and attachments under `Properties/`, `Clients/` and
+`expenses/` must have ID-based names with a short extension (no file or folder
+names taken from the user's own text). It also rejects app code and docs on
+that branch. The daily
 all-branches scan on `main` covers `data` like every other branch. It also
 covers commits made with `GITHUB_TOKEN` (the backup job, the squash), which
 trigger no workflows.
 
 `squash-data.yml` refreshes the guard script and the known-findings list from
-`main` every week. It runs the guard on the new tree before pushing. It can't
+`main` every week (Saturday evening UTC). It runs the guard on the new tree before pushing. It can't
 refresh the workflow file: a `GITHUB_TOKEN` may not create or change
 `.github/workflows/*`. If `main`'s copy changes, the job logs a warning. You
 then have two options:
@@ -145,8 +148,8 @@ then have two options:
   only, with Contents and Workflows write access), which the squash job uses
   instead.
 
-If GitHub refuses the squash push because of the workflow file, the job logs
-a warning and changes nothing.
+If GitHub refuses the squash push because of the workflow file, the job fails
+at once (no retries) and changes nothing.
 
 ## History and recovery
 

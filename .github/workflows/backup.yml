@@ -2,23 +2,29 @@ name: Daily Database Backup
 
 on:
   schedule:
-    - cron: '0 2 * * *'   # 2:00 AM UTC every day
+    # 20:13 UTC daily (22:13/23:13 Cyprus). Scheduled runs often start hours
+    # late; this keeps a late start at night, away from squash-data's
+    # Saturday 22:47 slot (and the shared concurrency group below keeps
+    # them apart anyway).
+    - cron: '13 20 * * *'
   workflow_dispatch:        # Allow manual trigger from GitHub Actions tab
 
 permissions:
   contents: write
 
+# Shared with squash-data.yml: both write the data branch, never at the same time.
 concurrency:
-  group: daily-backup
+  group: data-branch-writers
   cancel-in-progress: false
 
 jobs:
   backup:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Create daily backup
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -31,6 +37,28 @@ jobs:
             const KEEP_DAILY = 14, KEEP_WEEKLY = 8, KEEP_MONTHLY = 8;
             const { owner, repo } = context.repo;
             const crypto = require('crypto');
+            // A write that races another (the app, or a GitHub-side delay)
+            // gets a 409 - "sha does not match". Re-read the file's sha and
+            // try once more.
+            const shaOf = async (path) => {
+              try {
+                const { data } = await github.rest.repos.getContent({ owner, repo, path, ref: branch });
+                return Array.isArray(data) ? undefined : data.sha;
+              } catch (e) {
+                if (e.status === 404) return undefined;
+                throw e;
+              }
+            };
+            const retry409 = async (what, fn) => {
+              try {
+                return await fn(false);
+              } catch (e) {
+                if (e.status !== 409) throw e;
+                core.info(`${what}: 409 conflict - re-reading the sha and retrying once.`);
+                await new Promise(r => setTimeout(r, 3000));
+                return await fn(true);
+              }
+            };
 
             // 1. Read db.json at an exact commit, by its git blob SHA. The raw
             //    CDN (download_url) can lag behind a fresh push, so a backup
@@ -149,6 +177,14 @@ jobs:
               const newest = (Array.isArray(list) ? list : [])
                 .filter(f => f.type === 'file' && NEWEST.test(f.name))
                 .sort((a, b) => b.name.localeCompare(a.name))[0];
+              // The newest backup is old: the daily runs have been skipped or
+              // failing for a while (or db.json hasn't changed in two weeks).
+              if (!newest) {
+                core.warning('No existing backup found in backups/.');
+              } else {
+                const ageDays = (Date.parse(today) - Date.parse(newest.name.slice(10, 20))) / 86400000;
+                if (ageDays > 14) core.warning(`The newest backup (${newest.name}) is ${Math.round(ageDays)} days old - check why no newer backup was written.`);
+              }
               if (newest) {
                 // Contents only inlines files up to 1MB; the blob API covers the rest.
                 const { data: b } = await github.rest.git.getBlob({ owner, repo, file_sha: newest.sha });
@@ -163,18 +199,15 @@ jobs:
 
             // 5. Write backup (create or overwrite today's file).
             if (!unchanged) {
-              let existingSha;
-              try {
-                const { data: ex } = await github.rest.repos.getContent({ owner, repo, path: backupPath, ref: branch });
-                existingSha = ex.sha;
-              } catch { /* file doesn't exist yet - that's fine */ }
-
-              await github.rest.repos.createOrUpdateFileContents({
-                owner, repo, branch,
-                path: backupPath,
-                message: `Automated backup: ${filename} (db.json ${meta.sha.slice(0, 12)} @ ${commitSha.slice(0, 12)})`,
-                content,
-                ...(existingSha ? { sha: existingSha } : {})
+              await retry409(`Writing ${backupPath}`, async () => {
+                const existingSha = await shaOf(backupPath); // undefined: new file
+                await github.rest.repos.createOrUpdateFileContents({
+                  owner, repo, branch,
+                  path: backupPath,
+                  message: `Automated backup: ${filename} (db.json ${meta.sha.slice(0, 12)} @ ${commitSha.slice(0, 12)})`,
+                  content,
+                  ...(existingSha ? { sha: existingSha } : {})
+                });
               });
               core.info(`Backup saved: ${backupPath}`);
             }
@@ -223,13 +256,18 @@ jobs:
             for (const f of files) {
               if (keep.has(f.name)) continue;
               try {
-                await github.rest.repos.deleteFile({
-                  owner, repo, branch,
-                  path: f.path,
-                  message: `Auto-trim old backup: ${f.name}`,
-                  sha: f.sha
+                const deleted = await retry409(`Deleting ${f.path}`, async (again) => {
+                  const sha = again ? await shaOf(f.path) : f.sha;
+                  if (!sha) return false; // already gone
+                  await github.rest.repos.deleteFile({
+                    owner, repo, branch,
+                    path: f.path,
+                    message: `Auto-trim old backup: ${f.name}`,
+                    sha
+                  });
+                  return true;
                 });
-                core.info(`Deleted old backup: ${f.path}`);
+                core.info(deleted ? `Deleted old backup: ${f.path}` : `Already gone: ${f.path}`);
               } catch (e) {
                 core.warning(`Failed to delete ${f.path}: ${e.message}`);
               }

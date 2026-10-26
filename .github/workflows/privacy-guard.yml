@@ -18,7 +18,10 @@ on:
   push:
   pull_request:
   schedule:
-    - cron: '41 3 * * *'   # daily full scan of every branch (presence, rates-feed, ...)
+    # Daily scan of every branch (presence, rates-feed, ...) at 21:41 UTC
+    # (23:41/00:41 Cyprus). Scheduled runs often start hours late; this keeps
+    # a late start at night.
+    - cron: '41 21 * * *'
   workflow_dispatch:
 
 permissions:
@@ -28,11 +31,12 @@ jobs:
   push:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       # Full history but no file contents up front (blob:none): only the files
       # the pushed commits touched are downloaded, so the frequent app saves
       # stay fast.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           filter: blob:none
@@ -48,8 +52,9 @@ jobs:
   pull-request:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           filter: blob:none
@@ -57,7 +62,7 @@ jobs:
 
       # The guard itself comes from the BASE branch, not from the pull request:
       # a PR must not be able to weaken the check that judges it.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           path: .base-guard
@@ -74,36 +79,47 @@ jobs:
   all-branches:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       # The daily run only checks commits added since the last successful run
       # (state kept in the Actions cache, keyed on the guard script's hash so a
-      # rule change forces a full rescan). Sundays and manual runs scan the
-      # full history. Incremental runs skip file contents up front
-      # (blob:none) - only the few new versions are downloaded.
+      # rule change forces a full rescan). Once a week (the first run at least
+      # 6 days after the last successful full scan - not a fixed weekday,
+      # because scheduled runs start hours late and can slip past midnight)
+      # and on manual runs the full history is scanned. The checkout skips
+      # file contents up front (blob:none); a full scan fetches them in bulk.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+
+      - name: Restore the last scan state
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ runner.temp }}/privacy-guard-state.json
+            ${{ runner.temp }}/privacy-guard-last-full
+          key: privacy-guard-state-${{ hashFiles('.github/scripts/privacy-guard.py') }}-${{ github.run_id }}
+          restore-keys: privacy-guard-state-${{ hashFiles('.github/scripts/privacy-guard.py') }}-
+
       - name: Choose full or incremental scan
         id: mode
         env:
           EVENT: ${{ github.event_name }}
+          STATE: ${{ runner.temp }}/privacy-guard-state.json
+          LAST_FULL: ${{ runner.temp }}/privacy-guard-last-full
         run: |
-          if [ "$EVENT" = "workflow_dispatch" ] || [ "$(date -u +%u)" = "7" ]; then
+          now="$(date -u +%s)"
+          last="$(cat "$LAST_FULL" 2>/dev/null || true)"
+          case "$last" in ''|*[!0-9]*) last=0 ;; esac
+          if [ "$EVENT" = "workflow_dispatch" ] || [ $((now - last)) -ge $((6 * 86400)) ]; then
+            echo "Full scan (last full scan: $([ "$last" = 0 ] && echo never || date -u -d "@$last"))."
+            rm -f "$STATE"   # no state = the guard scans the full history
             echo "full=true" >> "$GITHUB_OUTPUT"
           else
             echo "full=false" >> "$GITHUB_OUTPUT"
           fi
-
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          fetch-depth: 0
-          filter: ${{ steps.mode.outputs.full == 'true' && '' || 'blob:none' }}
-          persist-credentials: false
-
-      - name: Restore the last scan state
-        if: steps.mode.outputs.full != 'true'
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: ${{ runner.temp }}/privacy-guard-state.json
-          key: privacy-guard-state-${{ hashFiles('.github/scripts/privacy-guard.py') }}-${{ github.run_id }}
-          restore-keys: privacy-guard-state-${{ hashFiles('.github/scripts/privacy-guard.py') }}-
 
       # Branches without workflow files (presence, rates-feed) are never
       # checked on push, so this scan is their only check. The `data` branch
@@ -118,8 +134,8 @@ jobs:
         env:
           STATE: ${{ runner.temp }}/privacy-guard-state.json
         run: |
-          # No saved state (cache expired/evicted) on a blob:none day means a
-          # full scan; fetch every file version in bulk first instead of
+          # No saved state (full scan, or the cache expired/evicted) means
+          # every file version is read; fetch them in bulk first instead of
           # lazily one at a time.
           if [ ! -s "$STATE" ] && [ -n "$(git config --get remote.origin.partialclonefilter || true)" ]; then
             git config --unset remote.origin.partialclonefilter
@@ -127,8 +143,16 @@ jobs:
           fi
           python3 .github/scripts/privacy-guard.py --all --state "$STATE"
 
+      - name: Record the full scan
+        if: steps.mode.outputs.full == 'true'
+        env:
+          LAST_FULL: ${{ runner.temp }}/privacy-guard-last-full
+        run: date -u +%s > "$LAST_FULL"
+
       - name: Save the scan state
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ${{ runner.temp }}/privacy-guard-state.json
+          path: |
+            ${{ runner.temp }}/privacy-guard-state.json
+            ${{ runner.temp }}/privacy-guard-last-full
           key: privacy-guard-state-${{ hashFiles('.github/scripts/privacy-guard.py') }}-${{ github.run_id }}

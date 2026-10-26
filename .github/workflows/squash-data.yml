@@ -12,9 +12,14 @@ name: Squash data branch
 #    the `data` branch and that branch exists and holds db.json. Anything
 #    unexpected (unreadable/malformed config, another branch name, no db.json)
 #    and it does nothing.
-#  - The replace is a force-push with a lease: if the app (or the backup job)
-#    wrote in between, the push is refused and nothing is lost (next week's
-#    run tries again).
+#  - The replace is a force-push with a lease: if the app wrote in between,
+#    the push is refused and nothing is lost. The job then re-reads the
+#    branch and retries (3 retries, 60/120/180 s apart, guard re-run each
+#    time) and FAILS if every attempt is refused, so a squash that keeps
+#    losing the race is noticed. It also fails (after squashing) when the
+#    branch had more than 500 commits - a sign earlier squashes failed.
+#  - It shares the `data-branch-writers` concurrency group with backup.yml,
+#    so the two never run at the same time.
 #  - The new tree is checked by the privacy guard before it is pushed.
 #  - The branch keeps the privacy-guard files (so its own pushes are checked):
 #    the guard script and known-findings list are refreshed from main here.
@@ -24,25 +29,29 @@ name: Squash data branch
 #    docs/data-branch.md), or set the optional DATA_SQUASH_TOKEN secret (a
 #    fine-grained PAT for this repository only, Contents + Workflows: write).
 #    If GitHub still refuses the push because of the workflow file, the job
-#    logs a warning and exits without changing anything.
+#    fails at once (no retries) without changing anything.
 on:
   schedule:
-    - cron: '47 4 * * 0'   # Sundays 04:47 UTC (after squash-presence)
+    # Saturdays 22:47 UTC (00:47/01:47 Cyprus), 30 min after squash-presence.
+    # Scheduled runs often start hours late; this keeps a late start at night.
+    - cron: '47 22 * * 6'
   workflow_dispatch:
 
 permissions:
   contents: write
 
+# Shared with backup.yml: both write the data branch, never at the same time.
 concurrency:
-  group: data-squash
+  group: data-branch-writers
   cancel-in-progress: false
 
 jobs:
   squash:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       # main: only the guard files and the bootstrap config are needed.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           sparse-checkout: |
@@ -82,51 +91,91 @@ jobs:
           if ! git ls-remote --exit-code origin "refs/heads/$DATA_BRANCH" >/dev/null; then
             echo "::warning::The config says '$DATA_BRANCH' but the branch doesn't exist - nothing to do."; exit 0
           fi
-          git fetch -q --no-tags --depth=1 origin "refs/heads/$DATA_BRANCH"
-          tip="$(git rev-parse FETCH_HEAD)"
-          if ! git cat-file -e "${tip}:${db_path}" 2>/dev/null; then
-            echo "::warning::'$DATA_BRANCH' has no $db_path - not touching it."; exit 0
-          fi
 
-          # 3. New tree: the branch's tree without .github, plus main's guard
-          #    script + known list, plus the branch's OWN workflow blob.
-          export GIT_INDEX_FILE="$RUNNER_TEMP/data-squash.index"
-          git read-tree "$tip"
-          git rm -r -q --cached --ignore-unmatch -- .github
-          for f in $GUARD_FILES; do
-            mode="$(env -u GIT_INDEX_FILE git -C "$main_dir" ls-tree HEAD -- "$f" | cut -d' ' -f1)"
-            blob="$(git hash-object -w -- "$main_dir/$f")"
-            git update-index --add --cacheinfo "${mode:-100644},${blob},${f}"
-          done
-          old_wf="$(git rev-parse -q --verify "${tip}:${GUARD_WORKFLOW}" || true)"
-          new_wf="$(git hash-object -- "$main_dir/$GUARD_WORKFLOW")"
-          if [ -n "$old_wf" ]; then
-            git update-index --add --cacheinfo "100644,${old_wf},${GUARD_WORKFLOW}"
-            if [ "$old_wf" != "$new_wf" ]; then
-              echo "::warning::$GUARD_WORKFLOW on '$DATA_BRANCH' differs from main's; kept the branch's copy (a GITHUB_TOKEN can't change workflow files). Refresh it by hand - see docs/data-branch.md."
+          # The app saves often, so the lease can lose a race. Each attempt
+          # re-reads the tip, rebuilds the tree from it and re-runs the guard;
+          # after MAX_ATTEMPTS refusals the job FAILS, so a squash that keeps
+          # failing is noticed (GitHub emails on a failed scheduled run).
+          MAX_ATTEMPTS=4      # first try + 3 retries
+          RETRY_DELAY=60      # seconds, grows by 60 each retry
+          # The branch is squashed weekly; this many commits means the squash
+          # has not succeeded for a long time (or the app saves far more often
+          # than expected) - fail loudly once the squash itself is done.
+          MAX_COMMITS=500
+          # Commits only (no trees/blobs), in a throwaway repository.
+          git init -q "$RUNNER_TEMP/data-count"
+          git -C "$RUNNER_TEMP/data-count" fetch -q --no-tags --filter=tree:0 \
+            "https://x-access-token:${PUSH_TOKEN}@github.com/${REPO}.git" "refs/heads/$DATA_BRANCH"
+          count="$(git -C "$RUNNER_TEMP/data-count" rev-list --count FETCH_HEAD)"
+          echo "'$DATA_BRANCH' has $count commit(s)."
+
+          attempt=1
+          while :; do
+            git fetch -q --no-tags --depth=1 origin "refs/heads/$DATA_BRANCH"
+            tip="$(git rev-parse FETCH_HEAD)"
+            if ! git cat-file -e "${tip}:${db_path}" 2>/dev/null; then
+              echo "::warning::'$DATA_BRANCH' has no $db_path - not touching it."; exit 0
             fi
-          else
-            echo "::warning::'$DATA_BRANCH' has no $GUARD_WORKFLOW, so its pushes are not checked (the daily scan still is). Add it by hand - see docs/data-branch.md."
-          fi
-          tree="$(git write-tree)"
-          unset GIT_INDEX_FILE
 
-          # (depth=1: the parent isn't fetched, but the raw commit still names it)
-          parents="$(git cat-file -p "$tip" | sed -n 's/^parent //p')"
-          if [ -z "$parents" ] && [ "$tree" = "$(git rev-parse "${tip}^{tree}")" ]; then
-            echo "'$DATA_BRANCH' is already a single commit with current guard files - nothing to do."; exit 0
-          fi
+            # 3. New tree: the branch's tree without .github, plus main's guard
+            #    script + known list, plus the branch's OWN workflow blob.
+            export GIT_INDEX_FILE="$RUNNER_TEMP/data-squash.index"
+            rm -f "$GIT_INDEX_FILE"
+            git read-tree "$tip"
+            git rm -r -q --cached --ignore-unmatch -- .github
+            for f in $GUARD_FILES; do
+              mode="$(env -u GIT_INDEX_FILE git -C "$main_dir" ls-tree HEAD -- "$f" | cut -d' ' -f1)"
+              blob="$(git hash-object -w -- "$main_dir/$f")"
+              git update-index --add --cacheinfo "${mode:-100644},${blob},${f}"
+            done
+            old_wf="$(git rev-parse -q --verify "${tip}:${GUARD_WORKFLOW}" || true)"
+            new_wf="$(git hash-object -- "$main_dir/$GUARD_WORKFLOW")"
+            if [ -n "$old_wf" ]; then
+              git update-index --add --cacheinfo "100644,${old_wf},${GUARD_WORKFLOW}"
+              if [ "$old_wf" != "$new_wf" ] && [ "$attempt" = 1 ]; then
+                echo "::warning::$GUARD_WORKFLOW on '$DATA_BRANCH' differs from main's; kept the branch's copy (a GITHUB_TOKEN can't change workflow files). Refresh it by hand - see docs/data-branch.md."
+              fi
+            elif [ "$attempt" = 1 ]; then
+              echo "::warning::'$DATA_BRANCH' has no $GUARD_WORKFLOW, so its pushes are not checked (the daily scan still is). Add it by hand - see docs/data-branch.md."
+            fi
+            tree="$(git write-tree)"
+            unset GIT_INDEX_FILE
 
-          commit="$(git -c user.name='github-actions[bot]' \
-            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
-            commit-tree "$tree" -m "Data")"
+            # (depth=1: the parent isn't fetched, but the raw commit still names it)
+            parents="$(git cat-file -p "$tip" | sed -n 's/^parent //p')"
+            if [ -z "$parents" ] && [ "$tree" = "$(git rev-parse "${tip}^{tree}")" ]; then
+              echo "'$DATA_BRANCH' is already a single commit with current guard files - nothing to do."; exit 0
+            fi
 
-          # 4. Same checks as a push to the branch, before anything is pushed.
-          python3 "$main_dir/.github/scripts/privacy-guard.py" --tree "$commit" --branch "$DATA_BRANCH"
+            commit="$(git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit-tree "$tree" -m "Data")"
 
-          # 5. Replace it - only if nobody wrote since we looked (the lease).
-          if git push --force-with-lease="refs/heads/${DATA_BRANCH}:${tip}" origin "${commit}:refs/heads/${DATA_BRANCH}"; then
-            echo "'$DATA_BRANCH' squashed to ${commit} (was ${tip})"
-          else
-            echo "::warning::Push refused (the branch moved on since it was read, or the token may not write workflow files) - nothing was changed; next week's run tries again."
+            # 4. Same checks as a push to the branch, before anything is pushed.
+            python3 "$main_dir/.github/scripts/privacy-guard.py" --tree "$commit" --branch "$DATA_BRANCH"
+
+            # 5. Replace it - only if nobody wrote since we looked (the lease).
+            if git push --force-with-lease="refs/heads/${DATA_BRANCH}:${tip}" origin "${commit}:refs/heads/${DATA_BRANCH}" 2> "$RUNNER_TEMP/push.err"; then
+              echo "'$DATA_BRANCH' squashed to ${commit} (was ${tip})"
+              break
+            fi
+            cat "$RUNNER_TEMP/push.err" >&2
+            # A refusal over the workflow file won't go away by retrying.
+            if grep -qi 'workflow' "$RUNNER_TEMP/push.err"; then
+              echo "::error::Push refused because the token may not write $GUARD_WORKFLOW (refresh it by hand or set DATA_SQUASH_TOKEN - see docs/data-branch.md). Nothing was changed."
+              exit 1
+            fi
+            if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
+              echo "::error::Push refused $attempt times (the branch kept moving on between read and push). Nothing was changed."
+              exit 1
+            fi
+            delay=$((RETRY_DELAY * attempt))
+            echo "::warning::Push refused (attempt $attempt of $MAX_ATTEMPTS) - re-reading the branch and retrying in ${delay}s."
+            sleep "$delay"
+            attempt=$((attempt + 1))
+          done
+
+          if [ "$count" -gt "$MAX_COMMITS" ]; then
+            echo "::error::'$DATA_BRANCH' had $count commits before this squash (limit $MAX_COMMITS): earlier weekly squashes did not succeed, or the app commits far more often than expected. The squash itself succeeded; check past runs."
+            exit 1
           fi

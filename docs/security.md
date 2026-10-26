@@ -16,12 +16,14 @@ What it checks:
 |---|---|
 | `data/db.json`, `backups/`, `debug/` | Exactly the app's JSON envelope `{enc:1, iv, ct[, kid][, v, z]}`: no other fields, `iv` = base64 of 12 bytes, `ct` = base64 of ≥ 16 bytes that is statistically random (not readable text, enough distinct byte values, entropy). Scheduled backups may wrap the envelope in `{exportVersion, schemaVersion, exportedAt, source, snapshotName, data}` and nothing else. |
 | `invoices/`, document folders, anything else that isn't source | A `BTX1` container (magic + 12-byte IV + ciphertext ≥ 16 bytes, random-looking) or the JSON envelope above. Invoice PDFs must also have an encrypted file name. |
+| `Properties/`, `Clients/`, `expenses/` | As above, and stored under ID-based names only (`{Root}/{record id}/{doc id}.{ext}`, `expenses/receipts/{expense id}.{ext}`, and the same under `{Root}/backup/`): every folder/file segment `[A-Za-z0-9_-]`, extension at most 5 letters/digits. A name taken from the user's text (client, property or document name, or a long "extension") fails. |
 | `data/github-config.json` | Plain JSON with only `owner`, `repo`, `branch`, `path` (short strings). |
 | `exports/` | Never on main — rate feeds live on the `rates-feed` branch. |
 | Source folders | Only their file types: `js/` `.js`/`.mjs`, `css/` `.css`, `docs/` `.md`/`.txt`/`.svg`, `assets/fonts/` fonts, `assets/` icons (≤ 512 KB, no screenshot-like names), `scripts/`, `.github/`, `.githooks/` code. A `.csv`, `.json`, `.pdf` or spreadsheet there fails. |
 | Source files, commit messages, plain-JSON branches | No secrets: GitHub/AWS/Slack/Google/Stripe/npm/AI tokens, private keys, JWKs with key material, raw base64 AES keys, literal `Authorization` headers, password hashes/salts, private calendar links (Airbnb, Booking.com, Vrbo, Google and other `.ics?…token` shapes). |
 | `rates-feed` branch | Only `exports/daily-rates/*.json`, in the schema of [daily-rate-feed](daily-rates-feed.md): no amounts on unavailable nights or on hidden-price properties, no calendar link, no extra fields. |
-| `presence` branch | Only `data/presence.json`, `data/session-history.json`, `data/session-signal.json`, with no secrets and no token/key/password/URL fields. |
+| `presence` branch | Only `data/presence.json`, `data/session-history.json`, `data/session-signal.json`, each an encrypted envelope (as for `db.json`), with no secrets and no token/key/password/URL fields. |
+| `data` branch (`check_data`, [data-branch](data-branch.md)) | The main-branch rules above (every data file encrypted, ID-based attachment names), plus: no app code or docs (`js/`, `css/`, `assets/`, `scripts/`, `docs/`, `.githooks/`, `.claude/`, `index.html`, `README.md`, …) — only the data and the three privacy-guard files. |
 
 Modes:
 
@@ -47,9 +49,12 @@ There is no commit limit: every commit in the range is checked.
   **base** branch, so a PR can't weaken the check that judges it. A PR that
   legitimately extends the guard's rules therefore fails until it is merged by
   a maintainer who has reviewed it.
-- **Daily** (job `all-branches`, also runnable by hand): `--all` over the full
-  history of every branch, including `presence` and `rates-feed`, which have no
-  workflow files and are never checked on push.
+- **Daily** (job `all-branches`, 21:41 UTC, also runnable by hand): `--all`
+  over every branch, including `presence` and `rates-feed`, which have no
+  workflow files and are never checked on push. Daily runs check only the
+  commits added since the last successful run; once a week (the first run at
+  least 6 days after the last full scan), after any change to the guard
+  script, and on manual runs, the full history is scanned.
 
 ### Known historic findings
 
@@ -74,7 +79,10 @@ Never list a real leak there instead of removing it.
 2. Rewritten or force-pushed commits are **not gone yet**: they stay reachable by
    SHA on GitHub until it garbage-collects them, and their SHAs appear in the
    public Events API and in Actions logs. Pull-request refs (`refs/pull/*`) are
-   permanent. Forks and clones keep their copies.
+   permanent: they can't be deleted from the repository, so any pull request
+   opened before the data was encrypted still serves its plaintext-era commits
+   publicly until GitHub Support removes them. Forks and clones keep their
+   copies.
 3. Ask GitHub Support to purge the removed SHAs and cached views
    (<https://support.github.com> → "Remove sensitive data").
 
@@ -85,17 +93,29 @@ published real payouts per booked night. If those are still reachable in
 
 ## CI hardening in place
 
-- Actions are pinned to full commit SHAs (Dependabot keeps them current:
-  `.github/dependabot.yml`). Every workflow declares minimal `permissions`.
+- Actions are pinned to full commit SHAs, on majors that run on Node 24
+  (Dependabot keeps them current in one grouped weekly pull request:
+  `.github/dependabot.yml`). Every workflow declares minimal `permissions` and
+  a `timeout-minutes` per job.
 - Workflow values (`secrets.*`, event fields) reach scripts through `env:`,
   never expanded inside `run:` or script source.
 - Writers of the `rates-feed` branch use `--force-with-lease` and share the
-  `rates-feed` concurrency group.
+  `rates-feed` concurrency group. The two workflows that write the data branch
+  (`backup.yml`, `squash-data.yml`) share the `data-branch-writers` group.
+- `squash-data.yml` retries a lease-refused push 3 times (re-reading the
+  branch and re-running the guard each time) and then fails; it also fails if
+  the data branch had more than 500 commits, so a squash that keeps failing is
+  noticed.
 - The daily backup reads `data/db.json` by blob SHA at an exact commit (not via
   the raw CDN, which can lag), checks the SHA-1 of what it got, validates the
   envelope strictly and never stores plaintext. It keeps the newest backup of
   each of the last 14 days, 8 ISO weeks and 8 months (≤ ~28 files, below the
-  app's own 30-file trim).
+  app's own 30-file trim), retries a write/delete once on a 409 conflict, and
+  warns when the newest backup is more than 14 days old.
+- Module cache-busting: `pages.yml` stamps `js/version.js`, the stylesheet
+  links and every relative module import with the deployed commit SHA, so a
+  browser never mixes a new `app.js` with older cached modules after a deploy
+  (and the deploy fails if an unstamped import is left).
 - The plaintext-era iCal refresh workflow and script were removed; the app
   refreshes iCal blocks itself.
 - Front-end libraries are pinned to exact versions with SRI; the pdf.js and
@@ -103,18 +123,6 @@ published real payouts per booked night. If those are still reachable in
   a `blob:` URL (`js/core/libs.js`); pdf.js runs with `isEvalSupported: false`
   (CVE-2024-4367). The Tesseract core and language data are pinned by version
   but can't be integrity-checked (the worker loads them itself).
-
-## Not done yet
-
-- **Cache-busting of ES modules.** `js/bootstrap.js` stamps only `app.js` with a
-  fresh `?v=`; the modules it imports use fixed or no version strings, so for up
-  to GitHub Pages' cache lifetime (~10 min) after a deploy a browser may run a new
-  `app.js` against older cached modules. The robust fix is an import map
-  (`<script type="importmap">`) with one build version for every module, but an
-  inline import map needs its hash in the page's Content-Security-Policy, and
-  keeping that hash and version in sync needs a small build/deploy step. The
-  `http-equiv` cache meta tags in `index.html` only affect the page itself, not
-  its scripts.
 
 ## Repository settings to apply by hand
 
@@ -124,6 +132,16 @@ These can't be set from the repository's files:
    passing `Privacy guard / pull-request` check; block force-pushes and deletion.
    (If the app's direct saves to `main` must keep working, add the app's token
    owner as a bypass actor, or at least protect `.github/**`.)
+
+   > **Warning:** a bypass actor bypasses *everything*. The app's PAT
+   > (Contents: write) is held in the browser of every device that uses the
+   > app; anyone who obtains it can push code straight to `main` — including
+   > changes to `index.html`, `js/` and the workflows — and Pages deploys it.
+   > Treat that token like a deploy key: fine-grained, this repository only,
+   > short expiry. A planned change stops the app from writing to `main` at
+   > all (its data already lives on the `data` branch, see
+   > [data-branch](data-branch.md)); once that is done, drop the bypass so the
+   > ruleset blocks the app's token from pushing to `main`.
 2. **CODEOWNERS for `.github/**`** (+ "Require review from Code Owners" in the
    ruleset), so the guard and workflows can't be changed without review.
 3. **Rulesets for `presence` and `rates-feed`**: restrict who can push; allow

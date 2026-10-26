@@ -19,10 +19,12 @@ when it finds:
 
 Branches with their own rules (only relevant to --all and --branch):
   rates-feed  only exports/daily-rates/*.json, in the documented public schema
-  presence    only the three presence/session JSON files, with no secrets
+  presence    only the three presence/session JSON files, each an encrypted
+              envelope, with no secrets
   data        the app's data once it has its own branch (docs/data-branch.md):
-              the main-branch rules (every data file encrypted), and no app
-              code - only the privacy-guard files may sit next to the data
+              the main-branch rules (every data file encrypted, attachments
+              under ID-based names), and no app code - only the
+              privacy-guard files may sit next to the data
 
 It never prints file contents - only commit, path and reason - because Actions
 logs of a public repository are public too.
@@ -86,6 +88,14 @@ FORBIDDEN = re.compile(r"^exports/")
 # base64url of a BTX1 container) + ".pdf"; the name itself (invoice number,
 # client, date) is sensitive.
 INVOICE_NAME = re.compile(r"^invoices/(backup/)?([^/]+)\.pdf$")
+# Property/client documents and expense receipts are stored under ID-based
+# names (properties.js / clients.js: {Root}/{record id}/{doc id}{ext};
+# expenses.js: expenses/receipts/{expense id}.{ext}; the "backup" copies keep
+# the same names under {Root}/backup/). The extension comes from the user's
+# own file name, so a long "extension" or a folder/file named after a client,
+# property or document leaks that text even though the content is encrypted.
+ATTACHMENT_ROOT = re.compile(r"^(Properties|Clients|expenses)/")
+ATTACHMENT_NAME = re.compile(r"(?:[A-Za-z0-9_\-]{1,128}/){1,4}[A-Za-z0-9_\-]{1,128}(?:\.[A-Za-z0-9]{1,5})?")
 
 # ── Secrets ───────────────────────────────────────────────────────────────────
 # Each is (description, regex). Applied to source files, plain-JSON branches and
@@ -394,6 +404,10 @@ def check_main(path, data):
         raw = b64strict(m.group(2), urlsafe=True)
         if raw is None or raw[:4] != b"BTX1" or len(raw) < 32:
             return "invoice PDF stored under a plain (unencrypted) file name"
+    m = ATTACHMENT_ROOT.match(path)
+    if m and not ATTACHMENT_NAME.fullmatch(path[m.end():]):
+        return ("attachment stored under a name that isn't ID-based (a folder/file name or an"
+                " extension longer than 5 letters/digits can leak what the file is)")
     return check_encrypted(path, data)
 
 
@@ -458,7 +472,9 @@ def check_presence(path, data):
     name = find_secret(data, code=False)
     if name:
         return f"contains what looks like {name}"
-    return json_key_problem(doc)
+    # presence.js encrypts every presence file (encryptJsonToEnvelope); a
+    # plain one would publish who is online, from where and when.
+    return check_envelope(doc) or json_key_problem(doc)
 
 
 # The data branch holds data files plus the three files that keep its own

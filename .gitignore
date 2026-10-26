@@ -6,3 +6,18 @@ exports/
 # Python bytecode (e.g. from running the privacy guard locally)
 __pycache__/
 *.pyc
+
+# Local backstop only: the app writes its data through the GitHub API, always
+# encrypted, and never from a local checkout. Nothing matching these should
+# ever be committed from a working copy (CLAUDE.md, docs/security.md). Don't
+# ignore data/ wholesale - data/github-config.json is tracked.
+/data/db.json
+/backups/
+/invoices/
+/debug/
+/Properties/
+/Clients/
+/expenses/
+*.csv
+.env*
+.DS_Store

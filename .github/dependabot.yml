@@ -1,6 +1,8 @@
-# Keeps the SHA-pinned GitHub Actions current. Dependabot opens a pull
-# request (checked by the privacy guard from the base branch) - review and
-# merge it; nothing is updated automatically.
+# Keeps the SHA-pinned GitHub Actions current. Dependabot opens ONE grouped
+# pull request a week for all action updates (checked by the privacy guard
+# from the base branch) - review and merge it; nothing is updated
+# automatically. Major bumps can change behaviour: read the action's release
+# notes before merging.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -8,3 +10,7 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"
