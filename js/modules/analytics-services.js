@@ -7,7 +7,7 @@ import {
   listActive, listActiveClients
 } from '../core/data.js';
 import { getMonthKeysForRange, makeMatchers } from './analytics-filters.js';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkInsightsBanner, safePct, mkTh, mkDrillValue, invoiceNetEUR, invoiceGrossEUR, invoiceBuckets, classifyInvoice, invoiceOwner, invoiceDueDate, invoiceDaysPastDue, invoiceAgingBucket, AGING_BUCKETS } from './analytics-helpers.js';
+import { mkSectionLabel, mkCollapsibleCard, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkInsightsBanner, safePct, mkTh, mkDrillValue, invoiceNetEUR, invoiceGrossEUR, invoiceBuckets, classifyInvoice, invoiceOwner, invoiceDueDate, invoiceDaysPastDue, invoiceAgingBucket, AGING_BUCKETS } from './analytics-helpers.js';
 import { todayYmd, diffDaysYmd } from '../core/dates.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
@@ -1136,28 +1136,12 @@ function buildView(gF, curRange, cmpRange, onChange, collectionCard) {
   );
   wrap.appendChild(collectionCard ? el('div', { class: 'grid grid-2 mb-16' }, collectionCard, agingCard) : agingCard);
 
-  // ── Invoice Records ────────────────────────────────────────────────────────
-  const tableCard = el('div', { class: 'card' });
-  const svcTableHeader = el('div', { class: 'card-header', style: 'cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between' });
-  const svcHeaderLeft = el('div', { style: 'display:flex;align-items:center;gap:16px' });
-  svcHeaderLeft.appendChild(el('div', { class: 'card-title' }, 'Invoice Records'));
-  svcHeaderLeft.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' },
-    gStatusFilter.size > 0 ? 'Status filter active' : 'All statuses'
-  ));
-  svcTableHeader.appendChild(svcHeaderLeft);
-  const svcChevron = el('span', { style: 'font-size:11px;color:var(--text-muted);display:inline-block;transition:transform 200ms' }, '▼');
-  svcTableHeader.appendChild(svcChevron);
-  tableCard.appendChild(svcTableHeader);
-  const svcTableBody = el('div');
-  buildInvoiceTable(svcTableBody, curData);
-  tableCard.appendChild(svcTableBody);
-  let svcCollapsed = false;
-  svcTableHeader.onclick = () => {
-    svcCollapsed = !svcCollapsed;
-    svcTableBody.style.display = svcCollapsed ? 'none' : '';
-    svcChevron.style.transform = svcCollapsed ? 'rotate(-90deg)' : '';
-  };
-  wrap.appendChild(tableCard);
+  // ── Invoice Records (collapsed until opened) ───────────────────────────────
+  wrap.appendChild(mkCollapsibleCard({
+    title: 'Invoice Records',
+    subtitle: el('div', { style: 'font-size:12px;color:var(--text-muted)' }, gStatusFilter.size > 0 ? 'Status filter active' : 'All statuses'),
+    build: body => buildInvoiceTable(body, curData)
+  }));
 
   const { keys: monthKeys } = getMonthKeysForRange(start, end);
   setTimeout(() => {

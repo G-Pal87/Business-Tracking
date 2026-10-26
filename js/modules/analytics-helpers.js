@@ -876,3 +876,33 @@ export function mkDashboardTabs(tabs, activeId, onSelect, storageKey) {
   return wrap;
 }
 
+// ── Collapsible records card ──────────────────────────────────────────────────
+
+/**
+ * mkCollapsibleCard({ title, subtitle, build, open }) — a card whose body is
+ * shown / hidden with a "Show <title>" / "Hide <title>" link in its header,
+ * the same look as Revenue Records. `subtitle` (optional node or text) sits
+ * next to the title. build(container) fills the body on first open, so a long
+ * record list costs nothing while collapsed. Starts collapsed unless `open`.
+ */
+export function mkCollapsibleCard({ title, subtitle = null, build, open = false }) {
+  const card = el('div', { class: 'card mb-16' });
+  const body = el('div', { style: open ? '' : 'display:none' });
+  const toggle = el('button', { type: 'button', style: 'background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:0;white-space:nowrap' },
+    `${open ? 'Hide' : 'Show'} ${title}`);
+  let built = false;
+  const ensureBuilt = () => { if (!built) { built = true; build(body); } };
+  if (open) ensureBuilt();
+  toggle.onclick = () => {
+    const hidden = body.style.display === 'none';
+    if (hidden) ensureBuilt();
+    body.style.display = hidden ? '' : 'none';
+    toggle.textContent = `${hidden ? 'Hide' : 'Show'} ${title}`;
+  };
+  card.appendChild(el('div', { class: 'card-header', style: 'display:flex;align-items:center;justify-content:space-between;gap:12px' },
+    el('div', { style: 'display:flex;align-items:center;gap:16px;flex-wrap:wrap' }, el('div', { class: 'card-title' }, title), subtitle),
+    toggle));
+  card.appendChild(body);
+  return card;
+}
+

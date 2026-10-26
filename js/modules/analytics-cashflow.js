@@ -10,7 +10,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine, resolveStream
 } from './analytics-filters.js';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, expStream, safePct, fmtK, mkInsightsBanner, mkDashboardTabs, loadDashboardTab, mkTh, mkDrillValue, groupByMonthKey } from './analytics-helpers.js';
+import { mkSectionLabel, mkCollapsibleCard, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, expStream, safePct, fmtK, mkInsightsBanner, mkDashboardTabs, loadDashboardTab, mkTh, mkDrillValue, groupByMonthKey } from './analytics-helpers.js';
 
 // Per-stream bucket for a cash-in record: the single stream resolver
 // (record.stream → linked property's type), else 'other' — so a payment
@@ -1754,13 +1754,9 @@ function buildNetCashFlowCard() {
   );
 }
 
-// ── Transactions card (collapsible) ───────────────────────────────────────────
+// ── Transactions card (collapsed until opened) ────────────────────────────────
 function buildTransactionsCard(curData) {
-  const tableCard = el('div', { class: 'card' });
-  const cfTableHeader = el('div', { class: 'card-header', style: 'cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between' });
-  const cfHeaderLeft = el('div', { style: 'display:flex;align-items:center;gap:16px' });
-  cfHeaderLeft.appendChild(el('div', { class: 'card-title' }, 'Transactions'));
-  cfHeaderLeft.appendChild(el('div', { style: 'display:flex;gap:12px;font-size:11px;color:var(--text-muted);align-items:center' },
+  const legend = el('div', { style: 'display:flex;gap:12px;font-size:11px;color:var(--text-muted);align-items:center' },
     el('span', { style: 'display:flex;align-items:center;gap:4px' },
       el('span', { style: 'width:10px;height:10px;border-left:3px solid #10b981;display:inline-block' }), 'Cash In'
     ),
@@ -1770,21 +1766,8 @@ function buildTransactionsCard(curData) {
     el('span', { style: 'display:flex;align-items:center;gap:4px' },
       el('span', { style: 'width:10px;height:10px;border-left:3px solid #b91c1c;display:inline-block' }), 'Invest. Out'
     )
-  ));
-  cfTableHeader.appendChild(cfHeaderLeft);
-  const cfChevron = el('span', { style: 'font-size:11px;color:var(--text-muted);display:inline-block;transition:transform 200ms' }, '▼');
-  cfTableHeader.appendChild(cfChevron);
-  tableCard.appendChild(cfTableHeader);
-  const cfTableBody = el('div');
-  buildCashFlowTable(cfTableBody, curData);
-  tableCard.appendChild(cfTableBody);
-  let cfCollapsed = false;
-  cfTableHeader.onclick = () => {
-    cfCollapsed = !cfCollapsed;
-    cfTableBody.style.display = cfCollapsed ? 'none' : '';
-    cfChevron.style.transform = cfCollapsed ? 'rotate(-90deg)' : '';
-  };
-  return tableCard;
+  );
+  return mkCollapsibleCard({ title: 'Transactions', subtitle: legend, build: body => buildCashFlowTable(body, curData) });
 }
 
 // ── Chart 1: Line — Cumulative Net Cash Flow ──────────────────────────────────

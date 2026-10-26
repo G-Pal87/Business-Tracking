@@ -17,7 +17,7 @@ import {
   getMonthKeysForRange, makeMatchers, resolveStream,
   buildFilterBar, buildComparisonLine
 } from './analytics-filters.js';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, mkDashboardTabs, loadDashboardTab, safePct, mkTh, mkDrillValue, groupByMonthKey } from './analytics-helpers.js';
+import { mkSectionLabel, mkCollapsibleCard, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, mkDashboardTabs, loadDashboardTab, safePct, mkTh, mkDrillValue, groupByMonthKey } from './analytics-helpers.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CHART_IDS = [
@@ -1914,29 +1914,12 @@ function mkViewToggle(options, current, onPick) {
   return toggle;
 }
 
-function cardSection(title, content) {
-  const card = el('div', { class: 'card mb-16' });
-  const body = el('div', { style: 'padding:0 16px 16px' });
-  body.appendChild(content);
-
-  const header = el('div', {
-    class: 'card-header',
-    style: 'cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between'
+function cardSection(title, content, { open = true } = {}) {
+  return mkCollapsibleCard({
+    title,
+    open,
+    build: body => body.appendChild(el('div', { style: 'padding:0 16px 16px' }, content))
   });
-  header.appendChild(el('div', { class: 'card-title' }, title));
-  const chevron = el('span', { style: 'font-size:11px;color:var(--text-muted);display:inline-block;transition:transform 200ms' }, '▼');
-  header.appendChild(chevron);
-
-  let collapsed = false;
-  header.onclick = () => {
-    collapsed = !collapsed;
-    body.style.display = collapsed ? 'none' : '';
-    chevron.style.transform = collapsed ? 'rotate(-90deg)' : '';
-  };
-
-  card.appendChild(header);
-  card.appendChild(body);
-  return card;
 }
 
 // ── Breakdown tables ──────────────────────────────────────────────────────────
@@ -3035,7 +3018,7 @@ function buildView() {
       ['STR Pending Pipeline by Month',    'anf-pending-pipeline'],
       ['STR Pending Pipeline by Property', 'anf-pending-by-prop']
     ]));
-    wrap.appendChild(cardSection('Pending Airbnb Reservations', buildPendingTable(data)));
+    wrap.appendChild(cardSection('Pending Airbnb Reservations', buildPendingTable(data), { open: false }));
     setTimeout(() => renderPipelineCharts(data), 0);
   }
 
