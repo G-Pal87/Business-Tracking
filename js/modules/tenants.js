@@ -254,6 +254,15 @@ function openForm(existing, onSave) {
   prorateChk.id = 'tenProrate_' + r.id;
   const prorateRow  = el('div', { style: 'display:flex;align-items:center;gap:8px;margin:2px 0 8px' }, prorateChk,
     el('label', { for: prorateChk.id, style: 'font-size:12px;cursor:pointer' }, 'Prorate rent for part months (move-in / move-out)'));
+  // Rent months run from the move-in day (in on the 13th → 13th–12th): the
+  // first payment is a full month and the last part calendar month owes
+  // nothing. On by default for new leases; existing leases keep calendar
+  // months until switched.
+  const moveInChk   = el('input', { type: 'checkbox' });
+  moveInChk.checked = existing ? r.rentFromMoveIn === true : true;
+  moveInChk.id = 'tenMoveIn_' + r.id;
+  const moveInRow   = el('div', { style: 'display:flex;align-items:center;gap:8px;margin:2px 0 8px' }, moveInChk,
+    el('label', { for: moveInChk.id, style: 'font-size:12px;cursor:pointer' }, 'Rent runs from move-in day (e.g. 13th to 12th of next month)'));
 
   body.appendChild(formRow('Name', nameI));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Phone', phoneI), formRow('Email', emailI)));
@@ -262,6 +271,7 @@ function openForm(existing, onSave) {
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Monthly Rent', rentI), formRow('Currency', currencyS)));
   body.appendChild(rentFromRow);
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Deposit', depositI), formRow('Payment Day (1–31)', payDayI)));
+  body.appendChild(moveInRow);
   body.appendChild(prorateRow);
   body.appendChild(formRow('Status', statusS));
   body.appendChild(formRow('Notes', notesT));
@@ -291,6 +301,7 @@ function openForm(existing, onSave) {
       status: statusS.value
     };
     if (prorateChk.checked) delete updated.prorateRent; else updated.prorateRent = false;
+    if (moveInChk.checked) updated.rentFromMoveIn = true; else delete updated.rentFromMoveIn;
     // Rent / currency changed on an existing tenant → record it from the
     // chosen month on. The first change seeds the history with the old rent
     // for every earlier month.

@@ -112,6 +112,31 @@ test('schedule: prorateRent false charges full part months; rent history per mon
   assert.equal(s.find(e => e.monthKey === '2024-09').amount, 850);
 });
 
+test('schedule: rentFromMoveIn runs months from the move-in day; early exit prorates the last period', () => {
+  load({
+    properties: [LT],
+    tenants: [{ id: 't1', propertyId: 'p1', status: 'past', monthlyRent: 900, rentFromMoveIn: true, paymentDayOfMonth: 10,
+      leaseStartDate: '2024-01-31', leaseEndDate: '2024-05-30' }],
+    payments: [{ id: 'a', propertyId: 'p1', type: 'rental', stream: 'long_term_rental', status: 'paid', amount: 900, date: '2024-01-10' }]
+  });
+  const s = data.generatePaymentSchedule(LT);
+  assert.deepEqual(s.map(e => [e.monthKey, e.covFrom, e.covTo, e.amount]), [
+    ['2024-01', '2024-01-31', '2024-02-28', 900],   // full first month, paid before move-in
+    ['2024-02', '2024-02-29', '2024-03-30', 900],   // anchor day 31 clamps to Feb 29, then back to 31
+    ['2024-03', '2024-03-31', '2024-04-29', 900],
+    ['2024-04', '2024-04-30', '2024-05-30', 900]    // lease ends the day before the next period
+  ]);
+  assert.equal(s[0].paid, true);
+  assert.equal(s[0].date, '2024-01-10');            // payment day kept as the due date
+  // Early exit: the last period is cut short and prorated by its own length.
+  load({ properties: [LT], tenants: [{ id: 't1', propertyId: 'p1', status: 'past', monthlyRent: 3100, rentFromMoveIn: true,
+    leaseStartDate: '2024-01-13', leaseEndDate: '2024-03-22' }] });
+  const e = data.generatePaymentSchedule(LT);
+  assert.deepEqual(e.map(x => [x.monthKey, x.covTo, x.amount]), [
+    ['2024-01', '2024-02-12', 3100], ['2024-02', '2024-03-12', 3100], ['2024-03', '2024-03-22', 1000] // 10/31
+  ]);
+});
+
 test('schedule: rent paid late settles its rent month; deposits never count as rent', () => {
   load({
     properties: [LT],

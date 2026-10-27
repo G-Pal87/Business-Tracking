@@ -2,7 +2,7 @@
 import { state, markDirty, runBatch, subscribe, dataRev } from './state.js';
 import { MASTER_CURRENCY, EXPENSE_CATEGORIES } from './config.js';
 import { today, toast } from './ui.js';
-import { daysInMonth, diffDaysYmd, addMonthsYmd } from './dates.js';
+import { daysInMonth, diffDaysYmd, addMonthsYmd, addDaysYmd } from './dates.js';
 
 const _fmtCache    = new Map();
 const _numFmtCache = new Map();
@@ -1069,7 +1069,7 @@ const _addMonthsMk = (mk, n) => addMonthsYmd(`${mk}-01`, n).slice(0, 7);
 
 // Internal helper: raw (unlinked) schedule entries for one lease segment.
 // leaseData: monthlyRent, currency, rentHistory?, leaseStartDate?,
-// leaseEndDate?, paymentDayOfMonth?, prorateRent?
+// leaseEndDate?, paymentDayOfMonth?, prorateRent?, rentFromMoveIn?
 // A month the lease only partly covers (starts on the 20th, ends on the 15th)
 // is prorated by days unless the tenant has prorateRent === false. The due
 // day is capped at the month's real length (31 → 30 Apr / 28 Feb), and a
@@ -1085,6 +1085,33 @@ function _scheduleSegment(leaseData, tenantId) {
   const rentHist = _sortedRentHistory(leaseData);
 
   const results = [];
+  // Rent runs from move-in day (13th–12th): one full month per period, each
+  // filed under the month it starts in, so the first payment covers the
+  // first whole month and the last part calendar month owes nothing. Only a
+  // period cut short by the lease end (early exit) is prorated.
+  if (leaseData.rentFromMoveIn && ls) {
+    const anchor = Number(ls.slice(8, 10));
+    for (let k = 0; k < 1200; k++) {
+      const pStart = addMonthsYmd(ls, k, anchor);
+      const mk = pStart.slice(0, 7);
+      if ((le && pStart > le) || mk > endMk) break;
+      const pEnd = addDaysYmd(addMonthsYmd(ls, k + 1, anchor), -1);
+      const covTo = le && le < pEnd ? le : pEnd;
+      const rent = _rentFromSorted(leaseData, rentHist, mk);
+      const periodDays = diffDaysYmd(pStart, pEnd) + 1;
+      const days = diffDaysYmd(pStart, covTo) + 1;
+      const amount = prorate && days < periodDays ? Math.round(rent.amount * days / periodDays * 100) / 100 : rent.amount;
+      const y = Number(mk.slice(0, 4)), m = Number(mk.slice(5, 7));
+      const date = `${mk}-${_pad2(Math.min(payDay, daysInMonth(y, m)))}`;
+      results.push({
+        date, monthKey: mk, covFrom: pStart, covTo,
+        amount, currency: rent.currency,
+        amountEUR: toEUR(amount, rent.currency, y),
+        tenantId: tenantId || null
+      });
+    }
+    return results;
+  }
   for (let mk = startMk, guard = 0; mk <= endMk && guard < 1200; mk = _addMonthsMk(mk, 1), guard++) {
     const y = Number(mk.slice(0, 4)), m = Number(mk.slice(5, 7));
     const dim = daysInMonth(y, m);
