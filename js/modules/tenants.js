@@ -217,13 +217,23 @@ function openForm(existing, onSave) {
   const statusS     = select(Object.entries(STATUSES).map(([v, m]) => ({ value: v, label: m.label })), r.status || 'active');
   const notesT      = textarea({ placeholder: 'Notes' });
   notesT.value = r.notes || '';
-  // Rent change effective from — only for an existing tenant whose rent or
+  // Rent change effective from — for an existing tenant whose rent or
   // currency is edited: earlier months keep the old rent (rentHistory)
-  // instead of the whole schedule being rewritten at the new rate.
+  // instead of the whole schedule being rewritten at the new rate. Also shown
+  // when the tenant already has a rent history, so a change saved from the
+  // wrong month can be moved without re-typing the rent. A month at or before
+  // the lease start applies the rent to the whole lease.
+  const hasRentHist = !!existing && Array.isArray(existing.rentHistory) && existing.rentHistory.length > 0;
+  const rentChanged = () => !!existing && (Number(rentI.value) !== Number(existing.monthlyRent) || currencyS.value !== (existing.currency || 'EUR'));
   const rentFromI   = input({ type: 'month', value: thisMonthYm() });
-  const rentFromRow = formRow('Rent change effective from', rentFromI);
+  let rentFromTouched = false;
+  rentFromI.addEventListener('input', () => { rentFromTouched = true; });
+  rentFromI.addEventListener('change', () => { rentFromTouched = true; });
+  const rentFromRow = el('div', {}, formRow('Rent change effective from', rentFromI),
+    el('div', { style: 'font-size:11px;color:var(--text-muted);margin:-4px 0 8px' },
+      'Earlier months keep the previous rent. Pick the lease start month to apply this rent to the whole lease.'));
   const syncRentFrom = () => {
-    rentFromRow.style.display = existing && (Number(rentI.value) !== Number(existing.monthlyRent) || currencyS.value !== (existing.currency || 'EUR')) ? '' : 'none';
+    rentFromRow.style.display = existing && (rentChanged() || hasRentHist) ? '' : 'none';
   };
   rentI.addEventListener('input', syncRentFrom);
   currencyS.addEventListener('change', syncRentFrom);
@@ -275,15 +285,24 @@ function openForm(existing, onSave) {
     // Rent / currency changed on an existing tenant → record it from the
     // chosen month on. The first change seeds the history with the old rent
     // for every earlier month.
-    if (existing && (updated.monthlyRent !== Number(existing.monthlyRent) || updated.currency !== (existing.currency || 'EUR'))) {
+    // An unchanged rent with a re-picked month moves the latest change.
+    if (existing && (rentChanged() || (hasRentHist && rentFromTouched))) {
       const from = /^\d{4}-\d{2}$/.test(rentFromI.value) ? rentFromI.value : thisMonthYm();
-      const hist = Array.isArray(existing.rentHistory) && existing.rentHistory.length
+      const hist = hasRentHist
         ? [...existing.rentHistory]
         : [{ from: '0000-01', amount: Number(existing.monthlyRent) || 0, currency: existing.currency || 'EUR' }];
-      updated.rentHistory = [
-        ...hist.filter(h => h && typeof h.from === 'string' && h.from.slice(0, 7) < from),
-        { from, amount: updated.monthlyRent, currency: updated.currency }
-      ];
+      // Rent unchanged: drop the entry that set the current rent so it moves
+      // to the picked month instead of staying where it was saved.
+      const last = hist[hist.length - 1];
+      if (!rentChanged() && hist.length > 1 && last && Number(last.amount) === updated.monthlyRent && (last.currency || 'EUR') === updated.currency) hist.pop();
+      if (updated.leaseStartDate && from <= updated.leaseStartDate.slice(0, 7)) {
+        delete updated.rentHistory;
+      } else {
+        updated.rentHistory = [
+          ...hist.filter(h => h && typeof h.from === 'string' && h.from.slice(0, 7) < from),
+          { from, amount: updated.monthlyRent, currency: updated.currency }
+        ];
+      }
     }
 
     // Duplicate-name guard
