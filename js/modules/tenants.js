@@ -225,18 +225,27 @@ function openForm(existing, onSave) {
   // the lease start applies the rent to the whole lease.
   const hasRentHist = !!existing && Array.isArray(existing.rentHistory) && existing.rentHistory.length > 0;
   const rentChanged = () => !!existing && (Number(rentI.value) !== Number(existing.monthlyRent) || currencyS.value !== (existing.currency || 'EUR'));
-  const rentFromI   = input({ type: 'month', value: thisMonthYm() });
+  // Prefilled with the month the current rent took effect (when there is a
+  // history) so it reads as "this rent applies from …"; changing it moves
+  // that change. Compared by value on save, not by input events.
+  const lastHist    = hasRentHist ? existing.rentHistory[existing.rentHistory.length - 1] : null;
+  const histFrom    = lastHist && /^\d{4}-\d{2}/.test(lastHist.from || '') && !lastHist.from.startsWith('0000') ? lastHist.from.slice(0, 7) : '';
+  const rentFromI   = input({ type: 'month', value: histFrom || thisMonthYm() });
   let rentFromTouched = false;
   rentFromI.addEventListener('input', () => { rentFromTouched = true; });
   rentFromI.addEventListener('change', () => { rentFromTouched = true; });
+  // Editing the rent with the month untouched defaults it to this month.
+  const syncRentFromDefault = () => {
+    if (!rentFromTouched && histFrom) rentFromI.value = rentChanged() ? thisMonthYm() : histFrom;
+  };
   const rentFromRow = el('div', {}, formRow('Rent change effective from', rentFromI),
     el('div', { style: 'font-size:11px;color:var(--text-muted);margin:-4px 0 8px' },
       'Earlier months keep the previous rent. Pick the lease start month to apply this rent to the whole lease.'));
   const syncRentFrom = () => {
     rentFromRow.style.display = existing && (rentChanged() || hasRentHist) ? '' : 'none';
   };
-  rentI.addEventListener('input', syncRentFrom);
-  currencyS.addEventListener('change', syncRentFrom);
+  rentI.addEventListener('input', () => { syncRentFromDefault(); syncRentFrom(); });
+  currencyS.addEventListener('change', () => { syncRentFromDefault(); syncRentFrom(); });
   syncRentFrom();
   // Part months (lease starting on the 20th, ending on the 15th) are prorated
   // by days; untick for leases that charge a full first/last month.
@@ -286,7 +295,7 @@ function openForm(existing, onSave) {
     // chosen month on. The first change seeds the history with the old rent
     // for every earlier month.
     // An unchanged rent with a re-picked month moves the latest change.
-    if (existing && (rentChanged() || (hasRentHist && rentFromTouched))) {
+    if (existing && (rentChanged() || (hasRentHist && /^\d{4}-\d{2}$/.test(rentFromI.value) && rentFromI.value !== (histFrom || thisMonthYm())))) {
       const from = /^\d{4}-\d{2}$/.test(rentFromI.value) ? rentFromI.value : thisMonthYm();
       const hist = hasRentHist
         ? [...existing.rentHistory]
