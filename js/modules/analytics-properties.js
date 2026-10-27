@@ -1789,9 +1789,11 @@ function buildView() {
   if (gTab === 'overview') {
     if (compLine) wrap.appendChild(compLine);
     // Overview shows only today's figures — no timeline.
+    // One value tile (equity underneath) beside the period figures; the full
+    // value breakdown lives on the Portfolio & Value tab.
     const mvData = memoView('analytics-properties:mv-now', viewDeps, () => getMarketValueData(allProps, { timeline: false }));
-    wrap.appendChild(buildMarketValueKpis(mvData));
-    wrap.appendChild(el('div', { class: 'grid grid-4 mb-16' }, revCard, profitCard, yieldCard, vacancyCard));
+    wrap.appendChild(el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px' },
+      buildOverviewValueCard(mvData), revCard, profitCard, yieldCard, vacancyCard));
     if (banner) wrap.appendChild(banner);
     wrap.appendChild(buildLeaseExpiryCard());
   }
@@ -2048,8 +2050,22 @@ function buildMarketValueSection({ current, totals, valueYearAgo }, { kpis = tru
   return section;
 }
 
-// The four market value tiles (Portfolio & Value section and the Overview);
-// `purchase` adds a Total Purchase Price tile first (Portfolio & Value tab).
+// Overview's single value tile: market value vs a year ago, equity beneath.
+function buildOverviewValueCard({ current, totals, valueYearAgo }) {
+  return mkKpiCard({
+    label: 'Portfolio Market Value',
+    value: formatEUR(totals.value),
+    subtitle: totals.mortgage > 0 ? `Equity ${formatEUR(totals.equity)} after est. mortgage` : `Equity ${formatEUR(totals.equity)} · no mortgage`,
+    delta: valueYearAgo > 0 ? safePct(totals.value, valueYearAgo) : null,
+    compLabel: '1 year ago',
+    compValue: valueYearAgo > 0 ? formatEUR(valueYearAgo) : undefined,
+    onClick: () => drillDownModal('Portfolio Market Value', toMarketValueRows(current), MV_COLS),
+    explain: { formula: 'Σ latest valuation on/before today (else purchase price); equity = value − estimated remaining mortgage', note: 'Purchase price, gain and total return are on the Portfolio & Value tab.' }
+  });
+}
+
+// The market value tiles (Portfolio & Value tab);
+// `purchase` adds a Total Purchase Price tile first.
 function buildMarketValueKpis({ current, totals, valueYearAgo }, { purchase = false } = {}) {
   const pct = (a, b) => b > 0 ? (a / b) * 100 : null;
   const fmtPct = v => v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
