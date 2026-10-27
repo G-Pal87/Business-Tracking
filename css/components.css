@@ -263,6 +263,7 @@ tr.sf-paged-out { display: none; }
 .prop-card-name { font-size: 15px; font-weight: 600; }
 .prop-card-loc { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 .prop-card-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.prop-card-stats.four { grid-template-columns: repeat(2, 1fr); }
 .prop-card-stat-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .prop-card-stat-value { font-size: 13px; font-weight: 600; margin-top: 2px; }
 

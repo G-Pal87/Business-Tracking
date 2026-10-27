@@ -362,13 +362,14 @@ function card(p, stats) {
     el('span', { class: `badge ${p.type === 'short_term' ? 'short' : 'long'}` }, p.type === 'short_term' ? 'Short-term' : 'Long-term'),
     el('span', { class: 'badge' }, getPersonName(p.owner || 'both'))
   ));
-  // Once a market valuation is recorded, the card shows the latest value
-  // (with its change vs purchase) in place of the purchase price.
+  // Purchase price always shows; the latest market valuation (with its change
+  // vs purchase) sits next to it once one is recorded.
   const lastVal = propertyValuations(p).filter(v => v.date <= todayYmd()).pop();
   const valueStat = lastVal
     ? statBox('Value', `${formatMoney(lastVal.value, p.currency, { maxFrac: 0 })}${p.purchasePrice > 0 ? ` (${lastVal.value >= p.purchasePrice ? '+' : ''}${((lastVal.value / p.purchasePrice - 1) * 100).toFixed(0)}%)` : ''}`)
-    : statBox('Purchase', formatMoney(p.purchasePrice, p.currency, { maxFrac: 0 }));
-  c.appendChild(el('div', { class: 'prop-card-stats' },
+    : statBox('Value', 'Not valued');
+  c.appendChild(el('div', { class: 'prop-card-stats four' },
+    statBox('Purchase', p.purchasePrice > 0 ? formatMoney(p.purchasePrice, p.currency, { maxFrac: 0 }) : '—'),
     valueStat,
     statBox('Rev YTD', formatEUR(rev)),
     statBox('ROI', `${roi.toFixed(1)}%`)

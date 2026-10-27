@@ -1831,7 +1831,7 @@ function buildView() {
     const mvData = memoView('analytics-properties:mv-full', { ...viewDeps, gMvInterval }, () => getMarketValueData(allProps));
     // KPI cards lead the tab: portfolio units + the four market value tiles in one row.
     wrap.appendChild(el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px' },
-      unitsCard, ...buildMarketValueKpis(mvData).children));
+      unitsCard, ...buildMarketValueKpis(mvData, { purchase: true }).children));
     wrap.appendChild(buildMarketValueSection(mvData, { kpis: false }));
     wrap.appendChild(el('div', { class: 'mb-16' }, buildInvestedSplitCard()));
     const lifecycleTimeline = buildPropertyLifecycleTimeline(propData);
@@ -1934,6 +1934,7 @@ function getMarketValueData(allProps, { timeline: withTimeline = true } = {}) {
   const sum = (rows, k) => rows.reduce((s, r) => s + (r.m[k] || 0), 0);
   const totals = {
     value:       sum(current, 'valueEUR'),
+    purchase:    sum(current, 'purchaseEUR'),
     invested:    sum(current, 'investedEUR'),
     gain:        sum(current, 'gainEUR'),
     netIncome:   sum(current, 'netIncomeEUR'),
@@ -2047,14 +2048,22 @@ function buildMarketValueSection({ current, totals, valueYearAgo }, { kpis = tru
   return section;
 }
 
-// The four market value tiles (Portfolio & Value section and the Overview).
-function buildMarketValueKpis({ current, totals, valueYearAgo }) {
+// The four market value tiles (Portfolio & Value section and the Overview);
+// `purchase` adds a Total Purchase Price tile first (Portfolio & Value tab).
+function buildMarketValueKpis({ current, totals, valueYearAgo }, { purchase = false } = {}) {
   const pct = (a, b) => b > 0 ? (a / b) * 100 : null;
   const fmtPct = v => v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
   const rows = toMarketValueRows(current);
   const open = title => () => drillDownModal(title, rows, MV_COLS);
 
   const kpis = el('div', { class: 'grid grid-4 mb-16' });
+  if (purchase) kpis.appendChild(mkKpiCard({
+    label: 'Total Purchase Price',
+    value: formatEUR(totals.purchase),
+    subtitle: `${formatEUR(totals.invested)} incl. CapEx · value ${fmtPct(pct(totals.value - totals.purchase, totals.purchase))}`,
+    onClick: open('Total Purchase Price'),
+    explain: { formula: 'Σ purchase price of the properties held today', note: 'Each converted to EUR at the rate on its purchase date. "incl. CapEx" adds all-time renovation spend; "value" is the market value change vs purchase.' }
+  }));
   kpis.appendChild(mkKpiCard({
     label: 'Portfolio Market Value',
     value: formatEUR(totals.value),
