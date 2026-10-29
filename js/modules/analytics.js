@@ -67,7 +67,7 @@ export default {
 // ── Data aggregation ──────────────────────────────────────────────────────────
 function getData(start, end) {
   const inRange = d => !!d && d >= start && d <= end;
-  const { mStream, mOwner, mInvOwner, mProperty, mClient } = makeMatchers(gF);
+  const { mStream, mOwner, mInvOwner, mProperty, mClient, shareRow, shareInv } = makeMatchers(gF);
   const coPropIds = companyPropIds();
   const isCoRec = gScope === 'all'
     ? () => true
@@ -76,14 +76,14 @@ function getData(start, end) {
   // Paid rental income
   const payments = listActivePayments().filter(p =>
     p.status === 'paid' && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p)
-  );
+  ).map(shareRow); // shared records at the selected owner's share
 
   // All in-range invoices passing the filters, classified once by the shared
   // invoiceBuckets() rule (drafts never outstanding; overdue = past due date
   // or flagged overdue; missing due date → issue date + 30 days).
   const invBk = invoiceBuckets(listActive('invoices').filter(i =>
     inRange(i.issueDate) && mStream(i) && mInvOwner(i) && mProperty(i) && mClient(i)
-  ));
+  ).map(shareInv));
 
   // Paid service invoices
   const invoices = invBk.paid;
@@ -92,7 +92,7 @@ function getData(start, end) {
   // belong in the pipeline alongside 'pending'.
   const pendingPayments = listActivePayments().filter(p =>
     (p.status === 'pending' || p.status === 'overdue') && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p)
-  );
+  ).map(shareRow);
 
   // Outstanding invoices (sent/overdue — not paid, draft, cancelled or void)
   const outstandingInvoices = invBk.outstanding;
@@ -106,8 +106,8 @@ function getData(start, end) {
   // a Short-term filter subtracted every company expense from STR revenue.
   const mExpStream = e => !gF.streams.size || gF.streams.has(expStream(e));
   const allExp    = listActive('expenses');
-  const opExpenses  = allExp.filter(e => !isCapEx(e) && inRange(e.date) && mExpStream(e) && mOwner(e) && mProperty(e) && isCoRec(e));
-  const capExpenses = allExp.filter(e =>  isCapEx(e) && inRange(e.date) && mExpStream(e) && mOwner(e) && mProperty(e) && isCoRec(e));
+  const opExpenses  = allExp.filter(e => !isCapEx(e) && inRange(e.date) && mExpStream(e) && mOwner(e) && mProperty(e) && isCoRec(e)).map(shareRow);
+  const capExpenses = allExp.filter(e =>  isCapEx(e) && inRange(e.date) && mExpStream(e) && mOwner(e) && mProperty(e) && isCoRec(e)).map(shareRow);
 
   // Revenue totals. P&L figures (Total Revenue, Net Operating Profit, Expense Ratio) use
   // subtotal (VAT-exclusive) — VAT collected on invoices isn't the company's revenue, it's
@@ -962,7 +962,7 @@ function buildInsights(cur, cmp, cmpRange, start, end) {
 // target ÷ 12 per month. Each forecast contributes one or the other, never
 // both, so nothing is double counted.
 function periodForecastRevenue(start, end) {
-  const { mStream, mOwner, mProperty } = makeMatchers(gF);
+  const { mStream, mOwner, mProperty, wOwner } = makeMatchers(gF);
   const coPropIds = companyPropIds();
   const { keys } = getMonthKeysForRange(start, end);
   const monthVal = md => {
@@ -971,7 +971,11 @@ function periodForecastRevenue(start, end) {
   };
   let total = 0;
   for (const fc of listActive('forecasts')) {
+    // Owner share: a property forecast follows its property's owner; a
+    // service forecast (per stream, no owner) counts as shared.
+    let w = 1;
     if (fc.type === 'property') {
+      w = wOwner({ propertyId: fc.entityId });
       // Same matchers the actual rental revenue went through.
       const row = { propertyId: fc.entityId };
       if (!mStream(row) || !mOwner(row) || !mProperty(row)) continue;
@@ -980,6 +984,7 @@ function periodForecastRevenue(start, end) {
       // Service forecasts are per stream; invoices without a property drop out
       // under a Property filter, so the service forecast does too.
       if (!mStream({ stream: fc.entityId }) || gF.propertyIds.size) continue;
+      w = wOwner({ owner: 'both' });
     } else {
       continue; // only per-entity forecasts — never an aggregate on top of them
     }
@@ -992,7 +997,7 @@ function periodForecastRevenue(start, end) {
       const to    = end   < last  ? end   : last;
       const frac  = (+to.slice(8, 10) - +from.slice(8, 10) + 1) / dim;
       if (frac <= 0) continue;
-      total += frac * (hasMonthly ? monthVal(fc.months?.[m.key]) : (Number(fc.yearTarget?.revenue) || 0) / 12);
+      total += w * frac * (hasMonthly ? monthVal(fc.months?.[m.key]) : (Number(fc.yearTarget?.revenue) || 0) / 12);
     }
   }
   return total;

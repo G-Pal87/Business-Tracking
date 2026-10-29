@@ -307,7 +307,30 @@ export function makeMatchers(gF) {
     mInvOwner: inv => { if (!gF.owners.size)       return true; const ow = invoiceOwner(inv); return ow === 'both' || gF.owners.has(ow); },
     mProperty: row => { if (!gF.propertyIds.size)  return true; if (!row.propertyId) return false; return gF.propertyIds.has(row.propertyId); },
     mClient:   row => { if (!gF.clientIds.size)    return true; if (!row.clientId)   return false; return gF.clientIds.has(row.clientId); },
+    // Owner share under the Owner filter: 1 with no owner (or every partner)
+    // selected; a shared ('both') record counts half per selected partner, so
+    // one partner's figures plus the other's add up to the total instead of
+    // counting shared records twice. shareRow / shareInv return the record
+    // itself at full share, else a copy with its money fields scaled.
+    wOwner:    row => ownerWeight(gF, row.propertyId ? (byId('properties', row.propertyId)?.owner || 'both') : (row.owner || 'both')),
+    wInvOwner: inv => ownerWeight(gF, invoiceOwner(inv)),
+    shareRow:  row => scaleMoney(row, ownerWeight(gF, row.propertyId ? (byId('properties', row.propertyId)?.owner || 'both') : (row.owner || 'both'))),
+    shareInv:  inv => scaleMoney(inv, ownerWeight(gF, invoiceOwner(inv))),
   };
+}
+
+export function ownerWeight(gF, ow) {
+  if (!gF.owners.size) return 1;
+  if (ow === 'both') return Math.min(1, 0.5 * gF.owners.size);
+  return gF.owners.has(ow) ? 1 : 0;
+}
+
+const MONEY_FIELDS = ['amount', 'total', 'subtotal', 'tax', 'vat', 'vatAmount', 'grossAmount', 'netAmount'];
+function scaleMoney(row, w) {
+  if (w === 1) return row;
+  const c = { ...row, _ownerShare: w };
+  for (const k of MONEY_FIELDS) if (typeof c[k] === 'number') c[k] *= w;
+  return c;
 }
 
 // Distinct (propertyId, resolved stream) pairs over all active payments, in
