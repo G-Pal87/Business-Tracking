@@ -179,7 +179,10 @@ export function line(id, { labels, datasets, onClickItem }) {
 // `formatValue` (optional) formats the drawn value labels and the showTotals
 // footer/labels — defaults to whole euros; pass e.g. v => v.toFixed(0) + '%'
 // for a percentage chart so it isn't mislabelled with "€".
-export function bar(id, { labels, datasets, stacked = false, horizontal = false, onClickItem, showTotals = false, formatValue = fmtEURLabel }) {
+// `overlayLine` ({ label, data, color }): an optional line on its own right-hand
+// axis (whole numbers, e.g. a count) drawn over vertical bars; it is left out
+// of the stack totals.
+export function bar(id, { labels, datasets, stacked = false, horizontal = false, onClickItem, showTotals = false, formatValue = fmtEURLabel, overlayLine = null }) {
   destroy(id);
   pruneDetached();
   const canvas = document.getElementById(id);
@@ -225,7 +228,7 @@ export function bar(id, { labels, datasets, stacked = false, horizontal = false,
   const localPlugins = [];
   if (showTotals) {
     const sumAt = (chart, i) => chart.data.datasets.reduce(
-      (s, ds, di) => s + (chart.isDatasetVisible(di) ? (ds.data[i] || 0) : 0), 0);
+      (s, ds, di) => s + (ds.type !== 'line' && chart.isDatasetVisible(di) ? (ds.data[i] || 0) : 0), 0);
     opts.plugins.tooltip.callbacks = {
       footer: items => items.length
         ? 'Total: ' + formatValue(sumAt(items[0].chart, items[0].dataIndex))
@@ -260,11 +263,20 @@ export function bar(id, { labels, datasets, stacked = false, horizontal = false,
   // deliberately skipped for stacked charts.
   if (!stacked) localPlugins.push(valueLabelsPlugin(horizontal, formatValue));
 
+  const allDatasets = datasets.map(d => ({ borderRadius: 4, order: 1, ...d }));
+  if (overlayLine && !horizontal) {
+    opts.scales.y1 = { position: 'right', beginAtZero: true, grace: '12%', grid: { drawOnChartArea: false },
+      ticks: { color: '#8b93b0', font: { size: 11 }, precision: 0 } };
+    allDatasets.push({ type: 'line', label: overlayLine.label, data: overlayLine.data, yAxisID: 'y1', order: 0,
+      borderColor: overlayLine.color || '#e4e8f1', backgroundColor: overlayLine.color || '#e4e8f1',
+      tension: 0, pointRadius: 3, stepped: overlayLine.stepped || false });
+  }
+
   queueChart(id, canvas, {
     type: 'bar',
     data: {
       labels,
-      datasets: datasets.map(d => ({ borderRadius: 4, ...d }))
+      datasets: allDatasets
     },
     options: opts,
     plugins: localPlugins
