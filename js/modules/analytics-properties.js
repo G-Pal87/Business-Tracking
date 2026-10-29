@@ -40,6 +40,13 @@ const MORT_MONEY = ['principalEUR', 'remaining', 'monthlyDebt'];
 // Value-type figures (units, market value, mortgage) are read as of the end of
 // the selected period — today for a period that hasn't ended.
 const asOfDate = range => (range?.end && range.end < todayYmd() ? range.end : todayYmd());
+// Charts on the value tabs run over the selected period; "All Time" (null)
+// keeps the whole history from the first purchase.
+const windowFrom = range => (gF.period === 'all' ? null : range?.start || null);
+const monthsBetween = (a, b) => (Number(b.slice(0, 4)) - Number(a.slice(0, 4))) * 12 + Number(b.slice(5, 7)) - Number(a.slice(5, 7)) + 1;
+const monthEnd = ym => `${ym}-${String(new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0)).getUTCDate()).padStart(2, '0')}`;
+const nextYm = ym => { const y = Number(ym.slice(0, 4)), m = Number(ym.slice(5, 7)); return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`; };
+const ymLabel = ym => `${MONTH_LABELS[Number(ym.slice(5, 7)) - 1]} ${ym.slice(0, 4)}`;
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const CHART_IDS    = ['prop-profit-hbar', 'prop-month-bar', 'prop-single-trend', 'prop-mv-line', 'prop-mv-by-prop', 'prop-invested-donut', 'prop-acq-bar'];
@@ -1336,22 +1343,27 @@ function openTimelineInfoModal(title, fields) {
   openModal({ title, body });
 }
 
-function buildPropertyLifecycleTimeline(propData) {
+// `win` ({ from, to }) clips the timeline to the selected period: only
+// properties held in it, only leases/renovations/vacancies overlapping it,
+// and purchase/sale markers only when they fall inside it. Without it the
+// whole history is shown.
+function buildPropertyLifecycleTimeline(propData, win = null) {
   const LABEL_W = 200;
   const todayStr = today();
   const tenantEnd = t => t.leaseEndDate || t.terminationDate || todayStr;
   const renoEnd   = r => r.endDate || todayStr;
   const vacEnd    = v => v.endDate || todayStr;
+  const overlaps = (s, e) => !win || ((s || '') <= win.to && (e || '9999-12-31') >= win.from);
 
   const rows = propData
-    .filter(d => d.prop.purchaseDate)
+    .filter(d => d.prop.purchaseDate && overlaps(d.prop.purchaseDate, d.prop.status === 'sold' ? d.prop.soldDate : null))
     .map(d => ({
       prop: d.prop,
       tenants: listActive('tenants')
-        .filter(t => t.propertyId === d.prop.id && t.leaseStartDate && t.status !== 'prospective')
+        .filter(t => t.propertyId === d.prop.id && t.leaseStartDate && t.status !== 'prospective' && overlaps(t.leaseStartDate, tenantEnd(t)))
         .sort((a, b) => (a.leaseStartDate || '').localeCompare(b.leaseStartDate || '')),
-      renovations: [...(d.prop.renovationPeriods || [])].sort((a, b) => (a.startDate || '').localeCompare(b.startDate || '')),
-      vacancies: [...(d.prop.vacantPeriods || [])].sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''))
+      renovations: [...(d.prop.renovationPeriods || [])].filter(r => overlaps(r.startDate, renoEnd(r))).sort((a, b) => (a.startDate || '').localeCompare(b.startDate || '')),
+      vacancies: [...(d.prop.vacantPeriods || [])].filter(v => overlaps(v.startDate, vacEnd(v))).sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''))
     }))
     .sort((a, b) => (a.prop.purchaseDate || '').localeCompare(b.prop.purchaseDate || ''));
 
@@ -1381,6 +1393,8 @@ function buildPropertyLifecycleTimeline(propData) {
     }
     if (r.prop.status === 'sold' && r.prop.soldDate && r.prop.soldDate > axisEnd) axisEnd = r.prop.soldDate;
   }
+  if (win) { axisStart = win.from; axisEnd = win.to; }
+  const onAxis = d => !!d && d >= axisStart && d <= axisEnd;
 
   const parseD = s => new Date(`${s}T00:00:00Z`).getTime();
   const startMs = parseD(axisStart);
@@ -1489,16 +1503,16 @@ function buildPropertyLifecycleTimeline(propData) {
       ['Status', PROPERTY_STATUSES[prop.status]?.label || prop.status],
       [prop.status === 'sold' ? 'Held For' : 'Owned For', durationLabel(prop.purchaseDate, buyEndForOwnership)]
     ]);
-    const buyMarker = el('div', { style: `position:absolute;left:${buyLeft}%;top:0;bottom:0;width:2px;cursor:pointer;background:var(--info);transform:translateX(-1px)` });
+    const buyMarker = el('div', { style: `position:absolute;left:${buyLeft}%;top:0;bottom:0;width:2px;cursor:pointer;background:var(--info);transform:translateX(-1px)${onAxis(prop.purchaseDate) ? '' : ';display:none'}` });
     buyMarker.title = `Purchased ${fmtDate(prop.purchaseDate)}` + (prop.purchasePrice ? ` · ${formatMoney(prop.purchasePrice, prop.currency, { maxFrac: 0 })}` : '');
     buyMarker.onclick = onBuyClick;
     track.appendChild(buyMarker);
-    const buyDot = el('div', { style: `position:absolute;left:${buyLeft}%;top:-2px;width:8px;height:8px;border-radius:50%;cursor:pointer;background:var(--info);transform:translateX(-3px);box-shadow:var(--shadow-sm)` });
+    const buyDot = el('div', { style: `position:absolute;left:${buyLeft}%;top:-2px;width:8px;height:8px;border-radius:50%;cursor:pointer;background:var(--info);transform:translateX(-3px);box-shadow:var(--shadow-sm)${onAxis(prop.purchaseDate) ? '' : ';display:none'}` });
     buyDot.title = buyMarker.title;
     buyDot.onclick = onBuyClick;
     track.appendChild(buyDot);
 
-    if (prop.status === 'sold' && prop.soldDate) {
+    if (prop.status === 'sold' && onAxis(prop.soldDate)) {
       const soldLeft = pct(prop.soldDate);
       const onSoldClick = () => openTimelineInfoModal(`${prop.name} — Sold`, [
         ['Sold Date', fmtDate(prop.soldDate)],
@@ -1875,16 +1889,16 @@ function buildView() {
   }
 
   if (gTab === 'value') {
-    const mvData = memoView('analytics-properties:mv-full', { ...viewDeps, gMvInterval }, () => getMarketValueData(allProps, { asOf }));
+    const mvData = memoView('analytics-properties:mv-full', { ...viewDeps, gMvInterval }, () => getMarketValueData(allProps, { asOf, from: windowFrom(curRange) }));
     // KPI cards lead the tab: portfolio units + the four market value tiles in one row.
     wrap.appendChild(el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px' },
       unitsCard, ...buildMarketValueKpis(mvData, { purchase: true }).children));
     wrap.appendChild(buildMarketValueSection(mvData, { kpis: false }));
     wrap.appendChild(el('div', { class: 'mb-16' }, buildInvestedSplitCard()));
-    wrap.appendChild(el('div', { class: 'mb-16' }, buildAcquisitionsCard(propData, asOf)));
-    const lifecycleTimeline = buildPropertyLifecycleTimeline(propData);
+    wrap.appendChild(el('div', { class: 'mb-16' }, buildAcquisitionsCard(propData, asOf, windowFrom(curRange))));
+    const lifecycleTimeline = buildPropertyLifecycleTimeline(propData, windowFrom(curRange) ? { from: windowFrom(curRange), to: asOf } : null);
     if (lifecycleTimeline) wrap.appendChild(lifecycleTimeline);
-    renders.push(() => renderMarketValueLine(mvData), () => renderMarketValueByProp(mvData), () => renderInvestedSplitDonut({ propData: heldData }), () => renderAcquisitionsBar(propData, asOf));
+    renders.push(() => renderMarketValueLine(mvData), () => renderMarketValueByProp(mvData), () => renderInvestedSplitDonut({ propData: heldData }), () => renderAcquisitionsBar(propData, asOf, windowFrom(curRange)));
   }
 
   if (gTab === 'financing') {
@@ -1973,7 +1987,7 @@ function renderMonthBar({ payments, opExpenses }, monthKeys) {
 // else the purchase price. Property / Stream / Owner / Status / Scope filters
 // apply; the period filters don't — values are point-in-time.
 // `timeline: false` skips the per-year points (only the Value tab charts them).
-function getMarketValueData(allProps, { timeline: withTimeline = true, asOf = todayYmd() } = {}) {
+function getMarketValueData(allProps, { timeline: withTimeline = true, asOf = todayYmd(), from = null } = {}) {
   const now = asOf;
   const excludePersonal = gScope !== 'all';
   const metricsAt = (prop, date) => scaleBy(propertyValueMetrics(prop, date, { excludePersonal }), ownerWeight(prop), MV_MONEY);
@@ -1993,18 +2007,35 @@ function getMarketValueData(allProps, { timeline: withTimeline = true, asOf = to
   };
   totals.equity = totals.value - totals.mortgage;
 
-  // Same holdings one year ago, for the year-on-year change
+  // Year-on-year change like for like: only properties held both now and a
+  // year earlier, so a purchase in between doesn't read as appreciation.
   const yearAgo = `${Number(now.slice(0, 4)) - 1}${now.slice(4)}`;
-  const valueYearAgo = allProps.reduce((s, prop) => s + (metricsAt(prop, yearAgo)?.valueEUR || 0), 0);
-  if (!withTimeline) return { current, totals, valueYearAgo, timeline: [] };
+  let valueYearAgo = 0, valueSameNow = 0;
+  for (const r of current) {
+    const then = metricsAt(r.prop, yearAgo);
+    if (!then) continue;
+    valueYearAgo += then.valueEUR;
+    valueSameNow += r.m.valueEUR;
+  }
+  if (!withTimeline) return { current, totals, valueYearAgo, valueSameNow, timeline: [] };
 
-  // Year-end (or half-year-end) points from the first purchase year, plus today
-  const years = allProps.map(p => p.purchaseDate?.slice(0, 4)).filter(Boolean).map(Number);
-  const firstYear = years.length ? Math.min(...years) : Number(now.slice(0, 4));
+  // Points over the selected period: month ends (with the opening value the
+  // day before it starts) for a period of up to two years, otherwise year
+  // ends (or half-year ends) from the first purchase / period start; plus the
+  // as-of date itself.
+  const firstBuy = allProps.map(p => p.purchaseDate).filter(Boolean).sort()[0] || now;
+  const start = from && from > firstBuy ? from : firstBuy;
+  const monthly = !!from && monthsBetween(start, now) <= 24;
   const points = [];
-  for (let y = firstYear; y <= Number(now.slice(0, 4)); y++) {
-    if (gMvInterval === 'half' && `${y}-06-30` < now) points.push({ label: `Jun ${y}`, date: `${y}-06-30` });
-    if (`${y}-12-31` < now) points.push({ label: gMvInterval === 'half' ? `Dec ${y}` : String(y), date: `${y}-12-31` });
+  if (monthly) {
+    const opening = addDaysYmd(start, -1);
+    if (opening >= firstBuy) points.push({ label: `Start (${fmtDate(opening)})`, date: opening });
+    for (let ym = start.slice(0, 7); monthEnd(ym) < now; ym = nextYm(ym)) points.push({ label: ymLabel(ym), date: monthEnd(ym) });
+  } else {
+    for (let y = Number(start.slice(0, 4)); y <= Number(now.slice(0, 4)); y++) {
+      if (gMvInterval === 'half' && `${y}-06-30` < now && `${y}-06-30` >= start) points.push({ label: `Jun ${y}`, date: `${y}-06-30` });
+      if (`${y}-12-31` < now && `${y}-12-31` >= start) points.push({ label: gMvInterval === 'half' ? `Dec ${y}` : String(y), date: `${y}-12-31` });
+    }
   }
   points.push({ label: now === todayYmd() ? `Today (${now.slice(0, 4)})` : fmtDate(now), date: now });
   const timeline = points.map(pt => {
@@ -2014,7 +2045,7 @@ function getMarketValueData(allProps, { timeline: withTimeline = true, asOf = to
     return { ...pt, rows, value: rows.reduce((s, r) => s + r.m.valueEUR, 0), invested: rows.reduce((s, r) => s + r.m.investedEUR, 0) };
   });
 
-  return { current, totals, valueYearAgo, timeline };
+  return { current, totals, valueYearAgo, valueSameNow, timeline, monthly };
 }
 
 const MV_COLS = [
@@ -2035,14 +2066,15 @@ function toMarketValueRows(rows) {
   })).sort((a, b) => b.value - a.value);
 }
 
-function buildMarketValueSection({ current, totals, valueYearAgo }, { kpis = true } = {}) {
+function buildMarketValueSection(mv, { kpis = true } = {}) {
+  const { current, totals, monthly } = mv;
   const section = el('div', {});
   section.appendChild(el('div', { style: 'margin:28px 0 12px' },
     el('h3', { style: 'margin:0 0 4px;font-size:16px;font-weight:700' }, 'Market Value & Appreciation'),
     el('p',  { style: 'margin:0;font-size:12px;color:var(--text-muted)' },
       `From the valuations recorded on each property (Properties → property → Market Value History); a property without one counts at its purchase price. ` +
       `${totals.valued} of ${current.length} held propert${current.length === 1 ? 'y has' : 'ies have'} a recorded valuation. ` +
-      'Property / Stream / Owner / Status filters apply; period filters do not.')
+      'All filters apply: the charts run over the selected period, the figures are as of its end.')
   ));
 
   // Chart interval toggle (same pill style as the Scope toggle)
@@ -2061,16 +2093,17 @@ function buildMarketValueSection({ current, totals, valueYearAgo }, { kpis = tru
     btn.onclick = () => { if (gMvInterval !== val) { gMvInterval = val; rebuildView(); } };
     intervalBar.appendChild(btn);
   }
-  section.appendChild(intervalBar);
+  // Monthly points for a short period; the interval choice applies to longer ones.
+  if (!monthly) section.appendChild(intervalBar);
 
-  if (kpis) section.appendChild(buildMarketValueKpis({ current, totals, valueYearAgo }));
+  if (kpis) section.appendChild(buildMarketValueKpis(mv));
   const rows = toMarketValueRows(current);
 
   const chartRow = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px' });
   chartRow.appendChild(el('div', { class: 'card' },
     el('div', { class: 'card-header' },
       el('div', { class: 'card-title' }, 'Portfolio Value vs Invested'),
-      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, `${gMvInterval === 'half' ? '30 Jun & 31 Dec values' : 'Year-end values'} · click a point for the breakdown`)
+      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, `${monthly ? 'Month-end values' : gMvInterval === 'half' ? '30 Jun & 31 Dec values' : 'Year-end values'} · click a point for the breakdown`)
     ),
     el('div', { class: 'chart-wrap' }, el('canvas', { id: 'prop-mv-line' }))
   ));
@@ -2098,22 +2131,22 @@ function buildMarketValueSection({ current, totals, valueYearAgo }, { kpis = tru
 }
 
 // Overview's single value tile: market value vs a year ago, equity beneath.
-function buildOverviewValueCard({ current, totals, valueYearAgo }) {
+function buildOverviewValueCard({ current, totals, valueYearAgo, valueSameNow }) {
   return mkKpiCard({
     label: 'Portfolio Market Value',
     value: formatEUR(totals.value),
     subtitle: totals.mortgage > 0 ? `Equity ${formatEUR(totals.equity)} after est. mortgage` : `Equity ${formatEUR(totals.equity)} · no mortgage`,
-    delta: valueYearAgo > 0 ? safePct(totals.value, valueYearAgo) : null,
-    compLabel: '1 year ago',
+    delta: valueYearAgo > 0 ? safePct(valueSameNow, valueYearAgo) : null,
+    compLabel: '1 year earlier (same properties)',
     compValue: valueYearAgo > 0 ? formatEUR(valueYearAgo) : undefined,
     onClick: () => drillDownModal('Portfolio Market Value', toMarketValueRows(current), MV_COLS),
-    explain: { formula: 'Σ latest valuation on/before today (else purchase price); equity = value − estimated remaining mortgage', note: 'Purchase price, gain and total return are on the Portfolio & Value tab.' }
+    explain: { formula: 'Σ latest valuation on/before the end of the period (else purchase price); equity = value − estimated remaining mortgage', note: 'The change compares the same properties a year earlier, so purchases don\'t count as growth. Purchase price, gain and total return are on the Portfolio & Value tab.' }
   });
 }
 
 // The market value tiles (Portfolio & Value tab);
 // `purchase` adds a Total Purchase Price tile first.
-function buildMarketValueKpis({ current, totals, valueYearAgo }, { purchase = false } = {}) {
+function buildMarketValueKpis({ current, totals, valueYearAgo, valueSameNow }, { purchase = false } = {}) {
   const pct = (a, b) => b > 0 ? (a / b) * 100 : null;
   const fmtPct = v => v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
   const rows = toMarketValueRows(current);
@@ -2130,11 +2163,11 @@ function buildMarketValueKpis({ current, totals, valueYearAgo }, { purchase = fa
   kpis.appendChild(mkKpiCard({
     label: 'Portfolio Market Value',
     value: formatEUR(totals.value),
-    delta: valueYearAgo > 0 ? safePct(totals.value, valueYearAgo) : null,
-    compLabel: '1 year ago',
+    delta: valueYearAgo > 0 ? safePct(valueSameNow, valueYearAgo) : null,
+    compLabel: '1 year earlier (same properties)',
     compValue: valueYearAgo > 0 ? formatEUR(valueYearAgo) : undefined,
     onClick: open('Portfolio Market Value'),
-    explain: { formula: 'Σ latest valuation on/before today (else purchase price)', note: 'Converted to EUR at today\'s rate. Sold properties drop out after their sale date.' }
+    explain: { formula: 'Σ latest valuation on/before the end of the period (else purchase price)', note: 'The change compares the same properties a year earlier, so purchases don\'t count as growth. Sold properties drop out after their sale date.' }
   }));
   kpis.appendChild(mkKpiCard({
     label: 'Unrealised Gain',
@@ -2215,22 +2248,26 @@ function renderInvestedSplitDonut({ propData }) {
 // number of properties held at each year end (today for the current year) on
 // a second axis. Only the dashboard's filters narrow it; a property without a
 // purchase date can't be placed and is left out.
-function acquisitionsByYear(propData, asOf = todayYmd()) {
+function acquisitionsByYear(propData, asOf = todayYmd(), from = null) {
   const now = asOf;
-  const dated = propData.filter(d => /^\d{4}-\d{2}-\d{2}/.test(d.prop.purchaseDate || '') && d.prop.purchaseDate <= now);
-  if (!dated.length) return null;
-  const first = Math.min(...dated.map(d => Number(d.prop.purchaseDate.slice(0, 4))));
-  const last = Number(now.slice(0, 4));
-  const years = [];
-  for (let y = first; y <= last; y++) years.push(y);
-  const spend = years.map(y => dated
-    .filter(d => Number(d.prop.purchaseDate.slice(0, 4)) === y)
-    .reduce((s, d) => s + d.purchaseEUR, 0));
-  const held = years.map(y => {
-    const end = y === last ? now : `${y}-12-31`;
-    return dated.filter(d => d.prop.purchaseDate <= end && !(d.prop.status === 'sold' && d.prop.soldDate && d.prop.soldDate <= end)).length;
-  });
-  return { years, spend, held, dated, undated: propData.filter(d => !/^\d{4}-\d{2}-\d{2}/.test(d.prop.purchaseDate || '')).length };
+  const isDated = d => /^\d{4}-\d{2}-\d{2}/.test(d.prop.purchaseDate || '');
+  const owned = propData.filter(d => isDated(d) && d.prop.purchaseDate <= now);
+  if (!owned.length) return null;
+  const firstBuy = owned.map(d => d.prop.purchaseDate).sort()[0];
+  const start = from && from > firstBuy ? from : firstBuy;
+  // Months for a period of up to two years, otherwise years.
+  const monthly = !!from && monthsBetween(start, now) <= 24;
+  const buckets = [];
+  if (monthly) {
+    for (let ym = start.slice(0, 7); ym <= now.slice(0, 7); ym = nextYm(ym)) buckets.push({ key: ym, label: ymLabel(ym), end: monthEnd(ym) < now ? monthEnd(ym) : now });
+  } else {
+    for (let y = Number(start.slice(0, 4)); y <= Number(now.slice(0, 4)); y++) buckets.push({ key: String(y), label: String(y), end: `${y}-12-31` < now ? `${y}-12-31` : now });
+  }
+  const inWindow = d => d.prop.purchaseDate >= start;
+  const dated = owned.filter(inWindow);
+  const spend = buckets.map(b => dated.filter(d => d.prop.purchaseDate.startsWith(b.key)).reduce((s, d) => s + d.purchaseEUR, 0));
+  const held = buckets.map(b => owned.filter(d => d.prop.purchaseDate <= b.end && !(d.prop.status === 'sold' && d.prop.soldDate && d.prop.soldDate <= b.end)).length);
+  return { buckets, monthly, spend, held, dated, undated: propData.filter(d => !isDated(d)).length };
 }
 
 const ACQ_COLS = [
@@ -2242,10 +2279,10 @@ const ACQ_COLS = [
   { key: 'value',    label: 'Current Value (EUR)', right: true, format: (v, r) => r.sold ? `Sold ${fmtDate(r.sold)}` : formatEUR(v), tip: 'Latest valuation on/before today, else the purchase price' }
 ];
 
-function buildAcquisitionsCard(propData, asOf) {
-  const acq = acquisitionsByYear(propData, asOf);
+function buildAcquisitionsCard(propData, asOf, from) {
+  const acq = acquisitionsByYear(propData, asOf, from);
   const note = acq
-    ? `Purchase spend per year (EUR at each purchase-date rate) and properties held at each year end · click a year for its purchases${acq.undated ? ` · ${acq.undated} without a purchase date left out` : ''}`
+    ? `Purchase spend per ${acq.monthly ? 'month' : 'year'} (EUR at each purchase-date rate) and properties held at each ${acq.monthly ? 'month' : 'year'} end · click a bar for its purchases${acq.undated ? ` · ${acq.undated} without a purchase date left out` : ''}`
     : 'No property with a purchase date matches the filters.';
   return el('div', { class: 'card' },
     el('div', { class: 'card-header' },
@@ -2257,16 +2294,16 @@ function buildAcquisitionsCard(propData, asOf) {
   );
 }
 
-function renderAcquisitionsBar(propData, asOf) {
-  const acq = acquisitionsByYear(propData, asOf);
+function renderAcquisitionsBar(propData, asOf, from) {
+  const acq = acquisitionsByYear(propData, asOf, from);
   if (!acq) return;
   const now = asOf;
   charts.bar('prop-acq-bar', {
-    labels: acq.years.map(String),
+    labels: acq.buckets.map(b => b.label),
     datasets: [{ label: 'Purchase spend (EUR)', data: acq.spend.map(v => Math.round(v)), backgroundColor: '#6366f1' }],
     overlayLine: { label: 'Properties held', data: acq.held, color: '#e4e8f1', stepped: false },
-    onClickItem: (label) => {
-      const bought = acq.dated.filter(d => d.prop.purchaseDate.startsWith(label));
+    onClickItem: (label, idx) => {
+      const bought = acq.dated.filter(d => d.prop.purchaseDate.startsWith(acq.buckets[idx].key));
       if (!bought.length) return;
       const rows = bought.sort((a, b) => a.prop.purchaseDate.localeCompare(b.prop.purchaseDate)).map(d => {
         const sold = d.prop.status === 'sold' && d.prop.soldDate && d.prop.soldDate <= now ? d.prop.soldDate : '';
