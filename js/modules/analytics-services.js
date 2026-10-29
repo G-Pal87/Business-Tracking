@@ -67,7 +67,7 @@ const isBilledInv = i => { const c = classifyInvoice(i); return c !== 'draft' &&
 function getData(gF, start, end) {
   // Owner: shared invoiceOwner() rule; property filter drops invoices not
   // tied to a selected property — same as the Revenue dashboard.
-  const { mStream, mInvOwner, mProperty, mClient } = makeMatchers(gF);
+  const { mStream, mInvOwner, mProperty, mClient, shareInv } = makeMatchers(gF);
 
   const matchDate = inv => {
     const d = (inv.issueDate || inv.date || '').slice(0, 10);
@@ -77,7 +77,7 @@ function getData(gF, start, end) {
   const kpiBase = listActive('invoices').filter(i =>
     SERVICE_STREAMS.includes(i.stream) &&
     matchDate(i) && mStream(i) && mInvOwner(i) && mProperty(i) && mClient(i)
-  );
+  ).map(shareInv); // shared invoices at the selected owner's share
   const base = gStatusFilter.size === 0 ? kpiBase : kpiBase.filter(i => gStatusFilter.has(i.status));
 
   const bk          = invoiceBuckets(kpiBase);

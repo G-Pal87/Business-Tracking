@@ -84,16 +84,21 @@ function getStrProps() {
 // Paid STR payments inside an inclusive [start,end] date range, restricted to
 // the supplied property ids and the Scope (company scope drops payments
 // flagged `personal` — isCompanyRecord(), same matcher as the other dashboards).
+// Revenue comes back at the selected owner's share of a shared property;
+// nights, ADR and occupancy (getStayPaymentsInRange) stay whole.
 function getPaymentsInRange(start, end, propIds) {
   const coPropIds = gScope === 'all' ? null : companyPropIds();
+  const { shareRow } = makeMatchers(gF);
   return listActivePayments().filter(p =>
     p.stream === 'short_term_rental' &&
     p.status === 'paid' &&
     (p.date || '') >= start && (p.date || '') <= end &&
     p.propertyId && propIds.has(p.propertyId) &&
     (!coPropIds || isCompanyRecord(p, coPropIds))
-  );
+  ).map(shareRow);
 }
+// Owner share of one property's money figures (target / pipeline revenue).
+const propShare = propId => makeMatchers(gF).wOwner({ propertyId: propId });
 
 // ── Per-render caches ─────────────────────────────────────────────────────────
 // Paid STR payments grouped by property, plus lazily-built per-property
@@ -411,8 +416,8 @@ function getPortfolioData(curRange, cmpRange) {
     const { available, occupied, blocked, rev, occByMonth: propOccByMonth, availByMonth: propAvailByMonth } =
       rangeOccupancy(occupiedSet, ownerBlockSet, curRange.start, curRange.end, rateForNight);
     occByProp.set(p.id, { occupied, available, blocked, open: Math.max(0, available - occupied), pct: available > 0 ? occupied / available * 100 : 0 });
-    targetRevByProp.set(p.id, rev);
-    targetRev += rev;
+    targetRevByProp.set(p.id, rev * propShare(p.id));
+    targetRev += rev * propShare(p.id);
     for (const [mk, n] of propOccByMonth) occByMonth.set(mk, (occByMonth.get(mk) || 0) + n);
     for (const [mk, n] of propAvailByMonth) availByMonth.set(mk, (availByMonth.get(mk) || 0) + n);
   });
@@ -457,8 +462,9 @@ function getSpotlightData(propId, curRange) {
   // agrees with the Portfolio view for the same property/months instead of
   // silently reading 0 for months without a confirmed strRateTargets entry.
   const rateForNight = makeRateForNight(propId);
-  const { occByMonth, availByMonth, rev: targetRev } =
+  const { occByMonth, availByMonth, rev: targetRevWhole } =
     rangeOccupancy(occupiedSet, ownerBlockSet, curRange.start, curRange.end, rateForNight);
+  const targetRev = targetRevWhole * propShare(propId);
 
   // Nights / ADR by stay date (clipped to each month ∩ range); revenue by payout date.
   const stayPays = getStayPaymentsInRange(curRange.start, curRange.end, new Set([propId]));
@@ -546,14 +552,17 @@ function getForwardPipeline() {
       }
     });
     if (cur) segments.push(cur);
+    // Revenue at the selected owner's share; nights stay whole.
+    const w = propShare(prop.id);
+    if (w !== 1) for (const sg of segments) sg.rev *= w;
 
     results.push({
       propId: prop.id,
       propName: prop.name,
       lockedNights,
-      lockedRevMin,
+      lockedRevMin: lockedRevMin * w,
       openNights,
-      potRevMax,
+      potRevMax: potRevMax * w,
       segments
     });
   });

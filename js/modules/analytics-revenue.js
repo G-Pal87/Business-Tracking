@@ -151,14 +151,15 @@ export default {
 // Invoices passing this dashboard's filters (any status): stream, the shared
 // invoiceOwner() rule, property (invoices without a propertyId drop out while
 // a property filter is active) and client. `extra` adds e.g. a date test.
+// A shared invoice comes back at the selected owner's share (shareInv).
 function filteredInvoices(extra = () => true) {
-  const { mStream, mInvOwner, mProperty, mClient } = makeMatchers(gF);
-  return listActive('invoices').filter(i => extra(i) && mStream(i) && mInvOwner(i) && mProperty(i) && mClient(i));
+  const { mStream, mInvOwner, mProperty, mClient, shareInv } = makeMatchers(gF);
+  return listActive('invoices').filter(i => extra(i) && mStream(i) && mInvOwner(i) && mProperty(i) && mClient(i)).map(shareInv);
 }
 
 function getData(start, end) {
   const inRange = d => d && d >= start && d <= end;
-  const { mStream, mOwner, mProperty } = makeMatchers(gF);
+  const { mStream, mOwner, mProperty, shareRow } = makeMatchers(gF);
   const coPropIds = companyPropIds();
   const isCoRec = gScope === 'all'
     ? () => true
@@ -168,7 +169,7 @@ function getData(start, end) {
   // Client filter   → isolate service revenue (exclude payments entirely)
   const payments = gF.clientIds.size > 0 ? [] : listActivePayments().filter(p =>
     p.status === 'paid' && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p)
-  );
+  ).map(shareRow);
   // Invoices classified once by the shared invoiceBuckets() rule.
   const invBk = invoiceBuckets(filteredInvoices(i => inRange(i.issueDate)));
   const invoices    = invBk.paid;
@@ -1255,12 +1256,12 @@ function renderConcentration({ payments, invoices }) {
 
 // ── Seasonality heatmap (DOM table, shows all available years for context) ────
 function buildSeasonalityHeatmap() {
-  const { mStream, mOwner, mProperty } = makeMatchers(gF);
+  const { mStream, mOwner, mProperty, shareRow } = makeMatchers(gF);
   const coPropIds = companyPropIds();
   // Respects the Scope toggle, like getData().
   const isCoRec   = gScope === 'all' ? () => true : r => isCompanyRecord(r, coPropIds);
   // Client filter isolates service revenue, as in getData().
-  const pays = gF.clientIds.size > 0 ? [] : listActivePayments().filter(p => p.status === 'paid' && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p));
+  const pays = gF.clientIds.size > 0 ? [] : listActivePayments().filter(p => p.status === 'paid' && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p)).map(shareRow);
   // P&L revenue heatmap — VAT-exclusive, via pnlInvs (this dashboard's `invs` here is always paid-only).
   const invs = pnlInvs(filteredInvoices(i => i.status === 'paid'));
   const years = [...new Set([...pays.map(p => p.date?.slice(0, 4)), ...invs.map(i => i.issueDate?.slice(0, 4))].filter(Boolean))].sort();

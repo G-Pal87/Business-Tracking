@@ -76,7 +76,7 @@ export default {
 function getData(start, end) {
   // mInvOwner: the shared invoiceOwner() rule (inv.owner → property owner →
   // client owner → 'both'), same as every other dashboard.
-  const { mStream, mOwner, mInvOwner, mProperty, mClient } = makeMatchers(gF);
+  const { mStream, mOwner, mInvOwner, mProperty, mClient, shareRow, shareInv } = makeMatchers(gF);
 
   // Expense stream uses expStream() fallback — custom to avoid null rejection
   const mExpStream = e => !gF.streams.size || gF.streams.has(expStream(e));
@@ -89,14 +89,14 @@ function getData(start, end) {
 
   const payments = listActivePayments().filter(p =>
     p.status === 'paid' && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p)
-  );
+  ).map(shareRow); // shared records at the selected owner's share
   const invoices = listActive('invoices').filter(i => i.status === 'paid').map(cashDated).filter(i =>
     inRange(i.issueDate || i.date) && mStream(i) && mInvOwner(i) && mClient(i) && isCoRec(i)
-  );
+  ).map(shareInv);
 
   const allExp    = listActive('expenses');
-  const opExpenses  = allExp.filter(e => !isCapEx(e) && inRange(e.date) && mExpStream(e) && mOwner(e) && mProperty(e) && isCoRec(e));
-  const capExpenses = allExp.filter(e =>  isCapEx(e) && inRange(e.date) && mExpStream(e) && mOwner(e) && mProperty(e) && isCoRec(e));
+  const opExpenses  = allExp.filter(e => !isCapEx(e) && inRange(e.date) && mExpStream(e) && mOwner(e) && mProperty(e) && isCoRec(e)).map(shareRow);
+  const capExpenses = allExp.filter(e =>  isCapEx(e) && inRange(e.date) && mExpStream(e) && mOwner(e) && mProperty(e) && isCoRec(e)).map(shareRow);
   const expenses = [...opExpenses, ...capExpenses];
 
   const sum = arr => arr.reduce((s, x) => s + toEUR(x.amount ?? x.total, x.currency, x.date ?? x.issueDate), 0);
@@ -511,17 +511,17 @@ function computeCashFlowInsights(curData, cmpData, cmpRange) {
 // ── Cash Seasonality Heatmap ──────────────────────────────────────────────────
 function buildCashSeasonalityHeatmap() {
   // Build net cash flow heatmap across ALL available years (not just filtered period)
-  const { mStream, mOwner, mInvOwner, mProperty, mClient } = makeMatchers(gF);
+  const { mStream, mOwner, mInvOwner, mProperty, mClient, shareRow, shareInv } = makeMatchers(gF);
   const mExpStream = e => !gF.streams.size || gF.streams.has(expStream(e));
   // Same Company/All scope rule as the period figures (getData()).
   const coPropIds = companyPropIds();
   const isCoRec = gScope === 'all' ? () => true : r => isCompanyRecord(r, coPropIds);
 
   // For the heatmap we pull ALL data (no date filter) so all years are visible
-  const allPays = listActivePayments().filter(p => p.status === 'paid' && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p));
-  const allInvs = listActive('invoices').filter(i => i.status === 'paid' && mStream(i) && mInvOwner(i) && mClient(i) && isCoRec(i)).map(cashDated);
-  const allOpEx = listActive('expenses').filter(e => !isCapEx(e) && mExpStream(e) && mOwner(e) && mProperty(e) && isCoRec(e));
-  const allCapEx = listActive('expenses').filter(e => isCapEx(e) && mExpStream(e) && mOwner(e) && mProperty(e) && isCoRec(e));
+  const allPays = listActivePayments().filter(p => p.status === 'paid' && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p)).map(shareRow);
+  const allInvs = listActive('invoices').filter(i => i.status === 'paid' && mStream(i) && mInvOwner(i) && mClient(i) && isCoRec(i)).map(cashDated).map(shareInv);
+  const allOpEx = listActive('expenses').filter(e => !isCapEx(e) && mExpStream(e) && mOwner(e) && mProperty(e) && isCoRec(e)).map(shareRow);
+  const allCapEx = listActive('expenses').filter(e => isCapEx(e) && mExpStream(e) && mOwner(e) && mProperty(e) && isCoRec(e)).map(shareRow);
 
   const allYears = [...new Set([
     ...allPays .map(p => p.date?.slice(0, 4)),
@@ -1453,9 +1453,9 @@ function buildView() {
 
   // Invoice Collection Lag: (Outstanding service invoices ÷ Total service invoiced) × 30 (DSO proxy)
   {
-    const { mStream: mStreamCCC, mOwner: mOwnerCCC, mClient: mClientCCC } = makeMatchers(gF);
+    const { mStream: mStreamCCC, mInvOwner: mOwnerCCC, mClient: mClientCCC, shareInv: shareCCC } = makeMatchers(gF);
     const inRange = d => !!d && d >= start && d <= end;
-    const allInvoices = listActive('invoices').filter(i => inRange(i.issueDate || i.date) && mStreamCCC(i) && mOwnerCCC(i) && mClientCCC(i));
+    const allInvoices = listActive('invoices').filter(i => inRange(i.issueDate || i.date) && mStreamCCC(i) && mOwnerCCC(i) && mClientCCC(i)).map(shareCCC);
     const svcInvoiced = allInvoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
     const outstandingSvc = allInvoices.filter(i => !['paid', 'cancelled', 'void', 'draft'].includes(i.status))
       .reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
@@ -1618,11 +1618,11 @@ function buildView() {
   // Working Capital
   {
     const inRangeWC = d => !!d && d >= start && d <= end;
-    const { mStream: mStreamWC, mOwner: mOwnerWC, mClient: mClientWC } = makeMatchers(gF);
+    const { mStream: mStreamWC, mInvOwner: mOwnerWC, mClient: mClientWC, shareInv: shareWC } = makeMatchers(gF);
     const outstandingInvoices = listActive('invoices').filter(i =>
       ['sent', 'overdue'].includes(i.status) && inRangeWC(i.issueDate || i.date) &&
       mStreamWC(i) && mOwnerWC(i) && mClientWC(i)
-    );
+    ).map(shareWC);
     const receivables    = outstandingInvoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
     const payables       = 0; // AP tracking not enabled
     const workingCapital = receivables - payables;

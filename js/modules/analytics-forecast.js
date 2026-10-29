@@ -209,7 +209,7 @@ function getLtRentPendingItems(range) {
         label: prop.name,
         detail: byId('tenants', entry.tenantId)?.name || 'Tenant',
         dueDate: entry.date,
-        amountEUR: entry.amountEUR,
+        amountEUR: entry.amountEUR * propW(prop),
         overdue: entry.overdue
       });
     });
@@ -223,6 +223,7 @@ function getLtRentPendingItems(range) {
 function getServicesPendingItems(range, mStream, mOwner, mClient) {
   const inRange = d => d && d >= range.start && d <= range.end;
   const today = todayYmd();
+  const { wInvOwner } = makeMatchers(gF);
   return listActive('invoices')
     .filter(i => ['sent', 'overdue'].includes(i.status) && inRange(i.issueDate) && mStream(i) && mOwner(i) && mClient(i))
     .map(i => {
@@ -233,7 +234,7 @@ function getServicesPendingItems(range, mStream, mOwner, mClient) {
         label: byId('clients', i.clientId)?.name || byId('clients', i.clientId)?.company || i.number || '—',
         detail: i.number || '—',
         dueDate,
-        amountEUR: toEUR(i.total ?? i.amount, i.currency, i.issueDate),
+        amountEUR: toEUR(i.total ?? i.amount, i.currency, i.issueDate) * wInvOwner(i),
         overdue: dueDate < today
       };
     });
@@ -265,7 +266,7 @@ function getServicesProjectedItems(range) {
       if (mk < startMk || mk > endMk) return;
       if (invoicedStreamMonths.has(fc.entityId + ':' + mk)) return; // already invoiced (draft/sent/paid/overdue) — don't double count
       const entries = Array.isArray(md.entries) ? md.entries : [];
-      const rev = entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0;
+      const rev = (entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0) * svcW();
       if (rev <= 0) return;
       items.push({
         stream: fc.entityId,
@@ -292,6 +293,11 @@ function getServicesProjectedItems(range) {
 // loops and summation order, so every total is unchanged.
 // Returns the value, or null for a short-term month with no forecast month
 // record (callers skip those).
+// Owner share (makeMatchers' rule): a property's figures follow its owner; a
+// service forecast (per stream, no owner) counts as shared.
+const propW = prop => makeMatchers(gF).wOwner({ propertyId: prop.id });
+const svcW  = () => makeMatchers(gF).wOwner({ owner: 'both' });
+
 function makePropFcRevenue() {
   const memo = new Map(); // fc record (or null) → Map("propId|mk" → value)
   return (prop, fc, y, mk) => {
@@ -311,6 +317,8 @@ function makePropFcRevenue() {
         val = entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0;
       }
     }
+    // Forecast revenue at the selected owner's share of the property.
+    if (val !== null) val *= propW(prop);
     m.set(k, val);
     return val;
   };
@@ -353,7 +361,7 @@ function buildFcMaps(startY, endY, propFcRevenue = makePropFcRevenue()) {
             const propKey = mk + '_' + prop.id;
             fcPropMonthlyRev.set(propKey, (fcPropMonthlyRev.get(propKey) || 0) + rev);
           }
-          const exp = Number(md?.expenses) || 0;
+          const exp = (Number(md?.expenses) || 0) * propW(prop);
           if (exp > 0) {
             fcMonthlyExp.set(mk, (fcMonthlyExp.get(mk) || 0) + exp);
             fcMonthlyPropExp.set(mk, (fcMonthlyPropExp.get(mk) || 0) + exp);
@@ -370,7 +378,7 @@ function buildFcMaps(startY, endY, propFcRevenue = makePropFcRevenue()) {
             const propKey = mk + '_' + prop.id;
             fcPropMonthlyRev.set(propKey, (fcPropMonthlyRev.get(propKey) || 0) + rev);
           }
-          const exp = Number(md.expenses) || 0;
+          const exp = (Number(md.expenses) || 0) * propW(prop);
           if (exp > 0) {
             fcMonthlyExp.set(mk, (fcMonthlyExp.get(mk) || 0) + exp);
             fcMonthlyPropExp.set(mk, (fcMonthlyPropExp.get(mk) || 0) + exp);
@@ -386,9 +394,9 @@ function buildFcMaps(startY, endY, propFcRevenue = makePropFcRevenue()) {
       if (gF.streams.size > 0 && !gF.streams.has(fc.entityId)) return;
       Object.entries(fc.months || {}).forEach(([mk, md]) => {
         const entries = Array.isArray(md.entries) ? md.entries : [];
-        const rev = entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0;
+        const rev = (entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0) * svcW();
         if (rev > 0) fcMonthlyRev.set(mk, (fcMonthlyRev.get(mk) || 0) + rev);
-        const exp = Number(md.expenses) || 0;
+        const exp = (Number(md.expenses) || 0) * svcW();
         if (exp > 0) fcMonthlyExp.set(mk, (fcMonthlyExp.get(mk) || 0) + exp);
       });
     });
@@ -399,20 +407,21 @@ function buildFcMaps(startY, endY, propFcRevenue = makePropFcRevenue()) {
 // ── Core data calculation ─────────────────────────────────────────────────────
 function calculateDashboardData(range) {
   if (!range) return null;
-  const { mStream, mOwner, mInvOwner, mProperty, mClient } = makeMatchers(gF);
+  const { mStream, mOwner, mInvOwner, mProperty, mClient, shareRow, shareInv } = makeMatchers(gF);
   const coPropIds = companyPropIds();
   const isCoRec = gScope === 'all'
     ? () => true
     : r => isCompanyRecord(r, coPropIds);
   const inRange = d => d && d >= range.start && d <= range.end;
 
+  // Shared records at the selected owner's share.
   const actPayments = listActivePayments().filter(p =>
     p.status === 'paid' && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p)
-  );
+  ).map(shareRow);
   const actInvoices = listActive('invoices').filter(i =>
     i.status === 'paid' && inRange(i.issueDate) && mStream(i) && mInvOwner(i) && mClient(i)
-  );
-  const allExpenses = listActive('expenses').filter(e => inRange(e.date) && mOwner(e) && mProperty(e) && isCoRec(e));
+  ).map(shareInv);
+  const allExpenses = listActive('expenses').filter(e => inRange(e.date) && mOwner(e) && mProperty(e) && isCoRec(e)).map(shareRow);
   const actOpExpenses  = allExpenses.filter(e => !isCapEx(e) && mStream(e));
   const actCapExpenses = allExpenses.filter(e => isCapEx(e) && mStream(e));
 
@@ -463,7 +472,7 @@ function calculateDashboardData(range) {
       if (ow !== 'both' && !gF.owners.has(ow)) return false;
     }
     return isCoRec(p);
-  });
+  }).map(shareRow);
 
   // All entity-filtered pending — not date-clamped, used for forward-looking charts
   const allPendingReservations = listActivePayments().filter(p => {
@@ -476,7 +485,7 @@ function calculateDashboardData(range) {
       if (ow !== 'both' && !gF.owners.has(ow)) return false;
     }
     return isCoRec(p);
-  });
+  }).map(shareRow);
 
   const ltrPendingItems = getLtRentPendingItems(range);
   const svcPendingItems = getServicesPendingItems(range, mStream, mInvOwner, mClient);
@@ -644,8 +653,8 @@ function computeBlendedRoi(monthlyBreakdown, actPayments, fcPropMonthlyRev) {
   const propBreakdown = [];
   let totalInvested = 0;
   listActive('properties').filter(propMatchesForecastFilters).forEach(prop => {
-    const purchaseEUR = prop.purchasePrice ? toEUR(prop.purchasePrice, prop.currency, prop.purchaseDate) : 0;
-    const capExEUR    = capExByProp.get(prop.id) || 0;
+    const purchaseEUR = prop.purchasePrice ? toEUR(prop.purchasePrice, prop.currency, prop.purchaseDate) * propW(prop) : 0;
+    const capExEUR    = (capExByProp.get(prop.id) || 0) * propW(prop);
     const invested     = purchaseEUR + capExEUR;
     const propRev      = blendedRevForProp(prop.id);
     // Yield mirrors the Properties dashboard's Rental Yield convention (gross
@@ -707,7 +716,7 @@ function computeStreamBreakdown(actPayments, actInvoices, months, propFcRevenue 
       const md = fc.months?.[mk];
       if (!md) return;
       const entries = Array.isArray(md.entries) ? md.entries : [];
-      const val = entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0;
+      const val = (entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0) * svcW();
       if (val > 0) addFc(fc.entityId, val, m);
     });
   });

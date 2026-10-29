@@ -66,7 +66,7 @@ function vendorLabel(e) {
 
 // ── Data fetching ─────────────────────────────────────────────────────────────
 function getData(start, end) {
-  const { mStream, mOwner, mProperty } = makeMatchers(gF);
+  const { mStream, mOwner, mProperty, shareRow } = makeMatchers(gF);
   const coPropIds = companyPropIds();
   const isCoRec = gScope === 'all'
     ? () => true
@@ -90,7 +90,7 @@ function getData(start, end) {
       if (!gExpFilters.accountingTypes.has(isCapEx(e) ? 'capex' : 'opex')) return false;
     }
     return true;
-  });
+  }).map(shareRow); // shared expenses at the selected owner's share
 
   const opEx     = allExp.filter(e => !isCapEx(e));
   const capEx    = allExp.filter(e =>  isCapEx(e));
@@ -100,13 +100,14 @@ function getData(start, end) {
 }
 
 function getRevenue(start, end) {
-  const { mStream, mOwner, mInvOwner, mProperty, mClient } = makeMatchers(gF);
+  const { mStream, mOwner, mInvOwner, mProperty, mClient, shareRow, shareInv } = makeMatchers(gF);
   const coPropIds = companyPropIds();
   const isCoRec = gScope === 'all'
     ? () => true
     : r => isCompanyRecord(r, coPropIds);
   const rentals = listActivePayments()
     .filter(p => p.status === 'paid' && (p.date || '') >= start && (p.date || '') <= end && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p))
+    .map(shareRow)
     .reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
   // Include paid service invoices so expense ratio reflects total revenue, not rental-only.
   // VAT-exclusive (subtotal) — this feeds Expense Ratio, a P&L figure, and VAT collected isn't revenue.
@@ -114,6 +115,7 @@ function getRevenue(start, end) {
   // invoices not tied to a selected property (same rule as Revenue).
   const services = listActive('invoices')
     .filter(i => i.status === 'paid' && (i.issueDate || '') >= start && (i.issueDate || '') <= end && mStream(i) && mInvOwner(i) && mProperty(i) && mClient(i))
+    .map(shareInv)
     .reduce((s, i) => s + invoiceNetEUR(i), 0);
   return { total: rentals + services, rentals, services };
 }
@@ -597,7 +599,7 @@ function buildView() {
   //    property filter. The category/vendor/type expense filters can't be
   //    applied to a budget, so it ignores them.
   function getForecastOpExBudget() {
-    const { mStream, mOwner, mProperty } = makeMatchers(gF);
+    const { mStream, mOwner, mProperty, wOwner } = makeMatchers(gF);
     const coPropIds = companyPropIds();
     const { keys: mks } = getMonthKeysForRange(curRange.start, curRange.end);
     const fracByMonth = new Map(mks.map(m => {
@@ -609,20 +611,25 @@ function buildView() {
     }));
     let total = 0;
     listActive('forecasts').forEach(fc => {
+      // Owner share: a property forecast follows its property's owner; a
+      // service forecast (per stream, no owner) counts as shared.
+      let w = 1;
       if (fc.type === 'property') {
         const row = { propertyId: fc.entityId };
         if (!mStream(row) || !mOwner(row) || !mProperty(row)) return;
         if (gScope !== 'all' && !isCompanyRecord(row, coPropIds)) return;
+        w = wOwner(row);
       } else if (fc.type === 'service') {
         if (gF.propertyIds.size > 0) return;
         if (gF.streams.size > 0 && !gF.streams.has(fc.entityId)) return;
+        w = wOwner({ owner: 'both' });
       } else {
         return; // only per-entity (property / service) forecasts
       }
       Object.entries(fc.months || {}).forEach(([mk, md]) => {
         const frac = fracByMonth.get(mk);
         if (!frac || frac <= 0) return;
-        total += frac * (Number(md.expenses) || 0);
+        total += w * frac * (Number(md.expenses) || 0);
       });
     });
     return total > 0 ? total : null;
