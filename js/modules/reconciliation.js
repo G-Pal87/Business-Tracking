@@ -36,6 +36,15 @@ function cachedCompanyPropIds() {
   if (src !== _cpIdsSrc || !_cpIds) { _cpIdsSrc = src; _cpIds = companyPropIds(); }
   return _cpIds;
 }
+// Owner share of a record under the Owner filter — a shared ('both') property
+// or invoice counts at 50%, as in buildReconciliationData, so drill-down sums
+// match the totals they explain.
+function recShare(r) {
+  if (!_recOwner) return 1;
+  const ow = r.propertyId ? (byId('properties', r.propertyId)?.owner || 'both')
+    : (r.owner || (r.clientId ? byId('clients', r.clientId)?.owner : null) || 'both');
+  return ow === 'both' ? 0.5 : 1;
+}
 function matchInvScope(inv) {
   if (_recScope !== 'company') return true;
   return isCompanyRecord(inv, cachedCompanyPropIds());
@@ -63,8 +72,8 @@ const REC_COLS = [
   { key: 'eur',    label: 'EUR', right: true, format: v => formatEUR(v), tip: 'Amount converted to EUR at the record\'s date.' }
 ];
 
-const payRow = (p, name) => ({ date: p.date,      entity: name, ref: p.confirmationCode || p.type || '', status: p.status, eur: toEUR(p.amount, p.currency, p.date) });
-const invRow = (i, name) => ({ date: i.issueDate, entity: name, ref: i.number || '',                    status: i.status, eur: toEUR(i.total,  i.currency, i.issueDate) });
+const payRow = (p, name) => ({ date: p.date,      entity: name, ref: p.confirmationCode || p.type || '', status: p.status, eur: toEUR(p.amount, p.currency, p.date) * recShare(p) });
+const invRow = (i, name) => ({ date: i.issueDate, entity: name, ref: i.number || '',                    status: i.status, eur: toEUR(i.total,  i.currency, i.issueDate) * recShare(i) });
 const byDate = rows => [...rows].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
 // statusBreakdown(rows, amountOf) — groups raw records by their `status` field
@@ -329,7 +338,7 @@ function openCellModal(ent, m, yr) {
         return {
           tenant: t?.name || '—',
           lease:  `${t?.leaseStartDate ? fmtDate(t.leaseStartDate) : '—'} → ${t?.leaseEndDate ? fmtDate(t.leaseEndDate) : 'open-ended'}`,
-          eur:    toEUR(e.amount, e.currency, Number(yr))
+          eur:    toEUR(e.amount, e.currency, Number(yr)) * recShare({ propertyId: ent.id })
         };
       }), [
         { key: 'tenant', label: 'Tenant', tip: 'Tenant name on the active lease for this property.' },
@@ -368,7 +377,7 @@ function openCellPaymentModal(title, ent, m) {
     { label: 'Payments', value: String(pays.length) }
   ], 3));
 
-  const breakdown = statusBreakdown(pays, p => toEUR(p.amount, p.currency, p.date));
+  const breakdown = statusBreakdown(pays, p => toEUR(p.amount, p.currency, p.date) * recShare(p));
   if (breakdown.length > 1) {
     body.appendChild(mkSectionLabel('By Status'));
     body.appendChild(mkModalTable(
@@ -398,7 +407,7 @@ function openCellServiceModal(title, ent, m) {
     { label: 'Invoices', value: String(invs.length) }
   ], 3));
 
-  const breakdown = statusBreakdown(invs, i => toEUR(i.total, i.currency, i.issueDate));
+  const breakdown = statusBreakdown(invs, i => toEUR(i.total, i.currency, i.issueDate) * recShare(i));
   if (breakdown.length > 1) {
     body.appendChild(mkSectionLabel('By Status'));
     body.appendChild(mkModalTable(
@@ -425,7 +434,7 @@ function openEntityModal(ent, yr) {
       return drillDownModal(title + ' — Tenants', tenants.map(t => ({
         tenant: t.name,
         lease:  `${t.leaseStartDate ? fmtDate(t.leaseStartDate) : '—'} → ${t.leaseEndDate ? fmtDate(t.leaseEndDate) : 'open-ended'}`,
-        eur:    toEUR(t.monthlyRent, t.currency || 'EUR', Number(yr))
+        eur:    toEUR(t.monthlyRent, t.currency || 'EUR', Number(yr)) * recShare({ propertyId: ent.id })
       })), [
         { key: 'tenant', label: 'Tenant', tip: 'Tenant name on the active lease for this property.' },
         { key: 'lease',  label: 'Lease Period', tip: 'Lease start and end dates (open-ended if no end date is set).' },
@@ -452,7 +461,7 @@ function openEntityModal(ent, yr) {
     const monthRows = [...byMonth.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([mk, list]) => [
       MON[Number(mk.slice(5, 7)) - 1],
       String(list.length),
-      formatEUR(list.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0))
+      formatEUR(list.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate) * recShare(i), 0))
     ]);
     if (monthRows.length) {
       body.appendChild(mkSectionLabel('By Month'));
@@ -481,7 +490,7 @@ function openEntityModal(ent, yr) {
   const monthRows = [...byMonth.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([mk, list]) => [
     MON[Number(mk.slice(5, 7)) - 1],
     String(list.length),
-    formatEUR(list.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0))
+    formatEUR(list.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date) * recShare(p), 0))
   ]);
   if (monthRows.length) {
     body.appendChild(mkSectionLabel('By Month'));
@@ -520,8 +529,8 @@ function openKindReceivedModal(kindLabel, gEnts, yr) {
   const pays = isService ? [] : listActivePayments().filter(p => p.status === 'paid' && (p.date || '').startsWith(yr) && ids.has(p.propertyId));
   const invs = isService ? listActive('invoices').filter(i => i.status === 'paid' && (i.issueDate || '').startsWith(yr) && ids.has(i.stream) && matchInvOwner(i) && matchInvScope(i)) : [];
   const allRows = [
-    ...pays.map(p => ({ label: nameById.get(p.propertyId) || '', eur: toEUR(p.amount, p.currency, p.date) })),
-    ...invs.map(i => ({ label: nameById.get(i.stream) || '', eur: toEUR(i.total, i.currency, i.issueDate) }))
+    ...pays.map(p => ({ label: nameById.get(p.propertyId) || '', eur: toEUR(p.amount, p.currency, p.date) * recShare(p) })),
+    ...invs.map(i => ({ label: nameById.get(i.stream) || '', eur: toEUR(i.total, i.currency, i.issueDate) * recShare(i) }))
   ];
   const total = allRows.reduce((s, r) => s + r.eur, 0);
 
@@ -708,11 +717,17 @@ function build() {
     const onReceived = () => {
       const propNames = new Map(withData.filter(e => e.kind !== 'service').map(e => [e.id, e.label]));
       const svcNames  = new Map(withData.filter(e => e.kind === 'service').map(e => [e.id, e.label]));
-      const pays = listActivePayments().filter(p => p.status === 'paid' && (p.date || '').startsWith(yr) && propNames.has(p.propertyId));
+      // Same records the card's Received counts (buildReconciliationData):
+      // long-term rent only, by the month it covers; short-term paid bookings
+      // by payout date.
+      const ltIds = new Set(withData.filter(e => e.kind === 'lt').map(e => e.id));
+      const pays = listActivePayments().filter(p => p.status === 'paid' && propNames.has(p.propertyId) && (ltIds.has(p.propertyId)
+        ? isRentPayment(p) && rentMonthOf(p).startsWith(yr)
+        : (p.date || '').startsWith(yr)));
       const invs = listActive('invoices').filter(i => i.status === 'paid' && (i.issueDate || '').startsWith(yr) && svcNames.has(i.stream) && matchInvOwner(i) && matchInvScope(i));
       const allRows = [
-        ...pays.map(p => ({ label: propNames.get(p.propertyId) || '', eur: toEUR(p.amount, p.currency, p.date) })),
-        ...invs.map(i => ({ label: svcNames.get(i.stream) || '', eur: toEUR(i.total, i.currency, i.issueDate) }))
+        ...pays.map(p => ({ label: propNames.get(p.propertyId) || '', eur: toEUR(p.amount, p.currency, p.date) * recShare(p) })),
+        ...invs.map(i => ({ label: svcNames.get(i.stream) || '', eur: toEUR(i.total, i.currency, i.issueDate) * recShare(i) }))
       ];
       const total = allRows.reduce((s, r) => s + r.eur, 0);
 
@@ -723,7 +738,7 @@ function build() {
           label: 'Total Received', value: formatEUR(total),
           explain: {
             title: 'Total Received',
-            formula: "Sum of paid payment amounts (EUR) + paid invoice totals (EUR), both dated in the selected year.",
+            formula: "Sum of paid long-term rent for months in the selected year, paid short-term bookings and paid invoices dated in it (EUR) — the records behind the Received card.",
             inputs: [
               { label: 'Paid payments', value: String(pays.length) },
               { label: 'Paid invoices', value: String(invs.length) },

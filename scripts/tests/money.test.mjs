@@ -177,6 +177,27 @@ test('reconciliation: ST ignores materialized copies; LT uses schedule, rent onl
   assert.ok(lt.months.every(m => m.isPast));
 });
 
+test('reconciliation: a shared property / invoice counts at 50% per owner, so the owners add up', () => {
+  load({
+    properties: [
+      { id: 'sh', type: 'short_term', name: 'Shared', currency: 'EUR', owner: 'both' },
+      { id: 'mine', type: 'short_term', name: 'Mine', currency: 'EUR', owner: 'you' }
+    ],
+    clients: [{ id: 'c1', name: 'Client', owner: 'both' }],
+    payments: [
+      { id: 'a', propertyId: 'sh', stream: 'short_term_rental', status: 'paid', amount: 800, date: '2024-03-10' },
+      { id: 'b', propertyId: 'mine', stream: 'short_term_rental', status: 'paid', amount: 300, date: '2024-03-12' }
+    ],
+    invoices: [{ id: 'i1', clientId: 'c1', stream: 'customer_success', status: 'paid', total: 1000, currency: 'EUR', issueDate: '2024-03-05' }]
+  });
+  const tot = (owner) => data.buildReconciliationData(2024, owner, 'all').reduce((s, e) => s + e.totAct, 0);
+  const shared = data.buildReconciliationData(2024, 'rita', 'all').find(e => e.id === 'sh');
+  assert.equal(shared.months[2].actual, 400);               // half of the shared booking
+  assert.equal(tot('rita'), 400 + 500);                       // shared flat + shared invoice at 50%
+  assert.equal(tot('you'), 400 + 300 + 500);
+  assert.equal(tot('you') + tot('rita'), tot(''));            // owners add up to the whole
+});
+
 test('reconciliation: current month is not past; future months excluded from to-date', () => {
   const yr = Number(todayYmd().slice(0, 4));
   load({ properties: [LT], tenants: [{ id: 't1', propertyId: 'p1', status: 'active', monthlyRent: 100, leaseStartDate: `${yr - 1}-01-01` }] });

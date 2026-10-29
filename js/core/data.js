@@ -1296,7 +1296,9 @@ function _buildPaymentSchedule(property) {
 // ============== Reconciliation ==============
 // ownerFilter: '' (all) | 'you' | 'rita' — a property/invoice tagged 'both'
 // always matches, mirroring the owner-filter convention used across every
-// analytics-*.js dashboard's mOwner()/ownerMatches() matcher.
+// analytics-*.js dashboard's mOwner()/ownerMatches() matcher, and counts at
+// 50% under an owner filter (the dashboards' owner-share rule), so the two
+// partners' figures add up to the whole instead of counting it twice.
 // scope: 'all' (default — every property/invoice, personal included, matching
 // this function's original behaviour) | 'company' — excludes personal-channel
 // properties and personal-flagged invoices, same as every analytics
@@ -1333,6 +1335,8 @@ export function buildReconciliationData(year, ownerFilter, scope) {
     ow = ow || 'both';
     return ow === 'both' || ow === ownerFilter;
   };
+  const shareOf = ow => (ownerFilter && (ow || 'both') === 'both' ? 0.5 : 1);
+  const invOwnerOf = inv => inv.owner || (inv.clientId ? byId('clients', inv.clientId)?.owner : null) || 'both';
   const matchPropScope = prop => scope !== 'company' || (prop.channel || 'company') === 'company';
   const coPropIds = companyPropIds();
   const matchInvScope = inv => scope !== 'company' || isCompanyRecord(inv, coPropIds);
@@ -1368,6 +1372,7 @@ export function buildReconciliationData(year, ownerFilter, scope) {
     if (!matchPropOwner(prop) || !matchPropScope(prop)) continue;
     const propPayments = paysByProp.get(prop.id) || [];
     const propRent = rentByProp.get(prop.id) || [];
+    const w = shareOf(prop.owner);
     // Long-term Expected comes from the rent schedule itself, so vacancies,
     // the sale date, rent changes and part months all apply here too.
     const schedByMonth = new Map();
@@ -1400,6 +1405,7 @@ export function buildReconciliationData(year, ownerFilter, scope) {
         actual   = monthPays.filter(p => p.status === 'paid').reduce((s, p) => s + toEUR(p.amount, p.currency, yr), 0);
       }
 
+      expected *= w; actual *= w;
       months.push({ mk, m, expected, actual, variance: actual - expected, isPast });
     }
     entities.push({
@@ -1422,8 +1428,8 @@ export function buildReconciliationData(year, ownerFilter, scope) {
       const end = `${mk}-${new Date(yr, m, 0).getDate().toString().padStart(2, '0')}`;
       const isPast = mk < curMk;
       const invs = streamInvs.filter(i => i.issueDate >= start && i.issueDate <= end);
-      const expected = invs.reduce((s, i) => s + toEUR(i.total, i.currency, yr), 0);
-      const actual   = invs.filter(i => i.status === 'paid').reduce((s, i) => s + toEUR(i.total, i.currency, yr), 0);
+      const expected = invs.reduce((s, i) => s + toEUR(i.total, i.currency, yr) * shareOf(invOwnerOf(i)), 0);
+      const actual   = invs.filter(i => i.status === 'paid').reduce((s, i) => s + toEUR(i.total, i.currency, yr) * shareOf(invOwnerOf(i)), 0);
       months.push({ mk, m, expected, actual, variance: actual - expected, isPast });
     }
     entities.push({ id: stream, label, kind: 'service', months, ..._recTotals(months, curMk) });
