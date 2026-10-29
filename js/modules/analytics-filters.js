@@ -389,13 +389,17 @@ function computeAvailableOptions(gF, channelScope) {
   // Leave-one-out: NOT constrained by gF.owners
   // Constrained by: streams, propertyIds
   const availOwners = new Set();
+  // A shared ('both') record makes every partner selectable — a partner who
+  // only co-owns something must still be offered.
+  const partners = getPeopleOwners().map(o => o.value);
+  const addOwner = o => { availOwners.add(o); if (o === 'both') partners.forEach(v => availOwners.add(v)); };
   allProps.forEach(p => {
     if (gF.streams.size > 0) {
       const s = propStreamKey(p);
       if (!s || !gF.streams.has(s)) return;
     }
     if (gF.propertyIds.size > 0 && !gF.propertyIds.has(p.id)) return;
-    availOwners.add(p.owner || 'both');
+    addOwner(p.owner || 'both');
   });
   // Owners from invoices (service revenue)
   allInvs.forEach(i => {
@@ -404,7 +408,7 @@ function computeAvailableOptions(gF, channelScope) {
       if (!s || !gF.streams.has(s)) return;
     }
     if (gF.clientIds.size > 0 && !gF.clientIds.has(i.clientId)) return;
-    availOwners.add(invoiceOwner(i)); // same owner rule the invoice matchers use
+    addOwner(invoiceOwner(i)); // same owner rule the invoice matchers use
   });
   for (const o of [...gF.owners]) if (!availOwners.has(o)) gF.owners.delete(o);
 
