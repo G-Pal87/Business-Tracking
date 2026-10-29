@@ -556,6 +556,10 @@ export function buildFilterBar(gF, opts, onChange) {
       getPeopleOwners().filter(o => availOwners.has(o.value)),
       gF.owners, 'All Owners', onChange, `${storagePrefix}_owners`
     ));
+    // One partner selected: shared records count at their share (makeMatchers).
+    if (gF.owners.size === 1) {
+      bar.appendChild(el('span', { style: 'font-size:11px;color:var(--text-muted)', title: "Records owned by both partners count at 50% for each, so one partner's figures plus the other's add up to the total." }, 'Shared items count at 50%'));
+    }
   }
 
   // Stream — only show streams that exist in data given other filters

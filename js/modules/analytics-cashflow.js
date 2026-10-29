@@ -539,7 +539,7 @@ function buildCashSeasonalityHeatmap() {
   const wrap = el('div', { class: 'card mb-16', style: 'overflow-x:auto' });
   wrap.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, 'Cash Seasonality'),
-    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Net cash flow by month · Green = surplus · Red = deficit · Click for detail')
+    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Net cash flow by month, every year · not affected by the period filter · Green = surplus · Red = deficit · Click for detail')
   ));
 
   const table = el('table', { id: 'cf-seasonality-heatmap', style: 'border-collapse:collapse;width:100%;font-size:12px' });

@@ -1856,7 +1856,8 @@ function buildDataQualityWarnings() {
 
   const section = el('div', { class: 'card mb-16', style: 'border-left:4px solid #f59e0b' });
   section.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'Forecast Data Quality')
+    el('div', { class: 'card-title' }, 'Forecast Data Quality'),
+    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Checks the forecast records themselves · not affected by the filters')
   ));
   const body = el('div', { style: 'padding:0 16px 12px;display:flex;flex-direction:column;gap:10px' });
   for (const w of warnings) {

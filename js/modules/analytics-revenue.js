@@ -1273,7 +1273,8 @@ function buildSeasonalityHeatmap() {
   const maxVal = Math.max(...grid.values(), 1);
 
   const wrap  = el('div', { class: 'card mb-16', style: 'overflow-x:auto' });
-  wrap.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Revenue Seasonality')));
+  wrap.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Revenue Seasonality'),
+    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Every year side by side · not affected by the period filter')));
 
   const table = el('table', { style: 'border-collapse:collapse;width:100%;font-size:12px' });
   const htr   = el('tr');

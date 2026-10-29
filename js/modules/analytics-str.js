@@ -1151,7 +1151,7 @@ function buildForwardPipelineCard() {
   const card = el('div', { class: 'card', style: 'margin-bottom:16px' });
   card.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, 'Forward Pipeline — Next 90 Days'),
-    el('div', { class: 'card-subtitle' }, todayYmd() + ' → ' + addDaysYmd(todayYmd(), 90))
+    el('div', { class: 'card-subtitle' }, todayYmd() + ' → ' + addDaysYmd(todayYmd(), 90) + ' · not affected by the period filter')
   ));
   const body = el('div', { style: 'padding:0 16px 16px' });
 

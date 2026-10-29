@@ -1238,7 +1238,7 @@ function buildLeaseExpiryCard(props) {
   const card = el('div', { class: 'card mb-16' });
   card.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, 'Lease Expiry Alerts'),
-    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Tenants whose lease ends within the next 90 days')
+    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Tenants whose lease ends within the next 90 days from today · not affected by the period filter')
   ));
 
   const today = todayYmd();            // local calendar date (not UTC)
