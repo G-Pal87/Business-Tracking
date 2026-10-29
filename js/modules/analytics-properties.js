@@ -10,7 +10,7 @@ import {
 import { todayYmd, diffDaysYmd, addDaysYmd } from '../core/dates.js';
 import { openDetail as openPropertyDetail } from './properties.js';
 import { createFilterState, getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine } from './analytics-filters.js';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkInsightsBanner, mkDashboardTabs, loadDashboardTab, memoView, safePct, mkTh, mkExplainButton, mkDrillValue, periodDays, DAYS_PER_YEAR } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkInsightsBanner, mkDashboardTabs, loadDashboardTab, memoView, safePct, mkTh, mkExplainButton, mkDrillValue, periodDays, DAYS_PER_YEAR, ownerShare } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -18,15 +18,38 @@ let gScope = 'company'; // 'company' | 'all'
 let gStatusFilter = new Set(); // 'active' | 'renovation' | 'vacant' | 'sold'
 let gMvInterval = 'year'; // market value charts: 'year' (31 Dec) | 'half' (30 Jun + 31 Dec)
 
+// Share of a property counted under the Owner filter: all of it with no owner
+// (or every partner) selected; half of a shared ('both') property when one
+// partner is selected, so the partners' figures add up to the portfolio
+// instead of counting a shared property twice. Ratios (yield, ROI, gain %)
+// are unaffected — both sides scale together.
+function ownerWeight(prop) {
+  if (!gF.owners.size) return 1;
+  let w = 0;
+  for (const o of gF.owners) w += ownerShare(prop?.owner || 'both', o);
+  return Math.min(1, w);
+}
+const scaleBy = (obj, w, keys) => {
+  if (w === 1 || !obj) return obj;
+  const o = { ...obj };
+  for (const k of keys) if (typeof o[k] === 'number') o[k] *= w;
+  return o;
+};
+const MV_MONEY = ['valueEUR', 'purchaseEUR', 'capexEUR', 'investedEUR', 'gainEUR', 'netIncomeEUR', 'totalReturnEUR'];
+const MORT_MONEY = ['principalEUR', 'remaining', 'monthlyDebt'];
+// Value-type figures (units, market value, mortgage) are read as of the end of
+// the selected period — today for a period that hasn't ended.
+const asOfDate = range => (range?.end && range.end < todayYmd() ? range.end : todayYmd());
+
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const CHART_IDS    = ['prop-profit-hbar', 'prop-month-bar', 'prop-single-trend', 'prop-mv-line', 'prop-mv-by-prop', 'prop-invested-donut', 'prop-acq-bar'];
 
 // Dashboard tabs; `scope` tells which filters apply to the tab's figures.
 const PROP_TABS = [
-  { id: 'overview',    label: 'Overview',          scope: 'Headline figures and alerts. Value and equity are as of today; revenue, profit, yield and vacancy follow the period filter.' },
+  { id: 'overview',    label: 'Overview',          scope: 'Headline figures and alerts. Revenue, profit, yield and vacancy cover the selected period; market value and equity are as of its end (today for a current period); lease alerts look 90 days ahead from today. A shared property counts at 50% when one owner is selected.' },
   { id: 'performance', label: 'Performance',       scope: 'Everything on this tab follows the period and comparison filters.' },
-  { id: 'value',       label: 'Portfolio & Value', scope: 'All-time and as-of-today figures. Property / Stream / Owner / Status filters apply; the period filters do not.' },
-  { id: 'financing',   label: 'Financing',         scope: 'Mortgage figures estimated as of today. Property / Stream / Owner / Status filters apply; the period filters do not.' }
+  { id: 'value',       label: 'Portfolio & Value', scope: 'The portfolio as of the end of the selected period (today for a current period): units, purchase price, market value, gain and equity; the charts run up to that date. All filters apply. A shared property counts at 50% when one owner is selected.' },
+  { id: 'financing',   label: 'Financing',         scope: 'Mortgage balances estimated as of the end of the selected period (today for a current period). All filters apply. A shared property counts at 50% when one owner is selected.' }
 ];
 const PROP_TAB_KEY = 'btf:prop_dash_tab';
 let gTab = loadDashboardTab(PROP_TAB_KEY, PROP_TABS);
@@ -66,6 +89,8 @@ function getData(start, end, isIncomplete = false) {
     (gScope === 'all' || (p.channel || 'company') === 'company')
   );
   const propIds = new Set(allProps.map(p => p.id));
+  const wById = new Map(allProps.map(p => [p.id, ownerWeight(p)]));
+  const share = r => { const w = wById.get(r.propertyId) ?? 1; return w === 1 ? r : { ...r, amount: (Number(r.amount) || 0) * w, _share: w }; };
 
   // Compare full dates, not month keys — comparing a 7-char "YYYY-MM" key
   // against the 10-char "YYYY-MM-DD" start/end boundaries meant a record
@@ -80,19 +105,19 @@ function getData(start, end, isIncomplete = false) {
   const payments    = listActivePayments().filter(p =>
     p.status === 'paid' && matchDate(p) && propIds.has(p.propertyId) &&
     (gScope === 'all' || !p.personal)
-  );
+  ).map(share);
   // Same Company-scope rule as payments: a record individually flagged
   // `personal` is excluded unless the Scope is "All".
   const opExpenses  = listActive('expenses').filter(e =>
     !isCapEx(e) && matchDate(e) && propIds.has(e.propertyId) &&
     (gScope === 'all' || !e.personal)
-  );
+  ).map(share);
   const capExpenses = listActive('expenses').filter(e =>
     isCapEx(e) && matchDate(e) && propIds.has(e.propertyId) &&
     (gScope === 'all' || !e.personal)
-  );
+  ).map(share);
   // All-time CapEx is never filtered by current period date range
-  const allCapExpenses = listActive('expenses').filter(e => isCapEx(e));
+  const allCapExpenses = listActive('expenses').filter(e => isCapEx(e) && propIds.has(e.propertyId)).map(share);
 
   // Pre-build propertyId → records maps — eliminates O(n²) .filter() inside the property loop
   const payByProp     = new Map();
@@ -111,11 +136,11 @@ function getData(start, end, isIncomplete = false) {
   const lifetimeNetByProp = new Map();
   for (const p of listActivePayments()) {
     if (p.status !== 'paid' || !propIds.has(p.propertyId) || (gScope !== 'all' && p.personal)) continue;
-    lifetimeNetByProp.set(p.propertyId, (lifetimeNetByProp.get(p.propertyId) || 0) + toEUR(p.amount, p.currency, p.date));
+    lifetimeNetByProp.set(p.propertyId, (lifetimeNetByProp.get(p.propertyId) || 0) + toEUR(p.amount, p.currency, p.date) * wById.get(p.propertyId));
   }
   for (const e of listActive('expenses')) {
     if (isCapEx(e) || !propIds.has(e.propertyId) || (gScope !== 'all' && e.personal)) continue;
-    lifetimeNetByProp.set(e.propertyId, (lifetimeNetByProp.get(e.propertyId) || 0) - toEUR(e.amount, e.currency, e.date));
+    lifetimeNetByProp.set(e.propertyId, (lifetimeNetByProp.get(e.propertyId) || 0) - toEUR(e.amount, e.currency, e.date) * wById.get(e.propertyId));
   }
 
   // A period that hasn't started yet has no actual transactions at all, so
@@ -135,8 +160,9 @@ function getData(start, end, isIncomplete = false) {
 
     const allTimeCapEx  = (allCapExByProp.get(prop.id) || [])
       .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+    const w = wById.get(prop.id);
     const purchaseEUR   = prop.purchasePrice
-      ? toEUR(prop.purchasePrice, prop.currency, prop.purchaseDate) : 0;
+      ? toEUR(prop.purchasePrice, prop.currency, prop.purchaseDate) * w : 0;
     const totalInvested = purchaseEUR + allTimeCapEx;
 
     const netIncome     = rev - opEx;
@@ -151,7 +177,9 @@ function getData(start, end, isIncomplete = false) {
     const annualNetIncome = annualizeForProperty(prop, netIncome, { start, end, isIncomplete });
     const simpleROI     = simplePropertyROI(prop.id,     { netIncome: annualNetIncome, totalInvested });
     const annualizedROI = annualizedPropertyROI(prop.id, { netIncome: lifetimeNetByProp.get(prop.id) || 0, totalInvested });
-    const cashOnCashROI = cashOnCashPropertyROI(prop.id, { annualCashFlow: annualNetIncome });
+    // Cash-on-cash compares with the whole property's cash invested, so it
+    // takes the whole property's cash flow (undo the owner share).
+    const cashOnCashROI = cashOnCashPropertyROI(prop.id, { annualCashFlow: w > 0 ? annualNetIncome / w : 0 });
 
     // Run-Rate ROI (formerly "Potential ROI"): the same full-year run-rate
     // projection Simple ROI already shows for a *completed* period, but
@@ -174,15 +202,16 @@ function getData(start, end, isIncomplete = false) {
     // is anchored to real performance so far). Long-term only: short-term
     // properties have no single fixed contracted rate to project from, since
     // nightly rate × occupancy varies booking to booking.
-    const steadyStateAnnualEUR = currentContractedAnnualRentEUR(prop);
+    const rentEUR = currentContractedAnnualRentEUR(prop);
+    const steadyStateAnnualEUR = rentEUR === null ? null : rentEUR * w;
     const steadyStateYield = (steadyStateAnnualEUR !== null && totalInvested > 0)
       ? (steadyStateAnnualEUR / totalInvested) * 100
       : null;
 
-    const expectedBookedEUR = isFuturePeriod ? computeExpectedBookedEUR(prop, start, end) : null;
+    const expectedBookedEUR = isFuturePeriod ? computeExpectedBookedEUR(prop, start, end) * w : null;
 
     return {
-      prop, rev, opEx, capEx, allTimeCapEx, purchaseEUR, totalInvested,
+      prop, share: w, rev, opEx, capEx, allTimeCapEx, purchaseEUR, totalInvested,
       netIncome,
       profit: rev - opEx,
       net:    rev - opEx - capEx,
@@ -302,7 +331,7 @@ function getOperationalData({ propData, payments, start, end, isIncomplete }) {
     .map(d => {
       const annualRev = annualizeForProperty(d.prop, d.rev, yieldRange);
       return {
-        name:      d.prop.name,
+        name:      shareName(d.prop, ownerWeight(d.prop)),
         annualRev,
         purchase:  d.purchaseEUR,
         yieldPct:  (d.purchaseEUR > 0) ? (annualRev / d.purchaseEUR) * 100 : null
@@ -411,9 +440,12 @@ const MIXED_DRILL_COLS = [
 ];
 
 // ── Investment drill helpers ───────────────────────────────────────────────────
+// Drill-table name, marking a shared property counted at its owner share.
+const shareName = (prop, w) => w < 1 ? `${prop.name} (${Math.round(w * 100)}% share)` : prop.name;
+
 function toPropValueRows(propData) {
   return propData.map(d => ({
-    name:     d.prop.name,
+    name:     shareName(d.prop, ownerWeight(d.prop)),
     stream:   STREAMS[propStream(d.prop)]?.short || propStream(d.prop),
     owner:    OWNERS[d.prop.owner] || d.prop.owner || '—',
     pdate:    d.prop.purchaseDate || '—',
@@ -434,7 +466,7 @@ const PROP_VALUE_COLS = [
 
 function toROIDrillRows(propData) {
   return propData.map(d => ({
-    name:     d.prop.name,
+    name:     shareName(d.prop, ownerWeight(d.prop)),
     rev:      d.rev,
     expenses: d.opEx,
     net:      d.profit,
@@ -468,7 +500,7 @@ function formatMonthKey(mk) {
 }
 
 // ── Mortgage estimation ───────────────────────────────────────────────────────
-function computeMortgageEstimate(prop) {
+function computeMortgageEstimate(prop, asOf = todayYmd()) {
   const principalRaw = prop.mortgageAmount  || 0;
   if (!principalRaw) {
     return { financed: false, principalEUR: 0, remaining: 0, yearsLeft: null, paidOff: false, monthlyDebt: 0, dtvRatio: null };
@@ -486,7 +518,7 @@ function computeMortgageEstimate(prop) {
   let paidOff   = false;
 
   if (rateDate && monthlyEUR > 0) {
-    const msSince = Date.now() - new Date(rateDate).getTime();
+    const msSince = Math.max(0, new Date(asOf).getTime() - new Date(rateDate).getTime());
     const n       = Math.max(0, Math.round(msSince / (30.4375 * 24 * 3600 * 1000)));
 
     if (r > 0) {
@@ -566,7 +598,7 @@ function buildCapExImpactSection({ propData, curRange }) {
       : null;
 
     return {
-      name:      d.prop.name,
+      name:      shareName(d.prop, ownerWeight(d.prop)),
       capEx:     capExTotal,
       preRev,
       postRev,
@@ -659,15 +691,22 @@ function openCapExImpactModal(r) {
   openModal({ title: `${r.name} — CapEx Impact`, body, large: true });
 }
 
-function getFinancingData(allProps) {
-  const finData    = allProps.map(prop => ({ prop, ...computeMortgageEstimate(prop) }));
+// Owner-share mortgage figures as of `asOf` (balance, payment and principal
+// scale with the share; DTV and years left don't).
+function mortgageFor(prop, asOf) {
+  return scaleBy(computeMortgageEstimate(prop, asOf), ownerWeight(prop), MORT_MONEY);
+}
+
+function getFinancingData(allProps, asOf = todayYmd()) {
+  const held = allProps.filter(p => !p.purchaseDate || p.purchaseDate <= asOf);
+  const finData    = held.map(prop => ({ prop, ...mortgageFor(prop, asOf) }));
   const withMortgage = finData.filter(d => d.financed);
   const activeDebt   = finData.filter(d => d.financed && !d.paidOff);
 
   const totalDebt    = withMortgage.reduce((s, d) => s + d.remaining,   0);
   const totalMonthly = activeDebt  .reduce((s, d) => s + d.monthlyDebt, 0);
-  const totalValue   = allProps.reduce((s, p) =>
-    s + (p.purchasePrice ? toEUR(p.purchasePrice, p.currency, p.purchaseDate) : 0), 0);
+  const totalValue   = held.reduce((s, p) =>
+    s + (p.purchasePrice ? toEUR(p.purchasePrice, p.currency, p.purchaseDate) * ownerWeight(p) : 0), 0);
 
   const yearsItems   = activeDebt.filter(d => d.yearsLeft != null);
   const avgYearsLeft = yearsItems.length > 0
@@ -682,14 +721,14 @@ function getFinancingData(allProps) {
       avgYearsLeft,
       nFinanced: withMortgage.length,
       nActive:   activeDebt.length,
-      nPaidOff:  allProps.length - withMortgage.length
+      nPaidOff:  held.length - withMortgage.length
     }
   };
 }
 
 function toFinancingDrillRows(finData) {
   return [...finData].sort((a, b) => b.remaining - a.remaining).map(d => ({
-    name:      d.prop.name,
+    name:      shareName(d.prop, ownerWeight(d.prop)),
     owner:     OWNERS[d.prop.owner] || d.prop.owner || '—',
     stream:    STREAMS[propStream(d.prop)]?.short || propStream(d.prop),
     principal: d.principalEUR || 0,
@@ -1022,7 +1061,7 @@ function openPropertySummaryModal(d) {
     }
   ], 2));
 
-  const mort = computeMortgageEstimate(prop);
+  const mort = mortgageFor(prop);
   if (mort.financed) {
     body.appendChild(mkSectionLabel('Financing'));
     body.appendChild(mkSummaryGrid([
@@ -1187,7 +1226,8 @@ const LEASE_DETAIL_COLS = [
   { key: 'value',  label: 'Value'  }
 ];
 
-function buildLeaseExpiryCard() {
+function buildLeaseExpiryCard(props) {
+  const propIds = new Set(props.map(p => p.id));
   const card = el('div', { class: 'card mb-16' });
   card.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, 'Lease Expiry Alerts'),
@@ -1199,7 +1239,7 @@ function buildLeaseExpiryCard() {
 
   const expiring = listActive('tenants').filter(t => {
     const end = t.leaseEndDate;
-    return end && end >= today && end <= in90;
+    return propIds.has(t.propertyId) && end && end >= today && end <= in90;
   });
 
   if (expiring.length === 0) {
@@ -1585,7 +1625,7 @@ function buildView() {
     const cur = getData(start, end, curRange.isIncomplete);
     const cmp = cmpRange ? getData(cmpRange.start, cmpRange.end, cmpRange.isIncomplete) : null;
     const op  = getOperationalData({ propData: cur.propData, payments: cur.payments, start, end, isIncomplete: curRange.isIncomplete });
-    const fin = getFinancingData(cur.allProps);
+    const fin = getFinancingData(cur.allProps, asOfDate(curRange));
     return { curData: cur, cmpData: cmp, opData: op, finData: fin, insights: computePropertyInsights(cur) };
   });
   const { curData, cmpData } = base;
@@ -1596,12 +1636,17 @@ function buildView() {
   const compLine = buildComparisonLine(curRange, cmpRange);
 
   // ── Portfolio units (Portfolio & Value tab) ───────────────────────────────
-  const activeCount = allProps.filter(p => (p.status || 'active') === 'active').length;
+  // Properties held at the end of the selected period (bought by then, not
+  // yet sold). A shared one is one unit; only its amounts are halved.
+  const asOf = asOfDate(curRange);
+  const heldAt = p => (!p.purchaseDate || p.purchaseDate <= asOf) && !(p.status === 'sold' && p.soldDate && p.soldDate <= asOf);
+  const heldData = propData.filter(d => heldAt(d.prop));
+  const sharedHeld = heldData.filter(d => d.share < 1).length;
   const unitsCard = mkKpiCard({
     label: 'Portfolio Units',
-    value: String(allProps.length),
-    subtitle: `${activeCount} active${allProps.length > activeCount ? ` · ${allProps.length - activeCount} other status` : ''}`,
-    onClick: () => drillDownModal('Portfolio Properties', [...toPropValueRows(propData)].sort((a, b) => a.name.localeCompare(b.name)), PROP_VALUE_COLS)
+    value: String(heldData.length),
+    subtitle: `held on ${fmtDate(asOf)}${sharedHeld ? ` · ${sharedHeld} shared (amounts at 50%)` : ''}`,
+    onClick: () => drillDownModal('Portfolio Properties', [...toPropValueRows(heldData)].sort((a, b) => a.name.localeCompare(b.name)), PROP_VALUE_COLS)
   });
 
   // ── Section 2: Period Performance ─────────────────────────────────────────
@@ -1791,11 +1836,11 @@ function buildView() {
     // Overview shows only today's figures — no timeline.
     // One value tile (equity underneath) beside the period figures; the full
     // value breakdown lives on the Portfolio & Value tab.
-    const mvData = memoView('analytics-properties:mv-now', viewDeps, () => getMarketValueData(allProps, { timeline: false }));
+    const mvData = memoView('analytics-properties:mv-now', viewDeps, () => getMarketValueData(allProps, { timeline: false, asOf }));
     wrap.appendChild(el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px' },
       buildOverviewValueCard(mvData), revCard, profitCard, yieldCard, vacancyCard));
     if (banner) wrap.appendChild(banner);
-    wrap.appendChild(buildLeaseExpiryCard());
+    wrap.appendChild(buildLeaseExpiryCard(allProps));
   }
 
   if (gTab === 'performance') {
@@ -1830,16 +1875,16 @@ function buildView() {
   }
 
   if (gTab === 'value') {
-    const mvData = memoView('analytics-properties:mv-full', { ...viewDeps, gMvInterval }, () => getMarketValueData(allProps));
+    const mvData = memoView('analytics-properties:mv-full', { ...viewDeps, gMvInterval }, () => getMarketValueData(allProps, { asOf }));
     // KPI cards lead the tab: portfolio units + the four market value tiles in one row.
     wrap.appendChild(el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px' },
       unitsCard, ...buildMarketValueKpis(mvData, { purchase: true }).children));
     wrap.appendChild(buildMarketValueSection(mvData, { kpis: false }));
     wrap.appendChild(el('div', { class: 'mb-16' }, buildInvestedSplitCard()));
-    wrap.appendChild(el('div', { class: 'mb-16' }, buildAcquisitionsCard(propData)));
+    wrap.appendChild(el('div', { class: 'mb-16' }, buildAcquisitionsCard(propData, asOf)));
     const lifecycleTimeline = buildPropertyLifecycleTimeline(propData);
     if (lifecycleTimeline) wrap.appendChild(lifecycleTimeline);
-    renders.push(() => renderMarketValueLine(mvData), () => renderMarketValueByProp(mvData), () => renderInvestedSplitDonut(curData), () => renderAcquisitionsBar(propData));
+    renders.push(() => renderMarketValueLine(mvData), () => renderMarketValueByProp(mvData), () => renderInvestedSplitDonut({ propData: heldData }), () => renderAcquisitionsBar(propData, asOf));
   }
 
   if (gTab === 'financing') {
@@ -1928,11 +1973,12 @@ function renderMonthBar({ payments, opExpenses }, monthKeys) {
 // else the purchase price. Property / Stream / Owner / Status / Scope filters
 // apply; the period filters don't — values are point-in-time.
 // `timeline: false` skips the per-year points (only the Value tab charts them).
-function getMarketValueData(allProps, { timeline: withTimeline = true } = {}) {
-  const now = todayYmd();
+function getMarketValueData(allProps, { timeline: withTimeline = true, asOf = todayYmd() } = {}) {
+  const now = asOf;
   const excludePersonal = gScope !== 'all';
+  const metricsAt = (prop, date) => scaleBy(propertyValueMetrics(prop, date, { excludePersonal }), ownerWeight(prop), MV_MONEY);
   const current = allProps
-    .map(prop => ({ prop, m: propertyValueMetrics(prop, now, { excludePersonal }), valuations: propertyValuations(prop).length }))
+    .map(prop => ({ prop, m: metricsAt(prop, now), valuations: propertyValuations(prop).length }))
     .filter(r => r.m);
   const sum = (rows, k) => rows.reduce((s, r) => s + (r.m[k] || 0), 0);
   const totals = {
@@ -1942,14 +1988,14 @@ function getMarketValueData(allProps, { timeline: withTimeline = true } = {}) {
     gain:        sum(current, 'gainEUR'),
     netIncome:   sum(current, 'netIncomeEUR'),
     totalReturn: sum(current, 'totalReturnEUR'),
-    mortgage:    current.reduce((s, r) => s + computeMortgageEstimate(r.prop).remaining, 0),
+    mortgage:    current.reduce((s, r) => s + mortgageFor(r.prop, now).remaining, 0),
     valued:      current.filter(r => r.valuations > 0).length
   };
   totals.equity = totals.value - totals.mortgage;
 
   // Same holdings one year ago, for the year-on-year change
   const yearAgo = `${Number(now.slice(0, 4)) - 1}${now.slice(4)}`;
-  const valueYearAgo = allProps.reduce((s, prop) => s + (propertyValueMetrics(prop, yearAgo, { excludePersonal })?.valueEUR || 0), 0);
+  const valueYearAgo = allProps.reduce((s, prop) => s + (metricsAt(prop, yearAgo)?.valueEUR || 0), 0);
   if (!withTimeline) return { current, totals, valueYearAgo, timeline: [] };
 
   // Year-end (or half-year-end) points from the first purchase year, plus today
@@ -1960,10 +2006,10 @@ function getMarketValueData(allProps, { timeline: withTimeline = true } = {}) {
     if (gMvInterval === 'half' && `${y}-06-30` < now) points.push({ label: `Jun ${y}`, date: `${y}-06-30` });
     if (`${y}-12-31` < now) points.push({ label: gMvInterval === 'half' ? `Dec ${y}` : String(y), date: `${y}-12-31` });
   }
-  points.push({ label: `Today (${now.slice(0, 4)})`, date: now });
+  points.push({ label: now === todayYmd() ? `Today (${now.slice(0, 4)})` : fmtDate(now), date: now });
   const timeline = points.map(pt => {
     const rows = allProps
-      .map(prop => ({ prop, m: propertyValueMetrics(prop, pt.date, { excludePersonal }) }))
+      .map(prop => ({ prop, m: metricsAt(prop, pt.date) }))
       .filter(r => r.m);
     return { ...pt, rows, value: rows.reduce((s, r) => s + r.m.valueEUR, 0), invested: rows.reduce((s, r) => s + r.m.investedEUR, 0) };
   });
@@ -1984,7 +2030,7 @@ const MV_COLS = [
 ];
 function toMarketValueRows(rows) {
   return rows.map(({ prop, m }) => ({
-    name: prop.name, purchase: m.purchaseEUR, invested: m.investedEUR, value: m.valueEUR,
+    name: shareName(prop, ownerWeight(prop)), purchase: m.purchaseEUR, invested: m.investedEUR, value: m.valueEUR,
     asOf: m.isPurchaseValue ? '' : m.valueDate, gain: m.gainEUR, gainPct: m.gainPct, cagr: m.cagrPct, totalRet: m.totalReturnPct
   })).sort((a, b) => b.value - a.value);
 }
@@ -2169,10 +2215,10 @@ function renderInvestedSplitDonut({ propData }) {
 // number of properties held at each year end (today for the current year) on
 // a second axis. Only the dashboard's filters narrow it; a property without a
 // purchase date can't be placed and is left out.
-function acquisitionsByYear(propData) {
-  const dated = propData.filter(d => /^\d{4}-\d{2}-\d{2}/.test(d.prop.purchaseDate || ''));
+function acquisitionsByYear(propData, asOf = todayYmd()) {
+  const now = asOf;
+  const dated = propData.filter(d => /^\d{4}-\d{2}-\d{2}/.test(d.prop.purchaseDate || '') && d.prop.purchaseDate <= now);
   if (!dated.length) return null;
-  const now = todayYmd();
   const first = Math.min(...dated.map(d => Number(d.prop.purchaseDate.slice(0, 4))));
   const last = Number(now.slice(0, 4));
   const years = [];
@@ -2184,7 +2230,7 @@ function acquisitionsByYear(propData) {
     const end = y === last ? now : `${y}-12-31`;
     return dated.filter(d => d.prop.purchaseDate <= end && !(d.prop.status === 'sold' && d.prop.soldDate && d.prop.soldDate <= end)).length;
   });
-  return { years, spend, held, dated, undated: propData.length - dated.length };
+  return { years, spend, held, dated, undated: propData.filter(d => !/^\d{4}-\d{2}-\d{2}/.test(d.prop.purchaseDate || '')).length };
 }
 
 const ACQ_COLS = [
@@ -2196,8 +2242,8 @@ const ACQ_COLS = [
   { key: 'value',    label: 'Current Value (EUR)', right: true, format: (v, r) => r.sold ? `Sold ${fmtDate(r.sold)}` : formatEUR(v), tip: 'Latest valuation on/before today, else the purchase price' }
 ];
 
-function buildAcquisitionsCard(propData) {
-  const acq = acquisitionsByYear(propData);
+function buildAcquisitionsCard(propData, asOf) {
+  const acq = acquisitionsByYear(propData, asOf);
   const note = acq
     ? `Purchase spend per year (EUR at each purchase-date rate) and properties held at each year end · click a year for its purchases${acq.undated ? ` · ${acq.undated} without a purchase date left out` : ''}`
     : 'No property with a purchase date matches the filters.';
@@ -2211,10 +2257,10 @@ function buildAcquisitionsCard(propData) {
   );
 }
 
-function renderAcquisitionsBar(propData) {
-  const acq = acquisitionsByYear(propData);
+function renderAcquisitionsBar(propData, asOf) {
+  const acq = acquisitionsByYear(propData, asOf);
   if (!acq) return;
-  const now = todayYmd();
+  const now = asOf;
   charts.bar('prop-acq-bar', {
     labels: acq.years.map(String),
     datasets: [{ label: 'Purchase spend (EUR)', data: acq.spend.map(v => Math.round(v)), backgroundColor: '#6366f1' }],
@@ -2225,12 +2271,12 @@ function renderAcquisitionsBar(propData) {
       const rows = bought.sort((a, b) => a.prop.purchaseDate.localeCompare(b.prop.purchaseDate)).map(d => {
         const sold = d.prop.status === 'sold' && d.prop.soldDate && d.prop.soldDate <= now ? d.prop.soldDate : '';
         return {
-          name: d.prop.name,
+          name: shareName(d.prop, ownerWeight(d.prop)),
           owner: OWNERS[d.prop.owner] || d.prop.owner || '—',
           stream: STREAMS[propStream(d.prop)]?.short || propStream(d.prop),
           pdate: d.prop.purchaseDate,
           purchase: d.purchaseEUR,
-          value: sold ? null : (propertyValueMetrics(d.prop, now, { excludePersonal: gScope !== 'all' })?.valueEUR ?? d.purchaseEUR),
+          value: sold ? null : ((propertyValueMetrics(d.prop, now, { excludePersonal: gScope !== 'all' })?.valueEUR ?? d.purchaseEUR / (d.share || 1)) * d.share),
           sold
         };
       });
