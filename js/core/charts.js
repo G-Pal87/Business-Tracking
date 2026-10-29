@@ -329,7 +329,7 @@ function valueLabelsPlugin(horizontal, formatValue = fmtEURLabel) {
       g.font = '600 10px sans-serif';
       g.fillStyle = '#e4e8f1';
       chart.data.datasets.forEach((ds, di) => {
-        if (!chart.isDatasetVisible(di)) return;
+        if (!chart.isDatasetVisible(di) || ds.type === 'line') return; // overlayLine: not money
         const meta = chart.getDatasetMeta(di);
         meta.data.forEach((el, i) => {
           const raw = ds.data[i];

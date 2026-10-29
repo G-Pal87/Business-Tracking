@@ -31,7 +31,6 @@ const PROP_TABS = [
 const PROP_TAB_KEY = 'btf:prop_dash_tab';
 let gTab = loadDashboardTab(PROP_TAB_KEY, PROP_TABS);
 let gInvestedSplit = 'owner'; // invested-capital donut: 'owner' | 'stream'
-let gAcqSplit = 'owner'; // acquisitions chart bars: 'owner' | 'stream'
 
 let _finSortCol = -1, _finSortDir = 1, _finSearch = '';
 let _sumSortCol = -1, _sumSortDir = 1, _sumSearch = '';
@@ -2166,14 +2165,11 @@ function renderInvestedSplitDonut({ propData }) {
 }
 
 // ── Acquisitions over time ────────────────────────────────────────────────────
-// Purchase spend per purchase year (EUR at each purchase-date rate), stacked by
-// owner or stream, with the number of properties held at each year end (today
-// for the current year) on a second axis. Follows the tab's filters; a
-// property without a purchase date can't be placed and is left out.
+// Purchase spend per purchase year (EUR at each purchase-date rate) with the
+// number of properties held at each year end (today for the current year) on
+// a second axis. Only the dashboard's filters narrow it; a property without a
+// purchase date can't be placed and is left out.
 function acquisitionsByYear(propData) {
-  const keyOf = d => gAcqSplit === 'owner'
-    ? (OWNERS[d.prop.owner] || d.prop.owner || 'Unknown')
-    : (STREAMS[propStream(d.prop)]?.short || propStream(d.prop));
   const dated = propData.filter(d => /^\d{4}-\d{2}-\d{2}/.test(d.prop.purchaseDate || ''));
   if (!dated.length) return null;
   const now = todayYmd();
@@ -2181,15 +2177,14 @@ function acquisitionsByYear(propData) {
   const last = Number(now.slice(0, 4));
   const years = [];
   for (let y = first; y <= last; y++) years.push(y);
-  const groups = [...new Set(dated.map(keyOf))].sort();
-  const spend = groups.map(g => years.map(y => dated
-    .filter(d => keyOf(d) === g && Number(d.prop.purchaseDate.slice(0, 4)) === y)
-    .reduce((s, d) => s + d.purchaseEUR, 0)));
+  const spend = years.map(y => dated
+    .filter(d => Number(d.prop.purchaseDate.slice(0, 4)) === y)
+    .reduce((s, d) => s + d.purchaseEUR, 0));
   const held = years.map(y => {
     const end = y === last ? now : `${y}-12-31`;
     return dated.filter(d => d.prop.purchaseDate <= end && !(d.prop.status === 'sold' && d.prop.soldDate && d.prop.soldDate <= end)).length;
   });
-  return { years, groups, spend, held, dated, undated: propData.length - dated.length };
+  return { years, spend, held, dated, undated: propData.length - dated.length };
 }
 
 const ACQ_COLS = [
@@ -2203,21 +2198,6 @@ const ACQ_COLS = [
 
 function buildAcquisitionsCard(propData) {
   const acq = acquisitionsByYear(propData);
-  const toggle = el('div', { class: 'flex gap-8' });
-  for (const [val, label] of [['owner', 'By owner'], ['stream', 'By stream']]) {
-    const isActive = gAcqSplit === val;
-    const btn = el('button', {
-      type: 'button',
-      style: [
-        'padding:3px 12px;border-radius:14px;border:1px solid;font-size:12px;cursor:pointer',
-        isActive
-          ? 'border-color:var(--accent);background:var(--accent);color:#fff;font-weight:600'
-          : 'border-color:var(--border);background:transparent;color:var(--text-muted)'
-      ].join(';')
-    }, label);
-    btn.onclick = () => { if (gAcqSplit !== val) { gAcqSplit = val; rebuildView(); } };
-    toggle.appendChild(btn);
-  }
   const note = acq
     ? `Purchase spend per year (EUR at each purchase-date rate) and properties held at each year end · click a year for its purchases${acq.undated ? ` · ${acq.undated} without a purchase date left out` : ''}`
     : 'No property with a purchase date matches the filters.';
@@ -2225,8 +2205,7 @@ function buildAcquisitionsCard(propData) {
     el('div', { class: 'card-header' },
       el('div', {},
         el('div', { class: 'card-title' }, 'Acquisitions over Time'),
-        el('div', { style: 'font-size:12px;color:var(--text-muted)' }, note)),
-      toggle
+        el('div', { style: 'font-size:12px;color:var(--text-muted)' }, note))
     ),
     acq ? el('div', { class: 'chart-wrap' }, el('canvas', { id: 'prop-acq-bar' })) : null
   );
@@ -2235,13 +2214,10 @@ function buildAcquisitionsCard(propData) {
 function renderAcquisitionsBar(propData) {
   const acq = acquisitionsByYear(propData);
   if (!acq) return;
-  const PALETTE = ['#6366f1', '#14b8a6', '#f59e0b', '#ec4899', '#3b82f6'];
   const now = todayYmd();
   charts.bar('prop-acq-bar', {
     labels: acq.years.map(String),
-    stacked: true,
-    showTotals: true,
-    datasets: acq.groups.map((g, i) => ({ label: g, data: acq.spend[i].map(v => Math.round(v)), backgroundColor: PALETTE[i % PALETTE.length] })),
+    datasets: [{ label: 'Purchase spend (EUR)', data: acq.spend.map(v => Math.round(v)), backgroundColor: '#6366f1' }],
     overlayLine: { label: 'Properties held', data: acq.held, color: '#e4e8f1', stepped: false },
     onClickItem: (label) => {
       const bought = acq.dated.filter(d => d.prop.purchaseDate.startsWith(label));
