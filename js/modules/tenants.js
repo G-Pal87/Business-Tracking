@@ -26,6 +26,11 @@ const STATUSES = {
 // core/data.js) on top of STATUSES, for badges/filters only — never offered
 // in the manual status dropdown below, since it isn't a value a user sets.
 const DISPLAY_STATUSES = { ...STATUSES, terminating: { label: 'Terminating', css: 'warning' } };
+// Status filter for this app session: current tenants (Active + Terminating)
+// by default each time the app loads; a change is kept until the next load.
+// null = the default; [] = all statuses.
+let _tenStatusSel = null;
+const DEFAULT_TENANT_STATUSES = ['active', 'terminating'];
 
 function build() {
   const wrap = el('div', { class: 'view active' });
@@ -46,10 +51,12 @@ function build() {
   };
 
   let _rtTimer;
-  const debouncedRT = () => { clearTimeout(_rtTimer); _rtTimer = setTimeout(() => { rebuildFilters(); renderTable(); }, 250); };
+  const debouncedRT = () => { clearTimeout(_rtTimer); _rtTimer = setTimeout(() => { _tenStatusSel = [...statusFilter]; rebuildFilters(); renderTable(); }, 250); };
   const propMS   = buildMultiSelect([], propFilter,   'All Properties', debouncedRT, 'ten_props');
   const ownerMS  = buildMultiSelect([], ownerFilter,  'All Owners',     debouncedRT, 'ten_owners');
   const statusMS = buildMultiSelect([], statusFilter, 'All Statuses',   debouncedRT, 'ten_statuses');
+  statusFilter.clear();
+  (_tenStatusSel ?? DEFAULT_TENANT_STATUSES).forEach(v => statusFilter.add(v));
 
   const rebuildFilters = () => {
     const allTenants = listActive('tenants');
@@ -64,7 +71,7 @@ function build() {
     statusMS.setItems([...validStatuses].map(s => { const m = DISPLAY_STATUSES[s] || { label: s, css: '' }; return { value: s, label: m.label, css: m.css }; }));
   };
 
-  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { propMS.reset(); ownerMS.reset(); statusMS.reset(); rebuildFilters(); renderTable(); } });
+  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { propMS.reset(); ownerMS.reset(); statusMS.reset(); _tenStatusSel = []; rebuildFilters(); renderTable(); } });
   filterBar.appendChild(propMS);
   filterBar.appendChild(ownerMS);
   filterBar.appendChild(statusMS);

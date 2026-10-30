@@ -1104,9 +1104,24 @@ function _expectedRentLease(t) {
   // No end date at all: rent stops after the current month (a whole month,
   // not prorated to today — the end is a guess, not a move-out date).
   const t0 = today();
-  const end = t.terminationDate || t.leaseEndDate ||
+  const end = t.terminationDate || pastLeaseEndByNext(t) || t.leaseEndDate ||
     `${t0.slice(0, 7)}-${String(daysInMonth(+t0.slice(0, 4), +t0.slice(5, 7))).padStart(2, '0')}`;
   return { ...t, leaseEndDate: t.leaseEndDate && t.leaseEndDate < end ? t.leaseEndDate : end };
+}
+
+// A lease marked past without a termination date whose end date runs past
+// the start of the property's next lease ended when the next one began —
+// the day before it starts. null when that doesn't apply.
+function pastLeaseEndByNext(t) {
+  if (t.status !== 'past' || t.terminationDate) return null;
+  let next = '';
+  for (const o of listActive('tenants')) {
+    if (o.id === t.id || o.propertyId !== t.propertyId || o.status === 'prospective') continue;
+    const s = o.leaseStartDate || '';
+    if (s > (t.leaseStartDate || '') && (!next || s < next)) next = s;
+  }
+  if (!next || (t.leaseEndDate && t.leaseEndDate < next)) return null;
+  return addDaysYmd(next, -1);
 }
 
 // Month a rent payment covers. Rent recorded from the schedule carries an
@@ -1236,10 +1251,12 @@ export function getContractExpiryFlag(tenant) {
 // actually arrives.
 // ── Property status vs leases ────────────────────────────────────────────────
 // Leases running on `day` (default today): not prospective, started, not yet
-// ended or terminated.
+// ended or terminated. A lease marked past has ended — it only still runs
+// while terminating (a termination date not yet reached).
 export function currentLeases(propertyId, day = today()) {
   return listActive('tenants').filter(t =>
     t.propertyId === propertyId && t.status !== 'prospective' &&
+    !(t.status === 'past' && !(t.terminationDate && t.terminationDate >= day)) &&
     (t.leaseStartDate || '') <= day &&
     (!t.leaseEndDate || t.leaseEndDate >= day) &&
     !(t.terminationDate && t.terminationDate < day)

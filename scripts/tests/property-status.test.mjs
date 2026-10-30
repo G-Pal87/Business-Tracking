@@ -38,3 +38,25 @@ test('renovation without a tenant stays; prospective and future leases do not co
   assert.equal(data.currentLeases('b', D).length, 0);          // terminated 15 Oct
   assert.equal(data.expectedPropertyStatus(data.byId('properties', 'b'), D), 'vacant');
 });
+
+test('a lease marked past (never terminated) has ended: no overlap, and rent passes to the next tenant', () => {
+  setDb({ settings: { fxRates: { yearRates: { 2026: 0.0027 } } }, payments: [], expenses: [],
+    properties: [{ id: 'd', type: 'long_term', status: 'active', currency: 'HUF' }],
+    tenants: [
+      { id: 'old', propertyId: 'd', status: 'past', leaseStartDate: '2025-04-01', leaseEndDate: '2027-03-21', monthlyRent: 180000, currency: 'HUF' },
+      { id: 'new', propertyId: 'd', status: 'active', leaseStartDate: '2026-03-23', leaseEndDate: '2027-03-22', monthlyRent: 190000, currency: 'HUF' }
+    ] });
+  assert.deepEqual(data.currentLeases('d', D).map(t => t.id), ['new']);     // not flagged as overlapping
+  const oct = data.generatePaymentSchedule(data.byId('properties', 'd')).filter(e => e.monthKey === '2026-10');
+  assert.deepEqual(oct.map(e => [e.tenantId, e.amount]), [['new', 190000]]); // October rent is the new tenant's
+  const mar = data.generatePaymentSchedule(data.byId('properties', 'd')).filter(e => e.monthKey === '2026-03');
+  assert.deepEqual(mar.map(e => e.tenantId).sort(), ['new', 'old']);        // hand-over month split
+});
+
+test('a terminating lease (termination date ahead) still runs until then', () => {
+  setDb({ settings: {}, payments: [], expenses: [],
+    properties: [{ id: 'd', type: 'long_term', status: 'active' }],
+    tenants: [{ id: 'x', propertyId: 'd', status: 'past', leaseStartDate: '2025-01-01', leaseEndDate: '2026-11-15', terminationDate: '2026-11-15' }] });
+  assert.equal(data.currentLeases('d', D).length, 1);
+  assert.equal(data.currentLeases('d', '2026-11-16').length, 0);
+});
