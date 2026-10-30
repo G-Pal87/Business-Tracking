@@ -732,6 +732,25 @@ function promptForPaymentDetails(payment) {
   });
 }
 
+// Set or change who collected a paid payment (the Rent Schedule's
+// "Collected by" button): same fields as the payment form's section.
+function openCollectedByModal(payment, onDone) {
+  const coll = buildVendorCollectionFields(payment, () => payment.amount);
+  const saveBtn = button('Save', { variant: 'primary' });
+  const { close } = openModal({
+    title: `Collected by — ${byId('properties', payment.propertyId)?.name || ''} ${payment.rentMonth || (payment.date || '').slice(0, 7)}`,
+    body: coll.el,
+    footer: [button('Cancel', { variant: 'ghost', onClick: () => close() }), saveBtn]
+  });
+  saveBtn.onclick = () => {
+    const c = coll.read();
+    const exp = setVendorCollection(payment.id, c);
+    toast(exp ? `Expense booked for ${exp.vendor || 'the vendor'}: ${formatMoney(exp.amount, exp.currency)}` : 'Collected by us — no vendor expense', 'success', 5000);
+    close();
+    if (onDone) onDone();
+  };
+}
+
 async function recordRentPayment(prop, entry, onDone) {
   const { created: [created] } = recordRentPaymentsBulk(prop, [entry]);
   if (!created) {
@@ -1087,6 +1106,14 @@ function buildScheduleSection(wrap) {
           td.appendChild(button('Mark Paid', { variant: 'sm primary', onClick: () => recordRentPayment(prop, s, render) }));
         }
         td.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => { closeOtherEdits(); renderEditRow(); } }));
+        // Paid rent: who collected it (us, or a vendor who kept it for their costs).
+        const paidPay = s.paid && s.linkedPaymentId ? byId('payments', s.linkedPaymentId) : null;
+        if (paidPay) {
+          const vend = paidPay.collectedByVendorId ? byId('vendors', paidPay.collectedByVendorId) : null;
+          td.appendChild(button(vend ? `Collected by ${vend.name}` : 'Collected by…', {
+            variant: 'sm ghost', onClick: () => openCollectedByModal(paidPay, render)
+          }));
+        }
         if (s.linkedPaymentId) {
           td.appendChild(button('Delete', { variant: 'sm danger', onClick: async () => {
             const ok = await confirmDialog('Delete this payment record? This cannot be undone.', { danger: true, okLabel: 'Delete' });
