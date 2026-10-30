@@ -625,13 +625,15 @@ function blockedDateSet(propertyId) {
 // The Airbnb iCal feed and Payments are two independent, asynchronously-updated
 // sources: a "Reserved" block can show up on the calendar well before (or,
 // occasionally, without ever) a matching paid/pending payment gets recorded.
-// This surfaces that gap instead of letting it go unnoticed, while excluding
-// owner-blocks (maintenance/personal-use/availability syncs), which never
-// expect a payment in the first place.
+// This surfaces that gap instead of letting it go unnoticed. Nights the owner
+// closed ("Not available") are listed too: a closure can hide a booking taken
+// off-platform, so every one needs a reason (or a payment) to be accounted for.
 
 const GAP_REASONS = [
-  { value: 'maintenance',     label: 'Maintenance / unavailable' },
+  { value: 'off_platform',    label: 'Off-platform booking' },
+  { value: 'maintenance',     label: 'Maintenance / repairs' },
   { value: 'personal_stay',   label: 'Personal stay' },
+  { value: 'closed',          label: 'Closed / not available' },
   { value: 'payment_pending', label: 'Guest stay — payment pending' },
   { value: 'other',           label: 'Other' }
 ];
@@ -656,7 +658,7 @@ function getBlockAnnotation(propertyId, uid) {
 // Per-date classification of every iCal block, for calendar rendering: 'owner'
 // (closed/unavailable, never expects a payment) or 'reserved' (a guest
 // booking — should eventually have a matching payment), plus that block's
-// annotation if one has been assigned.
+// annotation if one has been assigned (either type can carry one).
 function classifyBlockedDates(propertyId) {
   const map = new Map();
   const cal = calendarFor(propertyId);
@@ -664,7 +666,7 @@ function classifyBlockedDates(propertyId) {
   for (const b of cal.blocks || []) {
     if (!b.start || !b.end || !b.uid) continue;
     const type = isOwnerBlockSummary(b.summary) ? 'owner' : 'reserved';
-    const annotation = type === 'reserved' ? getBlockAnnotation(propertyId, b.uid) : null;
+    const annotation = getBlockAnnotation(propertyId, b.uid);
     for (const cur of nightsOf(b.start, b.end)) {
       map.set(cur, { type, uid: b.uid, summary: b.summary, annotation });
     }
@@ -672,10 +674,11 @@ function classifyBlockedDates(propertyId) {
   return map;
 }
 
-// "Reserved" blocks whose nights aren't fully covered by a paid/pending
-// payment (historicNightMap already excludes payout-adjustment records, so a
-// covered night here always means a real booked night). Owner-blocks are
-// excluded — they never expect a payment.
+// Blocks — "Reserved" and owner-closed alike — whose nights aren't fully
+// covered by a paid/pending payment (historicNightMap already excludes
+// payout-adjustment records, so a covered night here always means a real
+// booked night). `kind` says which: a closure is resolved by a reason, or by
+// recording the off-platform booking it was hiding.
 function findCalendarPaymentGaps(propertyId) {
   const cal = calendarFor(propertyId);
   if (!cal) return [];
@@ -683,7 +686,7 @@ function findCalendarPaymentGaps(propertyId) {
   const today = todayStr();
   const gaps = [];
   for (const b of cal.blocks || []) {
-    if (!b.start || !b.end || !b.uid || isOwnerBlockSummary(b.summary)) continue;
+    if (!b.start || !b.end || !b.uid) continue;
     let total = 0, missing = 0;
     for (const cur of nightsOf(b.start, b.end)) {
       total++;
@@ -692,6 +695,7 @@ function findCalendarPaymentGaps(propertyId) {
     if (missing === 0) continue;
     gaps.push({
       uid: b.uid, start: b.start, end: b.end,
+      kind: isOwnerBlockSummary(b.summary) ? 'owner' : 'reserved',
       nights: missing, totalNights: total,
       isPast: b.end <= today,
       annotation: getBlockAnnotation(propertyId, b.uid)
@@ -719,7 +723,7 @@ export function countUnresolvedGapNights() {
   });
 }
 
-// Warning banner listing "Reserved" blocks with no matching payment for the
+// Warning banner listing reserved and closed blocks with no matching payment for the
 // selected property, so a real gap in Payments doesn't go unnoticed just
 // because the two systems sync independently. Silent when clean.
 function renderGapBanner(container, propertyId, onRerender) {
@@ -728,15 +732,18 @@ function renderGapBanner(container, propertyId, onRerender) {
   if (!gaps.length) return;
 
   const unresolvedCount = gaps.filter(g => !g.annotation).length;
+  const nRes = gaps.filter(g => g.kind === 'reserved').length, nOwn = gaps.length - nRes;
+  const plural = (n, w) => `${n} ${w} range${n !== 1 ? 's' : ''}`;
+  const title = [nRes && plural(nRes, 'reserved'), nOwn && plural(nOwn, 'closed')].filter(Boolean).join(' and ');
   const card  = el('div', { class: 'card', style: 'margin-bottom:16px;border-left:3px solid #ef4444' });
   const inner = el('div', { style: 'padding:14px 16px' });
   inner.appendChild(el('div', { style: 'font-size:13px;font-weight:700;color:var(--text);margin-bottom:2px;display:flex;align-items:center;gap:6px' },
     el('span', { style: 'color:#ef4444' }, '⚠'),
-    `${gaps.length} reserved night range${gaps.length !== 1 ? 's' : ''} on Airbnb with no matching payment`
+    `${title} on Airbnb with no matching payment`
   ));
   inner.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:12px' },
     unresolvedCount > 0
-      ? `${unresolvedCount} still need${unresolvedCount === 1 ? 's' : ''} a reason — assign one below, or record the payment in Payments if it just hasn't been imported yet.`
+      ? `${unresolvedCount} still need${unresolvedCount === 1 ? 's' : ''} a reason — assign one below, or record the payment if it was a booking (off-platform, or not imported yet).`
       : 'All accounted for — reasons assigned below.'
   ));
 
@@ -762,9 +769,14 @@ function renderGapRow(gap, propertyId, onRerender) {
     : `${gap.nights} of ${gap.totalNights} nights unmatched`;
 
   const head = el('div', { style: 'display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap' });
-  head.appendChild(el('div', { style: 'font-size:13px;font-weight:600;color:var(--text)' }, `${fmtDate(gap.start)} – ${fmtDate(gap.end)}`));
+  const owner = gap.kind === 'owner';
+  head.appendChild(el('div', { style: 'font-size:13px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:6px' },
+    `${fmtDate(gap.start)} – ${fmtDate(gap.end)}`,
+    el('span', { style: `font-size:10px;font-weight:700;text-transform:uppercase;padding:1px 6px;border-radius:8px;${owner ? 'background:rgba(100,116,139,0.18);color:var(--text-muted)' : 'background:rgba(239,68,68,0.15);color:#ef4444'}` },
+      owner ? 'Closed by owner' : 'Reserved')));
   head.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted)' },
-    `${nightsLabel} · ${gap.isPast ? 'already checked out' : 'upcoming'}`));
+    owner ? `${gap.nights === gap.totalNights ? `${gap.nights} night${gap.nights !== 1 ? 's' : ''}` : `${gap.nights} of ${gap.totalNights} nights`} without a payment · ${gap.isPast ? 'past' : 'upcoming'}`
+      : `${nightsLabel} · ${gap.isPast ? 'already checked out' : 'upcoming'}`));
   row.appendChild(head);
 
   // The real fix for a genuine off-platform (non-Airbnb-payout) booking is a
@@ -801,6 +813,11 @@ function renderGapRow(gap, propertyId, onRerender) {
 
     const options = gap.annotation ? GAP_REASONS : [{ value: '', label: 'Choose a reason…' }, ...GAP_REASONS];
     const reasonSel = select(options, gap.annotation?.reason || '');
+    const hint = el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:4px;display:none' },
+      'If the guest paid, use "Record Off-Platform Booking" above instead so the income is counted — the range then clears on its own.');
+    const syncHint = () => { hint.style.display = reasonSel.value === 'off_platform' ? '' : 'none'; };
+    reasonSel.addEventListener('change', syncHint);
+    syncHint();
     reasonSel.style.maxWidth = '220px';
     const noteInp = textarea({ placeholder: 'Optional note — what happened here?', rows: 2 });
     noteInp.style.width = '100%';
@@ -831,6 +848,7 @@ function renderGapRow(gap, propertyId, onRerender) {
       }}));
     }
     formHost.appendChild(reasonSel);
+    formHost.appendChild(hint);
     formHost.appendChild(noteInp);
     formHost.appendChild(btnRow);
   };
@@ -1334,9 +1352,16 @@ function renderCalendar(card, { histMap, suggest, blocked, blockInfo, year, mont
       const rateVal = target ? target.targetADR : suggest(date)?.rate;
       rateEl = el('div', { style: 'font-size:12px;font-style:italic;color:var(--text-muted)' }, rateVal != null ? formatMoney(rateVal, ccy, { maxFrac: 0 }) : '—');
       badge = 'noted';
+    } else if (info?.type === 'owner' && !info.annotation) {
+      // Closed by the owner, no payment, no reason yet — could hide an
+      // off-platform booking, so it's flagged (amber, softer than a reserved gap).
+      bg = 'rgba(245,158,11,0.14)';
+      border = '1px solid rgba(245,158,11,0.55)';
+      const rateVal = target ? target.targetADR : suggest(date)?.rate;
+      rateEl = el('div', { style: 'font-size:12px;font-style:italic;color:var(--text-muted)' }, rateVal != null ? formatMoney(rateVal, ccy, { maxFrac: 0 }) : '—');
+      badge = 'why?';
     } else if (info?.type === 'owner' || isBlocked) {
-      // Owner block (maintenance/personal-use/availability sync) — never
-      // expects a payment, so it's neutral rather than alarming. The
+      // Owner block with a reason noted — accounted for, so neutral. The
       // isBlocked fallback covers blocks with no uid, which classifyBlockedDates
       // can't type but blockedDateSet still counts as unavailable.
       bg = 'rgba(100,116,139,0.12)';
@@ -1358,8 +1383,8 @@ function renderCalendar(card, { histMap, suggest, blocked, blockInfo, year, mont
       style: `position:relative;min-height:66px;padding:6px;border-radius:6px;border:${border};background:${bg};cursor:pointer;` +
              (isToday ? 'box-shadow:0 0 0 2px var(--accent,#6366f1) inset;' : '')
     });
-    const badgeColor = badge === 'booked' ? '#10b981' : badge === 'gap' ? '#ef4444' : badge === 'noted' ? '#8b5cf6' : badge === 'closed' ? '#64748b' : badge === 'target' ? '#6366f1' : badge === 'low' ? '#f59e0b' : 'var(--text-muted)';
-    const badgeText  = badge === 'booked' ? 'booked' : badge === 'gap' ? 'gap' : badge === 'noted' ? 'noted' : badge === 'closed' ? 'closed' : badge === 'target' ? 'target' : badge === 'low' ? '?' : badge === 'medium' ? '~' : badge === 'high' ? 'sugg' : badge ? 'sugg' : '';
+    const badgeColor = badge === 'booked' ? '#10b981' : badge === 'gap' ? '#ef4444' : badge === 'noted' ? '#8b5cf6' : badge === 'closed' ? '#64748b' : badge === 'why?' ? '#d97706' : badge === 'target' ? '#6366f1' : badge === 'low' ? '#f59e0b' : 'var(--text-muted)';
+    const badgeText  = badge === 'booked' ? 'booked' : badge === 'gap' ? 'gap' : badge === 'noted' ? 'noted' : badge === 'closed' ? 'closed' : badge === 'why?' ? 'why?' : badge === 'target' ? 'target' : badge === 'low' ? '?' : badge === 'medium' ? '~' : badge === 'high' ? 'sugg' : badge ? 'sugg' : '';
     cell.appendChild(el('div', { style: 'display:flex;justify-content:space-between;align-items:center' },
       el('span', { style: 'font-size:12px;font-weight:600;color:var(--text-muted)' }, String(d)),
       badgeText ? el('span', { style: `font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${badgeColor}` }, badgeText) : null
@@ -1380,7 +1405,8 @@ function renderCalendar(card, { histMap, suggest, blocked, blockInfo, year, mont
   legend.appendChild(chip('rgba(16,185,129,0.30)', 'Booked (actual rate)'));
   legend.appendChild(chip('rgba(239,68,68,0.20)', 'Reserved, no payment — needs a reason'));
   legend.appendChild(chip('rgba(139,92,246,0.25)', 'Reserved, no payment — reason noted'));
-  legend.appendChild(chip('rgba(100,116,139,0.20)', 'Owner block (maintenance/personal/unavailable)'));
+  legend.appendChild(chip('rgba(245,158,11,0.25)', 'Closed by owner, no payment — needs a reason'));
+  legend.appendChild(chip('rgba(100,116,139,0.20)', 'Closed by owner — reason noted'));
   if (target) legend.appendChild(chip('#6366f1', `target = confirmed ${formatMoney(target.targetADR, ccy, { maxFrac: 0 })} (published rate)`));
   legend.appendChild(chip('transparent', 'Open · sugg = high confidence · ~ = medium · ? = low'));
   body.appendChild(legend);
@@ -1456,19 +1482,21 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target 
       : blockInfo?.type === 'reserved' ? 'Reserved on Airbnb — no payment recorded'
       : isBlocked ? 'Reserved / blocked (iCal)' : 'Open';
     body.appendChild(row('Status', statusLabel));
-    if (blockInfo?.type === 'reserved') {
+    if (blockInfo?.type === 'reserved' || blockInfo?.type === 'owner') {
+      const own = blockInfo.type === 'owner';
       const box = el('div', {
-        style: `margin:8px 0;padding:8px 10px;border-radius:6px;font-size:12px;border-left:3px solid ${blockInfo.annotation ? '#8b5cf6' : '#ef4444'};` +
-               `background:${blockInfo.annotation ? 'rgba(139,92,246,0.10)' : 'rgba(239,68,68,0.10)'}`
+        style: `margin:8px 0;padding:8px 10px;border-radius:6px;font-size:12px;border-left:3px solid ${blockInfo.annotation ? '#8b5cf6' : own ? '#f59e0b' : '#ef4444'};` +
+               `background:${blockInfo.annotation ? 'rgba(139,92,246,0.10)' : own ? 'rgba(245,158,11,0.10)' : 'rgba(239,68,68,0.10)'}`
       });
       if (blockInfo.annotation) {
         box.appendChild(el('div', { style: 'font-weight:700;color:var(--text);margin-bottom:2px' },
           `Noted: ${GAP_REASON_LABEL.get(blockInfo.annotation.reason) || blockInfo.annotation.reason}`));
         if (blockInfo.annotation.note) box.appendChild(el('div', { style: 'color:var(--text-muted)' }, blockInfo.annotation.note));
       } else {
-        box.appendChild(el('div', { style: 'font-weight:700;color:var(--text);margin-bottom:2px' }, 'No matching payment for this reservation'));
+        box.appendChild(el('div', { style: 'font-weight:700;color:var(--text);margin-bottom:2px' },
+          blockInfo.type === 'owner' ? 'Closed with no payment — why?' : 'No matching payment for this reservation'));
         box.appendChild(el('div', { style: 'color:var(--text-muted)' },
-          'Assign a reason in the banner above the calendar, or record the payment in Payments if it just hasn\'t been imported yet.'));
+          'Assign a reason in the banner above the calendar, or record the payment if it was a booking (off-platform, or not imported yet).'));
       }
       body.appendChild(box);
     }

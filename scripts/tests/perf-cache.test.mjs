@@ -168,7 +168,7 @@ test('countUnresolvedGapNights: nights across month/leap-day boundaries; follows
     strCalendars: [{ id: 'c1', propertyId: 's1', blocks: [
       { uid: 'a', start: '2024-02-27', end: '2024-03-03', summary: 'Reserved' },   // 5 nights incl. 29 Feb
       { uid: 'b', start: '2024-12-30', end: '2025-01-02', summary: 'Reserved' },   // 3 nights across new year
-      { uid: 'c', start: '2024-06-01', end: '2024-06-05', summary: 'Airbnb (Not available)' }, // owner block
+      { uid: 'c', start: '2024-06-01', end: '2024-06-05', summary: 'Airbnb (Not available)' }, // owner-closed: 4 nights, asked too
       { uid: 'd', start: '2024-07-01', end: 'TBD', summary: 'Reserved' }           // malformed → 0 nights
     ] }],
     payments: [
@@ -176,11 +176,17 @@ test('countUnresolvedGapNights: nights across month/leap-day boundaries; follows
       { id: 'b1', propertyId: 's1', stream: 'short_term_rental', source: 'airbnb', airbnbType: 'Reservation', status: 'paid', amount: 300, currency: 'EUR', date: '2024-03-02', airbnbCheckIn: '2024-02-28', airbnbCheckOut: '2024-03-02' }
     ]
   });
-  assert.equal(countUnresolvedGapNights(), 2 + 3);
+  assert.equal(countUnresolvedGapNights(), 2 + 3 + 4);
   data.upsert('strBlockAnnotations', { id: 'sba1', propertyId: 's1', uid: 'b', reason: 'other' });
-  assert.equal(countUnresolvedGapNights(), 2);
+  assert.equal(countUnresolvedGapNights(), 2 + 4);
   data.softDelete('strBlockAnnotations', 'sba1');
-  assert.equal(countUnresolvedGapNights(), 5);
+  assert.equal(countUnresolvedGapNights(), 9);
   data.upsert('payments', { id: 'b2', propertyId: 's1', stream: 'short_term_rental', source: 'manual', status: 'paid', amount: 100, currency: 'EUR', date: '2024-03-03', checkIn: '2024-02-27', checkOut: '2024-03-03' });
+  assert.equal(countUnresolvedGapNights(), 3 + 4);
+  // a reason on the closure clears it, as does an off-platform payment for its nights
+  data.upsert('strBlockAnnotations', { id: 'sba2', propertyId: 's1', uid: 'c', reason: 'maintenance' });
+  assert.equal(countUnresolvedGapNights(), 3);
+  data.softDelete('strBlockAnnotations', 'sba2');
+  data.upsert('payments', { id: 'b3', propertyId: 's1', stream: 'short_term_rental', source: 'manual', status: 'paid', amount: 400, currency: 'EUR', date: '2024-06-05', checkIn: '2024-06-01', checkOut: '2024-06-05' });
   assert.equal(countUnresolvedGapNights(), 3);
 });
