@@ -1,5 +1,5 @@
 // Vendors module
-import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, buildMultiSelect } from '../core/ui.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, buildMultiSelect, searchBox, matchesSearch } from '../core/ui.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, toEUR, formatEUR } from '../core/data.js';
 import { VENDOR_ROLES, PROPERTY_TYPES, CURRENCIES } from '../core/config.js';
 import { navigate } from '../core/router.js';
@@ -13,14 +13,18 @@ export default {
   destroy() {}
 };
 
+let _vndSearch = ''; // free-text search over the cards, kept across visits
+
 function build() {
   const wrap = el('div', { class: 'view active' });
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
   const roleFilter = new Set();
   const roleMS = buildMultiSelect(Object.entries(VENDOR_ROLES).map(([v, m]) => ({ value: v, label: m.label })), roleFilter, 'All Roles', () => renderCards(), 'vnd_roles');
-  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { roleMS.reset(); renderCards(); } });
+  const search = searchBox({ value: _vndSearch, placeholder: 'Search vendors…', onInput: v => { _vndSearch = v; renderCards(); } });
+  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { roleMS.reset(); _vndSearch = ''; search.value = ''; renderCards(); } });
   filterBar.appendChild(roleMS);
+  filterBar.appendChild(search);
   filterBar.appendChild(resetFiltersBtn);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
   filterBar.appendChild(button('+ Add Vendor', { variant: 'primary', onClick: () => openForm() }));
@@ -33,10 +37,11 @@ function build() {
     grid.innerHTML = '';
     let rows = [...listActive('vendors')];
     if (roleFilter.size > 0) rows = rows.filter(r => roleFilter.has(r.role));
+    if (_vndSearch) rows = rows.filter(r => matchesSearch(_vndSearch, r.name, r.company, r.email, r.phone, r.notes, VENDOR_ROLES[r.role]?.label));
     if (rows.length === 0) {
       grid.appendChild(el('div', { class: 'empty' },
         el('div', { class: 'empty-icon' }, 'V'),
-        'No vendors yet. Add your first one.'
+        listActive('vendors').length ? 'No vendors match the filters.' : 'No vendors yet. Add your first one.'
       ));
       return;
     }

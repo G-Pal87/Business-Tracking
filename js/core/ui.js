@@ -773,6 +773,21 @@ export function whenDetached(node, cleanup) {
 // caller-side changes.
 const MS_NONE_SENTINEL = '\u0000__ms_none__';
 
+// Search box for a list page's filter row (cards with no table search of
+// their own). onInput gets the trimmed lower-case term, debounced.
+export function searchBox({ value = '', placeholder = 'Search…', onInput }) {
+  const inp = el('input', { type: 'search', class: 'input', placeholder, value, style: 'max-width:220px;font-size:13px' });
+  let t;
+  inp.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => onInput(inp.value.trim().toLowerCase()), 150); });
+  return inp;
+}
+// True when every word of `term` appears in one of `fields` (case-insensitive).
+export function matchesSearch(term, ...fields) {
+  if (!term) return true;
+  const hay = fields.filter(v => v !== null && v !== undefined).join(' ').toLowerCase();
+  return term.split(/\s+/).every(w => hay.includes(w));
+}
+
 export function buildMultiSelect(initialItems, filterSet, allLabel, onRefresh, storageKey = null) {
   // ── Restore persisted state into the Set before building the UI ────────────
   if (storageKey) {
@@ -807,10 +822,24 @@ export function buildMultiSelect(initialItems, filterSet, allLabel, onRefresh, s
     ].join(';')
   });
 
+  // Search box: narrows the visible rows by label as you type ("All" then
+  // acts on the visible rows only).
+  const msSearch = el('input', { type: 'search', class: 'input', placeholder: 'Search…', style: 'width:100%;font-size:12px;padding:4px 8px' });
+  const searchRow = el('div', { style: 'padding:4px 8px 6px;position:sticky;top:-4px;background:var(--bg-elev-2);z-index:1' }, msSearch);
+  menu.appendChild(searchRow);
   const allChk = el('input', { type: 'checkbox' });
   menu.appendChild(el('label', {
     style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px'
   }, allChk, el('span', {}, allLabel)));
+  const MS_FIXED_ROWS = 2; // search + "All"
+  const rowOf = chk => chk.closest('label');
+  const visibleChks = () => chks.filter(c => rowOf(c)?.style.display !== 'none');
+  const applySearch = () => {
+    const q = msSearch.value.trim().toLowerCase();
+    chks.forEach((c, i) => { const row = rowOf(c); if (row) row.style.display = !q || String(items[i]?.label ?? '').toLowerCase().includes(q) ? 'flex' : 'none'; });
+  };
+  msSearch.addEventListener('input', applySearch);
+  msSearch.addEventListener('keydown', e => { if (e.key === 'Escape') { msSearch.value = ''; applySearch(); } });
 
   // items and chks are mutable so setItems() can swap them out
   let items = [];
@@ -856,7 +885,7 @@ export function buildMultiSelect(initialItems, filterSet, allLabel, onRefresh, s
 
   // Builds (or rebuilds) the item rows in the menu
   const buildRows = (newItems) => {
-    while (menu.children.length > 1) menu.removeChild(menu.lastChild);
+    while (menu.children.length > MS_FIXED_ROWS) menu.removeChild(menu.lastChild);
     // Prune selections that no longer exist in the new item set (but keep
     // the "explicit none" sentinel — it isn't, and never should be, one of
     // the real item values being pruned here).
@@ -896,6 +925,7 @@ export function buildMultiSelect(initialItems, filterSet, allLabel, onRefresh, s
       return chk;
     });
     refreshUI();
+    applySearch();
   };
 
   const persist = () => {
@@ -914,10 +944,21 @@ export function buildMultiSelect(initialItems, filterSet, allLabel, onRefresh, s
   };
 
   allChk.checked  = filterSet.size === 0;
-  allChk.onchange = () => { chks.forEach(c => { c.checked = allChk.checked; }); allChk.indeterminate = false; sync(); };
+  allChk.onchange = () => {
+    // With a search active, "All" checks / unchecks just the matching rows.
+    const target = msSearch.value.trim() ? visibleChks() : chks;
+    target.forEach(c => { c.checked = allChk.checked; });
+    allChk.indeterminate = false;
+    sync();
+  };
   trigger.onclick = e => {
     e.stopPropagation();
-    if (menu.style.display === 'none') { menu.style.display = ''; menu.classList.add('open'); }
+    if (menu.style.display === 'none') {
+      menu.style.display = ''; menu.classList.add('open');
+      msSearch.value = ''; applySearch();
+      // Focus the search box only where there is something to search.
+      if (chks.length > 6) msSearch.focus();
+    }
     else closeMenu();
   };
   menu.onclick    = e => e.stopPropagation();

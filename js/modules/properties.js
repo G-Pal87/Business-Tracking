@@ -1,6 +1,6 @@
 // Properties module
 import { state, runBatch } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, buildMultiSelect } from '../core/ui.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, buildMultiSelect, searchBox, matchesSearch } from '../core/ui.js';
 import {
   upsert, softDelete, listActive, listActivePayments, byId, newId, formatEUR, formatMoney, toEUR,
   propertyRevenueEUR, propertyExpensesEUR, renovationCapexEUR, propertyROI, applyFilters, isCapEx,
@@ -27,6 +27,7 @@ let _valuationsChanged = false;
 
 // ── Filter + sort state (persists across navigation via localStorage) ─────────
 const _pf = { years: new Set(), channels: new Set(), owners: new Set(), types: new Set(), countries: new Set(), statuses: new Set() };
+let _propSearch = ''; // free-text search over the cards (name, address, city, country, notes)
 let _pSortDir = 1; // 1 = asc, -1 = desc
 let _pSortKey = 'name'; // 'name' | 'type'
 
@@ -229,6 +230,7 @@ function rebuildPropFilters(filterBar, grid, titleEl) {
     onClick: () => {
       yearMS.reset(); channelMS.reset(); ownerMS.reset(); typeMS.reset(); countryMS.reset(); statusMS.reset();
       _pf.years.clear(); _pf.channels.clear(); _pf.owners.clear(); _pf.types.clear(); _pf.countries.clear(); _pf.statuses.clear();
+      _propSearch = '';
       _pSortDir = 1; _pSortKey = 'name';
       savePropFilters();
       rebuildPropFilters(filterBar, grid, titleEl);
@@ -255,6 +257,7 @@ function rebuildPropFilters(filterBar, grid, titleEl) {
   filterBar.appendChild(typeMS);
   filterBar.appendChild(countryMS);
   filterBar.appendChild(statusMS);
+  filterBar.appendChild(searchBox({ value: _propSearch, placeholder: 'Search properties…', onInput: v => { _propSearch = v; renderPropGrid(grid, null, titleEl); } }));
   filterBar.appendChild(resetBtn);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
   filterBar.appendChild(mkSortBtn('name', 'Name'));
@@ -304,6 +307,8 @@ function applyPropFilters(props) {
   if (_pf.types.size)     props = props.filter(p => _pf.types.has(p.type || ''));
   if (_pf.countries.size) props = props.filter(p => _pf.countries.has(p.country || ''));
   if (_pf.statuses.size)  props = props.filter(p => _pf.statuses.has(p.status || ''));
+  if (_propSearch) props = props.filter(p => matchesSearch(_propSearch, p.name, p.address, p.city, p.country, p.notes,
+    PROPERTY_TYPES[p.type], PROPERTY_STATUSES[p.status]?.label, getPersonName(p.owner || 'both')));
   return props;
 }
 
@@ -316,7 +321,7 @@ function renderPropGrid(grid, preloaded, titleEl) {
   props = applyPropFilters(props);
 
   if (titleEl) {
-    const hasFilter = _pf.years.size || _pf.channels.size || _pf.owners.size || _pf.types.size || _pf.countries.size || _pf.statuses.size;
+    const hasFilter = _pf.years.size || _pf.channels.size || _pf.owners.size || _pf.types.size || _pf.countries.size || _pf.statuses.size || _propSearch;
     titleEl.textContent = hasFilter ? `${props.length} of ${total.length} Properties` : `${total.length} Properties`;
   }
 

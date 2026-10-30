@@ -1,6 +1,6 @@
 // Clients module
 import { state } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, buildMultiSelect } from '../core/ui.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, buildMultiSelect, searchBox, matchesSearch } from '../core/ui.js';
 import { upsert, softDelete, listActive, newId, formatMoney, formatEUR, toEUR, byId, getPeopleOwners, getPersonName } from '../core/data.js';
 import { CURRENCIES, OWNERS, STREAMS, SERVICE_STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
@@ -100,17 +100,21 @@ export default {
   destroy() {}
 };
 
+let _cliSearch = ''; // free-text search over the cards, kept across visits
+
 function build() {
   const wrap = el('div', { class: 'view active' });
 
-  const filterBar = el('div', { class: 'flex gap-8 mb-16' });
+  const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
   const streamFilter = new Set();
   const ownerFilter  = new Set();
   const streamMS = buildMultiSelect(SERVICE_STREAMS.map(s => ({ value: s, label: STREAMS[s].label, css: STREAMS[s].css })), streamFilter, 'All Streams', renderCards, 'cli_streams');
   const ownerMS  = buildMultiSelect(getPeopleOwners(), ownerFilter, 'All Owners', renderCards, 'cli_owners');
-  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { streamMS.reset(); ownerMS.reset(); renderCards(); } });
+  const search = searchBox({ value: _cliSearch, placeholder: 'Search clients…', onInput: v => { _cliSearch = v; renderCards(); } });
+  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { streamMS.reset(); ownerMS.reset(); _cliSearch = ''; search.value = ''; renderCards(); } });
   filterBar.appendChild(streamMS);
   filterBar.appendChild(ownerMS);
+  filterBar.appendChild(search);
   filterBar.appendChild(resetFiltersBtn);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
   filterBar.appendChild(button('+ Add Client', { variant: 'primary', onClick: () => openForm() }));
@@ -124,8 +128,9 @@ function build() {
     let rows = [...listActive('clients')];
     if (streamFilter.size > 0) rows = rows.filter(r => streamFilter.has(r.stream));
     if (ownerFilter.size > 0)  rows = rows.filter(r => ownerFilter.has(r.owner));
+    if (_cliSearch) rows = rows.filter(r => matchesSearch(_cliSearch, r.name, r.company, r.email, r.phone, r.contactName, r.vatNumber, r.notes, STREAMS[r.stream]?.label));
     if (rows.length === 0) {
-      grid.appendChild(el('div', { class: 'empty' }, 'No clients'));
+      grid.appendChild(el('div', { class: 'empty' }, listActive('clients').length ? 'No clients match the filters' : 'No clients'));
       return;
     }
     const invsByClient = new Map();
