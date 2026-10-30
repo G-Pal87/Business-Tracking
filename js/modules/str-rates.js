@@ -754,35 +754,77 @@ export function countUnresolvedGapNights() {
 // Warning banner listing reserved and closed blocks with no matching payment for the
 // selected property, so a real gap in Payments doesn't go unnoticed just
 // because the two systems sync independently. Silent when clean.
+// Ranges with a reason are done, so they fold away: the card is red only while
+// something still needs a reason, and shrinks to one neutral line once all
+// have one. "Off-platform booking" without a payment is called out, since that
+// income is still missing from the books. Expanded state is kept per property
+// for the session.
+const _gapShowResolved = new Set();
 function renderGapBanner(container, propertyId, onRerender) {
   container.innerHTML = '';
   const gaps = findCalendarPaymentGaps(propertyId);
   if (!gaps.length) return;
 
-  const unresolvedCount = gaps.filter(g => !g.annotation).length;
-  const nRes = gaps.filter(g => g.kind === 'reserved').length, nOwn = gaps.length - nRes;
+  const unresolved = gaps.filter(g => !g.annotation);
+  const resolved = gaps.filter(g => g.annotation);
+  const unresolvedCount = unresolved.length;
+  const offPlatform = resolved.filter(g => g.annotation.reason === 'off_platform').length;
+  const showResolved = _gapShowResolved.has(propertyId);
+  const toggleResolved = () => {
+    if (showResolved) _gapShowResolved.delete(propertyId); else _gapShowResolved.add(propertyId);
+    renderGapBanner(container, propertyId, onRerender);
+  };
+  const link = (text, onClick) => {
+    const a = el('span', { style: 'color:var(--accent,#6366f1);cursor:pointer;text-decoration:underline;font-size:12px;white-space:nowrap' }, text);
+    a.onclick = onClick;
+    return a;
+  };
+  const offPlatformNote = offPlatform
+    ? el('div', { style: 'font-size:12px;color:#d97706;margin-top:4px' },
+      `${offPlatform} marked as off-platform booking but no payment recorded — use "Record Off-Platform Booking" so the income counts.`)
+    : null;
+  const listOf = arr => {
+    const list = el('div', { style: 'display:flex;flex-direction:column;gap:8px;margin-top:10px' });
+    for (const gap of arr) list.appendChild(renderGapRow(gap, propertyId, onRerender));
+    return list;
+  };
   const plural = (n, w) => `${n} ${w} range${n !== 1 ? 's' : ''}`;
-  const title = [nRes && plural(nRes, 'reserved'), nOwn && plural(nOwn, 'closed')].filter(Boolean).join(' and ');
+  const titleOf = arr => {
+    const nRes = arr.filter(g => g.kind === 'reserved').length, nOwn = arr.length - nRes;
+    return [nRes && plural(nRes, 'reserved'), nOwn && plural(nOwn, 'closed')].filter(Boolean).join(' and ');
+  };
+
+  if (!unresolvedCount) {
+    const card = el('div', { class: 'card', style: 'margin-bottom:16px;border-left:3px solid #8b5cf6' });
+    const inner = el('div', { style: 'padding:10px 16px' });
+    inner.appendChild(el('div', { style: 'font-size:13px;color:var(--text);display:flex;align-items:center;gap:8px;flex-wrap:wrap' },
+      el('span', { style: 'color:#8b5cf6' }, '✓'),
+      el('span', {}, `${titleOf(resolved)} without a payment — all have a reason`),
+      link(showResolved ? 'Hide' : 'Show', toggleResolved)));
+    if (offPlatformNote) inner.appendChild(offPlatformNote);
+    if (showResolved) inner.appendChild(listOf(resolved));
+    card.appendChild(inner);
+    container.appendChild(card);
+    return;
+  }
+
   const card  = el('div', { class: 'card', style: 'margin-bottom:16px;border-left:3px solid #ef4444' });
   const inner = el('div', { style: 'padding:14px 16px' });
   inner.appendChild(el('div', { style: 'font-size:13px;font-weight:700;color:var(--text);margin-bottom:2px;display:flex;align-items:center;gap:6px' },
     el('span', { style: 'color:#ef4444' }, '⚠'),
-    `${title} on Airbnb with no matching payment`
+    `${titleOf(unresolved)} on Airbnb with no matching payment`
   ));
-  inner.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:12px' },
-    unresolvedCount > 0
-      ? `${unresolvedCount} still need${unresolvedCount === 1 ? 's' : ''} a reason — assign one below, or record the payment if it was a booking (off-platform, or not imported yet).`
-      : 'All accounted for — reasons assigned below.'
-  ));
+  inner.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' },
+    `${unresolvedCount === 1 ? 'It needs' : 'Each needs'} a reason — assign one below, or record the payment if it was a booking (off-platform, or not imported yet).`));
+  if (offPlatformNote) inner.appendChild(offPlatformNote);
 
-  // Most urgent first: already-checked-out & unresolved, then upcoming &
-  // unresolved, then already-reviewed ranges last.
-  const rank = g => g.annotation ? 2 : (g.isPast ? 0 : 1);
-  const ranked = [...gaps].sort((a, b) => rank(a) - rank(b) || a.start.localeCompare(b.start));
-
-  const list = el('div', { style: 'display:flex;flex-direction:column;gap:8px' });
-  for (const gap of ranked) list.appendChild(renderGapRow(gap, propertyId, onRerender));
-  inner.appendChild(list);
+  // Most urgent first: already checked out, then upcoming.
+  inner.appendChild(listOf([...unresolved].sort((a, b) => (b.isPast - a.isPast) || a.start.localeCompare(b.start))));
+  if (resolved.length) {
+    inner.appendChild(el('div', { style: 'margin-top:10px' },
+      link(showResolved ? `Hide ${resolved.length} with a reason` : `Show ${resolved.length} with a reason`, toggleResolved)));
+    if (showResolved) inner.appendChild(listOf(resolved));
+  }
   card.appendChild(inner);
   container.appendChild(card);
 }
