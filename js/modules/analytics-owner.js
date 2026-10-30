@@ -1,6 +1,7 @@
 // Owner/Partner Analytics Dashboard — partner P&L, settlement, portfolio split
 import { el, openModal, fmtDate, drillDownModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
+import { todayYmd } from '../core/dates.js';
 import { formatEUR, toEUR, byId, listActive, listActivePayments, isCapEx, getPersonName, companyPropIds, isCompanyRecord } from '../core/data.js';
 import {
   createFilterState, buildFilterBar, buildComparisonLine,
@@ -26,7 +27,7 @@ let RITA_LABEL = 'Rita';
 const OWN_TABS = [
   { id: 'overview',  label: 'Overview',  scope: 'Revenue, expenses, profit and settlement follow the period and comparison filters. The Shared Properties count is as of today.' },
   { id: 'breakdown', label: 'Breakdown', scope: 'Everything on this tab follows the period filter.' },
-  { id: 'portfolio', label: 'Portfolio', scope: 'Current portfolio as of today (sold properties excluded). Stream / Property / Scope filters apply; the period filters do not.' }
+  { id: 'portfolio', label: 'Portfolio', scope: 'The portfolio held at the end of the selected period (today for a current period): bought by then, not yet sold. All filters apply.' }
 ];
 const OWN_TAB_KEY = 'btf:owner_dash_tab';
 let gTab = loadDashboardTab(OWN_TAB_KEY, OWN_TABS);
@@ -148,11 +149,16 @@ function propStream(p) {
 // Current portfolio only: sold properties are excluded from book value, and
 // the Company scope excludes personal-channel properties (same rule as the
 // revenue/expense figures above via isCompanyRecord()).
-function getPropertiesData(filterState) {
+// Properties held on `asOf` (bought by then, not yet sold) — the end of the
+// selected period, or today for a period that hasn't ended; same rule as the
+// Properties dashboard's Portfolio & Value tab.
+function getPropertiesData(filterState, asOf = todayYmd()) {
   const mPropStream = p => !filterState.streams.size || filterState.streams.has(propStream(p));
   const mPropId     = p => !filterState.propertyIds.size || filterState.propertyIds.has(p.id);
   const mPropScope  = p => gScope === 'all' || (p.channel || 'company') === 'company';
-  const allProps = listActive('properties').filter(p => p.status !== 'sold' && mPropScope(p) && mPropStream(p) && mPropId(p));
+  const heldOn      = p => (!p.purchaseDate || p.purchaseDate <= asOf) &&
+    !(p.status === 'sold' && (!p.soldDate || p.soldDate <= asOf));
+  const allProps = listActive('properties').filter(p => heldOn(p) && mPropScope(p) && mPropStream(p) && mPropId(p));
   const youProps  = allProps.filter(p => partnerKey(p.owner) === 'you');
   const ritaProps = allProps.filter(p => partnerKey(p.owner) === 'rita');
   const bothProps = allProps.filter(p => partnerKey(p.owner) === 'both');
@@ -172,7 +178,7 @@ function getPropertiesData(filterState) {
     allProps, youProps, ritaProps, bothProps,
     youCount:  youProps.length + bothProps.length,
     ritaCount: ritaProps.length + bothProps.length,
-    youValue, ritaValue, totalValue
+    youValue, ritaValue, totalValue, asOf
   };
 }
 
@@ -507,7 +513,7 @@ const OWNER_MIXED_COLS = [
 
 // ── Partner column card ───────────────────────────────────────────────────────
 // Period figures only — each partner's property count and book value are on
-// the Portfolio tab (Portfolio Summary), which is as of today.
+// the Portfolio tab (Portfolio Summary), as of the end of the period.
 function buildPartnerColumn(label, color, data, cmpData, curRange, cmpRange, isYou) {
   const rev    = isYou ? data.revSplit.you  : data.revSplit.rita;
   const exp    = isYou ? data.expSplit.you  : data.expSplit.rita;
@@ -1324,7 +1330,7 @@ function buildView() {
     { gF, gScope, curRange, cmpRange, YOU_LABEL, RITA_LABEL }, () => ({
       data:      getData(curRange.start, curRange.end),
       cmpData:   cmpRange ? getData(cmpRange.start, cmpRange.end) : null,
-      propsData: getPropertiesData(gF)
+      propsData: getPropertiesData(gF, curRange.end && curRange.end < todayYmd() ? curRange.end : todayYmd())
     }));
 
   const compLine = buildComparisonLine(curRange, cmpRange);
@@ -1372,7 +1378,8 @@ function buildView() {
     // Portfolio Value donut + summary
     const portfolioRow = el('div', { class: 'grid grid-2 mb-16' });
     portfolioRow.appendChild(el('div', { class: 'card' },
-      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Portfolio Value Split')),
+      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Portfolio Value Split'),
+        el('div', { style: 'font-size:12px;color:var(--text-muted)' }, `Book value held on ${fmtDate(propsData.asOf)}`)),
       el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'own-value-donut' }))
     ));
 
@@ -1380,7 +1387,8 @@ function buildView() {
     {
       const infoCard = el('div', { class: 'card' });
       infoCard.appendChild(el('div', { class: 'card-header' },
-        el('div', { class: 'card-title' }, 'Portfolio Summary')
+        el('div', { class: 'card-title' }, 'Portfolio Summary'),
+        el('div', { style: 'font-size:12px;color:var(--text-muted)' }, `Properties held on ${fmtDate(propsData.asOf)}`)
       ));
       const infoBody = el('div', { style: 'padding:0 16px 16px' });
 
