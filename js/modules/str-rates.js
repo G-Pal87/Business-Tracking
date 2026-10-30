@@ -8,7 +8,7 @@ import { fetchICal, parseICal, mergeBlocksChecked, isOwnerBlockSummary } from '.
 import { publishSnapshotBranch, fetchBranchFileText, dispatchRepoEvent } from '../core/github.js';
 import { AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
 import { openPaymentForm } from './payments.js';
-import { todayYmd } from '../core/dates.js';
+import { todayYmd, addDaysYmd } from '../core/dates.js';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const WEEKDAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
@@ -612,6 +612,7 @@ function calendarFor(propertyId) {
 // Set of date strings covered by any imported block (DTEND is exclusive).
 function blockedDateSet(propertyId) {
   const set = new Set();
+  for (const a of manualClosures(propertyId)) for (const cur of nightsOf(a.start, a.end)) set.add(cur);
   const cal = calendarFor(propertyId);
   if (!cal) return set;
   for (const b of cal.blocks || []) {
@@ -619,6 +620,14 @@ function blockedDateSet(propertyId) {
     for (const cur of nightsOf(b.start, b.end)) set.add(cur);
   }
   return set;
+}
+
+// Closures you add yourself for nights Airbnb shows as open (e.g. a past
+// renovation from before the calendar was synced). Stored with the block
+// reasons in strBlockAnnotations (manual: true, a 'manual:' uid, end
+// exclusive like an iCal block).
+function manualClosures(propertyId) {
+  return listActive('strBlockAnnotations').filter(a => a.manual && a.propertyId === propertyId && a.start && a.end && a.end > a.start);
 }
 
 // ── Calendar ↔ Payment reconciliation ─────────────────────────────────────────
@@ -658,9 +667,13 @@ function getBlockAnnotation(propertyId, uid) {
 // Per-date classification of every iCal block, for calendar rendering: 'owner'
 // (closed/unavailable, never expects a payment) or 'reserved' (a guest
 // booking — should eventually have a matching payment), plus that block's
-// annotation if one has been assigned (either type can carry one).
+// annotation if one has been assigned (either type can carry one), and
+// 'manual' for a closure you added on nights the calendar shows as open.
 function classifyBlockedDates(propertyId) {
   const map = new Map();
+  for (const a of manualClosures(propertyId)) {
+    for (const cur of nightsOf(a.start, a.end)) map.set(cur, { type: 'manual', uid: a.uid, annotation: a });
+  }
   const cal = calendarFor(propertyId);
   if (!cal) return map;
   for (const b of cal.blocks || []) {
@@ -1369,6 +1382,13 @@ function renderCalendar(card, { histMap, suggest, blocked, blockInfo, year, mont
       const rateVal = target ? target.targetADR : suggest(date)?.rate;
       rateEl = el('div', { style: 'font-size:12px;font-style:italic;color:var(--text-muted)' }, rateVal != null ? formatMoney(rateVal, ccy, { maxFrac: 0 }) : '—');
       badge = 'closed';
+    } else if (date < tStr) {
+      // A past night nobody booked or closed — just an unsold night, nothing
+      // left to price.
+      bg = 'rgba(100,116,139,0.04)';
+      border = '1px dashed var(--border)';
+      rateEl = el('div', { style: 'font-size:12px;color:var(--text-muted);opacity:.6' }, '—');
+      badge = 'empty';
     } else if (target) {
       // Confirmed target overrides the suggestion — show it as the published rate.
       rateEl = el('div', { style: 'font-size:13px;font-weight:700;color:var(--text)' }, formatMoney(target.targetADR, ccy, { maxFrac: 0 }));
@@ -1383,14 +1403,14 @@ function renderCalendar(card, { histMap, suggest, blocked, blockInfo, year, mont
       style: `position:relative;min-height:66px;padding:6px;border-radius:6px;border:${border};background:${bg};cursor:pointer;` +
              (isToday ? 'box-shadow:0 0 0 2px var(--accent,#6366f1) inset;' : '')
     });
-    const badgeColor = badge === 'booked' ? '#10b981' : badge === 'gap' ? '#ef4444' : badge === 'noted' ? '#8b5cf6' : badge === 'closed' ? '#64748b' : badge === 'why?' ? '#d97706' : badge === 'target' ? '#6366f1' : badge === 'low' ? '#f59e0b' : 'var(--text-muted)';
-    const badgeText  = badge === 'booked' ? 'booked' : badge === 'gap' ? 'gap' : badge === 'noted' ? 'noted' : badge === 'closed' ? 'closed' : badge === 'why?' ? 'why?' : badge === 'target' ? 'target' : badge === 'low' ? '?' : badge === 'medium' ? '~' : badge === 'high' ? 'sugg' : badge ? 'sugg' : '';
+    const badgeColor = badge === 'booked' ? '#10b981' : badge === 'gap' ? '#ef4444' : badge === 'noted' ? '#8b5cf6' : badge === 'closed' ? '#64748b' : badge === 'why?' ? '#d97706' : badge === 'empty' ? 'var(--text-muted)' : badge === 'target' ? '#6366f1' : badge === 'low' ? '#f59e0b' : 'var(--text-muted)';
+    const badgeText  = badge === 'booked' ? 'booked' : badge === 'gap' ? 'gap' : badge === 'noted' ? 'noted' : badge === 'closed' ? 'closed' : badge === 'why?' ? 'why?' : badge === 'empty' ? 'empty' : badge === 'target' ? 'target' : badge === 'low' ? '?' : badge === 'medium' ? '~' : badge === 'high' ? 'sugg' : badge ? 'sugg' : '';
     cell.appendChild(el('div', { style: 'display:flex;justify-content:space-between;align-items:center' },
       el('span', { style: 'font-size:12px;font-weight:600;color:var(--text-muted)' }, String(d)),
       badgeText ? el('span', { style: `font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${badgeColor}` }, badgeText) : null
     ));
     cell.appendChild(el('div', { style: 'margin-top:8px;text-align:center' }, rateEl));
-    cell.onclick = () => openDayDetail(date, { hist, isBlocked, blockInfo: info, suggest, ccy, target });
+    cell.onclick = () => openDayDetail(date, { hist, isBlocked, blockInfo: info, suggest, ccy, target, propertyId, onChange: onAutoRefresh });
     grid.appendChild(cell);
   }
 
@@ -1406,9 +1426,11 @@ function renderCalendar(card, { histMap, suggest, blocked, blockInfo, year, mont
   legend.appendChild(chip('rgba(239,68,68,0.20)', 'Reserved, no payment — needs a reason'));
   legend.appendChild(chip('rgba(139,92,246,0.25)', 'Reserved, no payment — reason noted'));
   legend.appendChild(chip('rgba(245,158,11,0.25)', 'Closed by owner, no payment — needs a reason'));
-  legend.appendChild(chip('rgba(100,116,139,0.20)', 'Closed by owner — reason noted'));
+  legend.appendChild(chip('rgba(100,116,139,0.20)', 'Closed — reason noted'));
+  legend.appendChild(chip('rgba(100,116,139,0.06)', 'Past, not booked (empty)'));
   if (target) legend.appendChild(chip('#6366f1', `target = confirmed ${formatMoney(target.targetADR, ccy, { maxFrac: 0 })} (published rate)`));
   legend.appendChild(chip('transparent', 'Open · sugg = high confidence · ~ = medium · ? = low'));
+  body.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:6px' }, 'Click a night that isn\'t booked to set or change its status.'));
   body.appendChild(legend);
 
   const calInfo    = calendarFor(_propId);
@@ -1438,8 +1460,49 @@ function renderCalendar(card, { histMap, suggest, blocked, blockInfo, year, mont
   card.appendChild(body);
 }
 
+// Form for a closure you add (or edit) on nights the calendar shows as open.
+// Dates are first and last night, inclusive; stored end is exclusive.
+const CLOSURE_REASONS = GAP_REASONS.filter(r => !['off_platform', 'payment_pending'].includes(r.value));
+function renderClosureEditor(propertyId, closure, date, done) {
+  const box = el('div', { style: 'margin:8px 0;padding:10px 12px;border-radius:6px;border-left:3px solid #64748b;background:rgba(100,116,139,0.08);font-size:12px' });
+  box.appendChild(el('div', { style: 'font-weight:700;color:var(--text);margin-bottom:6px' }, closure ? 'Closed period' : 'Mark nights as closed'));
+  const fromInp = input({ type: 'date', value: closure?.start || date });
+  const toInp = input({ type: 'date', value: closure ? addDaysYmd(closure.end, -1) : date });
+  const reasonSel = select(closure ? CLOSURE_REASONS : [{ value: '', label: 'Choose a reason…' }, ...CLOSURE_REASONS], closure?.reason || '');
+  const noteInp = textarea({ placeholder: 'Optional note', rows: 2 });
+  noteInp.value = closure?.note || '';
+  noteInp.style.width = '100%';
+  box.appendChild(el('div', { style: 'display:flex;gap:8px;flex-wrap:wrap' }, formRow('First night', fromInp), formRow('Last night', toInp)));
+  box.appendChild(formRow('Reason', reasonSel));
+  box.appendChild(noteInp);
+  const btns = el('div', { style: 'display:flex;gap:8px;margin-top:8px' });
+  btns.appendChild(button('Save', { variant: 'primary sm', onClick: () => {
+    const start = fromInp.value, last = toInp.value;
+    if (!start || !last || last < start) { toast('Check the dates — the last night can\'t be before the first', 'warning'); return; }
+    if (!reasonSel.value) { toast('Choose a reason', 'warning'); return; }
+    const id = closure?.id || newId('sba');
+    upsert('strBlockAnnotations', { ...(closure || {}), id, propertyId, uid: closure?.uid || `manual:${id}`, manual: true,
+      start, end: addDaysYmd(last, 1), reason: reasonSel.value, note: noteInp.value.trim() });
+    toast('Closed period saved', 'success');
+    done();
+  } }));
+  if (closure) {
+    btns.appendChild(button('Remove (reopen nights)', { variant: 'sm ghost', onClick: () => {
+      softDelete('strBlockAnnotations', closure.id);
+      toast('Closed period removed', 'success');
+      done();
+    } }));
+  }
+  box.appendChild(btns);
+  box.appendChild(el('div', { style: 'color:var(--text-muted);margin-top:6px;font-size:11px' },
+    'Only changes how these nights show here (and they\'re published as unavailable in the rates feed) — it does not change Airbnb.'));
+  return box;
+}
+
 // ── Day detail modal ──────────────────────────────────────────────────────────
-function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target }) {
+function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target, propertyId, onChange }) {
+  const done = () => { closeModal(); onChange?.(); };
+  const isPast = date < todayStr();
   const body = el('div', {});
   const row = (label, value, muted) => {
     const v = el('strong', {}, value);
@@ -1478,11 +1541,28 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target 
       }
     }
   } else {
-    const statusLabel = blockInfo?.type === 'owner' ? 'Closed (owner block)'
+    const statusLabel = blockInfo?.type === 'owner' ? 'Closed on Airbnb'
       : blockInfo?.type === 'reserved' ? 'Reserved on Airbnb — no payment recorded'
-      : isBlocked ? 'Reserved / blocked (iCal)' : 'Open';
+      : blockInfo?.type === 'manual' ? 'Closed (added by you)'
+      : isBlocked ? 'Reserved / blocked (iCal)' : isPast ? 'Not booked (empty night)' : 'Open';
     body.appendChild(row('Status', statusLabel));
-    if (blockInfo?.type === 'reserved' || blockInfo?.type === 'owner') {
+    // Status editing for nights without a booking: an Airbnb block's reason
+    // (same row as the banner, so a wrong reason can be changed or cleared),
+    // a closure you added, or marking open nights as closed.
+    const gap = (blockInfo?.type === 'reserved' || blockInfo?.type === 'owner') && propertyId
+      ? findCalendarPaymentGaps(propertyId).find(g => g.uid === blockInfo.uid) : null;
+    if (gap) {
+      body.appendChild(el('div', { style: 'margin:8px 0' }, renderGapRow(gap, propertyId, done)));
+    } else if (blockInfo?.type === 'manual' && propertyId) {
+      body.appendChild(renderClosureEditor(propertyId, blockInfo.annotation, date, done));
+    } else if (!isBlocked && propertyId) {
+      const host = el('div', { style: 'margin:8px 0' });
+      host.appendChild(button('Mark as closed…', { variant: 'sm ghost', onClick: () => {
+        host.innerHTML = '';
+        host.appendChild(renderClosureEditor(propertyId, null, date, done));
+      } }));
+      body.appendChild(host);
+    } else if (blockInfo?.type === 'reserved' || blockInfo?.type === 'owner') {
       const own = blockInfo.type === 'owner';
       const box = el('div', {
         style: `margin:8px 0;padding:8px 10px;border-radius:6px;font-size:12px;border-left:3px solid ${blockInfo.annotation ? '#8b5cf6' : own ? '#f59e0b' : '#ef4444'};` +
@@ -1500,7 +1580,7 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target 
       }
       body.appendChild(box);
     }
-    if (target) {
+    if (target && !isPast) {
       const mo1 = Number(date.slice(5, 7));
       const box = el('div', { style: 'margin:8px 0;padding:8px 10px;border-radius:6px;background:rgba(99,102,241,0.10);border-left:3px solid #6366f1;font-size:12px' });
       box.appendChild(el('div', { style: 'font-weight:700;color:var(--text);margin-bottom:2px' },
@@ -1509,7 +1589,7 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target 
         `Confirmed ADR target for ${MONTHS[mo1 - 1]} ${date.slice(0, 4)} — this overrides the suggestion below and is the rate sent to the daily-rate feed.`));
       body.appendChild(box);
     }
-    const s = suggest(date);
+    const s = isPast ? null : suggest(date);
     if (s) {
       // ── Confidence badge ──
       const confColor = s.confidence === 'high' ? '#10b981' : s.confidence === 'medium' ? '#f59e0b' : '#ef4444';
