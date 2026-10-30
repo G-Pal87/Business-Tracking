@@ -1480,6 +1480,11 @@ function buildStrSettingsCard() {
   const globalDiscI = input({ value: af.globalDiscountPct != null ? af.globalDiscountPct : '', type: 'number', min: '0', max: '100', placeholder: '0' });
   body.appendChild(formRow('Global promotional discount %', globalDiscI, 'Applied to all properties and months when publishing rates. Override per month in STR Rates → Promotional Discount.'));
 
+  // Nights Airbnb closes beyond this many months ahead are its availability
+  // window, not closures — STR Daily Rates doesn't ask for a reason on them.
+  const windowI = input({ value: af.availabilityWindowMonths != null ? af.availabilityWindowMonths : 9, type: 'number', min: '1', max: '36', placeholder: '9' });
+  body.appendChild(formRow('Airbnb availability window (months)', windowI, 'Same as Airbnb → Availability → "How far in advance can guests book". Nights Airbnb shows as closed beyond this aren\'t treated as your closures.'));
+
   // Master switch for the public website (Short-Term-Rentals): overrides every
   // property's own "Website prices" toggle. The published feeds then carry no
   // amounts at all and the site shows "Price on request" everywhere.
@@ -1540,6 +1545,8 @@ function buildStrSettingsCard() {
     if (feeI.value !== '' && (isNaN(fee) || fee < 0)) { toast('Guest fee % must be a positive number', 'warning'); return; }
     if (taxI.value !== '' && (isNaN(tax) || tax < 0)) { toast('Tax % must be a positive number', 'warning'); return; }
     if (cleanI.value !== '' && (isNaN(clean) || clean < 0)) { toast('Cleaning fee must be a positive number', 'warning'); return; }
+    const windowMonths = parseInt(windowI.value, 10);
+    if (windowI.value !== '' && (isNaN(windowMonths) || windowMonths < 1 || windowMonths > 36)) { toast('Availability window must be between 1 and 36 months', 'warning'); return; }
     if (globalDiscI.value !== '' && (isNaN(globalDisc) || globalDisc < 0 || globalDisc > 100)) { toast('Global discount must be between 0 and 100', 'warning'); return; }
     const proxyUrl = proxyI.value.trim().replace(/\/+$/, '');
     if (proxyUrl && !/^https:\/\/[a-z0-9.-]+\.workers\.dev(\/[^\s?#]*)?$/i.test(proxyUrl)) {
@@ -1552,6 +1559,7 @@ function buildStrSettingsCard() {
       taxPct:            taxI.value === '' ? AIRBNB_TAX_PCT : tax,
       cleaningFee:       cleanI.value === '' ? AIRBNB_CLEANING_FEE : clean,
       globalDiscountPct: globalDiscI.value === '' ? 0 : globalDisc,
+      availabilityWindowMonths: windowI.value === '' ? 9 : windowMonths,
       icalProxyUrl:           proxyUrl,
       // With an own proxy the checkbox is the fallback opt-in; without one it
       // is the old "use public proxies" switch.

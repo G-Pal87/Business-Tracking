@@ -191,26 +191,22 @@ test('countUnresolvedGapNights: nights across month/leap-day boundaries; follows
   assert.equal(countUnresolvedGapNights(), 3);
 });
 
-test("countUnresolvedGapNights: Airbnb's availability-window block (end of the feed) isn't asked about", async () => {
-  const { addDaysYmd, todayYmd } = await import('../../js/core/dates.js');
-  const t = todayYmd(), at = n => addDaysYmd(t, n);
-  const cal = blocks => setDb({
+test("countUnresolvedGapNights: closed nights beyond the Airbnb availability window aren't asked about", async () => {
+  const { addDaysYmd, addMonthsYmd, todayYmd } = await import('../../js/core/dates.js');
+  const t = todayYmd(), at = n => addDaysYmd(t, n), win = addMonthsYmd(t, 9);
+  const cal = (blocks, settings = {}) => setDb({
+    settings,
     properties: [{ id: 's1', type: 'short_term', name: 'Studio', currency: 'EUR' }],
     strCalendars: [{ id: 'c1', propertyId: 's1', blocks }], payments: []
   });
-  // a real closure (3 nights) + the window block running to the end of the feed
-  cal([
-    { uid: 'x', start: at(20), end: at(23), summary: 'Airbnb (Not available)' },
-    { uid: 'w', start: at(280), end: at(286), summary: 'Airbnb (Not available)' }
-  ]);
-  assert.equal(countUnresolvedGapNights(), 3);
-  // a booking further out than the closure: the closure isn't the window
-  cal([
-    { uid: 'x', start: at(200), end: at(203), summary: 'Airbnb (Not available)' },
-    { uid: 'r', start: at(250), end: at(252), summary: 'Reserved' }
-  ]);
-  assert.equal(countUnresolvedGapNights(), 3 + 2);
-  // a near-term closure at the end of a short feed is still asked about
-  cal([{ uid: 'x', start: at(10), end: at(14), summary: 'Airbnb (Not available)' }]);
-  assert.equal(countUnresolvedGapNights(), 4);
+  const blocks = [
+    { uid: 'x', start: at(20), end: at(23), summary: 'Airbnb (Not available)' },                  // real closure: 3
+    { uid: 'p', start: addDaysYmd(win, -2), end: addDaysYmd(win, 4), summary: 'Airbnb (Not available)' }, // 2 before the window
+    { uid: 'w', start: addDaysYmd(win, 10), end: addDaysYmd(win, 16), summary: 'Airbnb (Not available)' }, // all beyond: 0
+    { uid: 'r', start: addDaysYmd(win, 20), end: addDaysYmd(win, 22), summary: 'Reserved' }                // bookings always: 2
+  ];
+  cal(blocks);                                             // default 9 months
+  assert.equal(countUnresolvedGapNights(), 3 + 2 + 2);
+  cal(blocks, { airbnb: { availabilityWindowMonths: 12 } }); // longer window → all closures asked
+  assert.equal(countUnresolvedGapNights(), 3 + 6 + 6 + 2);
 });

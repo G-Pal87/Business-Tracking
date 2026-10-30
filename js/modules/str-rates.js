@@ -8,7 +8,7 @@ import { fetchICal, parseICal, mergeBlocksChecked, isOwnerBlockSummary } from '.
 import { publishSnapshotBranch, fetchBranchFileText, dispatchRepoEvent } from '../core/github.js';
 import { AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
 import { openPaymentForm } from './payments.js';
-import { todayYmd, addDaysYmd } from '../core/dates.js';
+import { todayYmd, addDaysYmd, addMonthsYmd } from '../core/dates.js';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const WEEKDAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
@@ -622,19 +622,14 @@ function blockedDateSet(propertyId) {
   return set;
 }
 
-// Airbnb marks every night past the listing's availability window ("dates
-// more than N months ahead") as "Not available", as one block running to the
-// end of the feed. That trailing block is a setting, not a closure, so it's
-// never asked about. Recognised as: an owner-block that ends the feed (latest
-// end of all blocks) and reaches at least WINDOW_MIN_DAYS ahead.
-const WINDOW_MIN_DAYS = 180;
-function bookingWindowUid(cal) {
-  const blocks = (cal?.blocks || []).filter(b => b.start && b.end);
-  if (!blocks.length) return null;
-  const maxEnd = blocks.reduce((m, b) => (b.end > m ? b.end : m), '');
-  const today = todayStr();
-  const w = blocks.find(b => b.end === maxEnd && b.start > today && isOwnerBlockSummary(b.summary));
-  return w && maxEnd >= addDaysYmd(today, WINDOW_MIN_DAYS) ? w.uid || null : null;
+// Airbnb marks every night past the listing's availability window ("dates up
+// to N months ahead") as "Not available". Closed nights from that date on are
+// Airbnb's, not yours, so they're never asked about. N is set in Settings →
+// Airbnb (availabilityWindowMonths, default AVAILABILITY_WINDOW_MONTHS).
+const AVAILABILITY_WINDOW_MONTHS = 9;
+function availabilityWindowStart(today = todayStr()) {
+  const n = Number(state.db.settings?.airbnb?.availabilityWindowMonths);
+  return addMonthsYmd(today, n > 0 ? n : AVAILABILITY_WINDOW_MONTHS);
 }
 
 // Closures you add yourself for nights Airbnb shows as open (e.g. a past
@@ -691,13 +686,13 @@ function classifyBlockedDates(propertyId) {
   }
   const cal = calendarFor(propertyId);
   if (!cal) return map;
-  const windowUid = bookingWindowUid(cal);
+  const windowStart = availabilityWindowStart();
   for (const b of cal.blocks || []) {
     if (!b.start || !b.end || !b.uid) continue;
-    const type = b.uid === windowUid ? 'window' : isOwnerBlockSummary(b.summary) ? 'owner' : 'reserved';
+    const type = isOwnerBlockSummary(b.summary) ? 'owner' : 'reserved';
     const annotation = getBlockAnnotation(propertyId, b.uid);
     for (const cur of nightsOf(b.start, b.end)) {
-      map.set(cur, { type, uid: b.uid, summary: b.summary, annotation });
+      map.set(cur, { type: type === 'owner' && cur >= windowStart ? 'window' : type, uid: b.uid, summary: b.summary, annotation });
     }
   }
   return map;
@@ -713,19 +708,21 @@ function findCalendarPaymentGaps(propertyId) {
   if (!cal) return [];
   const covered = historicNightMap(propertyId);
   const today = todayStr();
-  const windowUid = bookingWindowUid(cal);
+  const windowStart = availabilityWindowStart(today);
   const gaps = [];
   for (const b of cal.blocks || []) {
-    if (!b.start || !b.end || !b.uid || b.uid === windowUid) continue;
+    if (!b.start || !b.end || !b.uid) continue;
+    const owner = isOwnerBlockSummary(b.summary);
     let total = 0, missing = 0;
     for (const cur of nightsOf(b.start, b.end)) {
+      if (owner && cur >= windowStart) break;   // Airbnb's availability window from here on
       total++;
       if (!covered.has(cur)) missing++;
     }
     if (missing === 0) continue;
     gaps.push({
-      uid: b.uid, start: b.start, end: b.end,
-      kind: isOwnerBlockSummary(b.summary) ? 'owner' : 'reserved',
+      uid: b.uid, start: b.start, end: owner && b.end > windowStart ? windowStart : b.end,
+      kind: owner ? 'owner' : 'reserved',
       nights: missing, totalNights: total,
       isPast: b.end <= today,
       annotation: getBlockAnnotation(propertyId, b.uid)
@@ -738,9 +735,9 @@ function findCalendarPaymentGaps(propertyId) {
 // given a reason yet. Drives the sidebar nav badge.
 // Called by app.js on every edit to refresh the badge — memoized until the
 // data changes (it reads properties, calendars, payments and annotations; the
-// count only depends on today's date through the availability-window check,
-// which a day's drift can't meaningfully change).
-const _gapCountCache = derivedCache(['properties', 'strCalendars', 'payments', 'strBlockAnnotations']);
+// count also depends on where the availability window starts — today plus
+// the window setting — so that's part of the cache key).
+const _gapCountCache = derivedCache(['properties', 'strCalendars', 'payments', 'strBlockAnnotations'], () => availabilityWindowStart());
 export function countUnresolvedGapNights() {
   return memoGet(_gapCountCache(), 'count', () => {
     const props = listActive('properties').filter(p => p.type === 'short_term');
