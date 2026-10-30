@@ -190,3 +190,27 @@ test('countUnresolvedGapNights: nights across month/leap-day boundaries; follows
   data.upsert('payments', { id: 'b3', propertyId: 's1', stream: 'short_term_rental', source: 'manual', status: 'paid', amount: 400, currency: 'EUR', date: '2024-06-05', checkIn: '2024-06-01', checkOut: '2024-06-05' });
   assert.equal(countUnresolvedGapNights(), 3);
 });
+
+test("countUnresolvedGapNights: Airbnb's availability-window block (end of the feed) isn't asked about", async () => {
+  const { addDaysYmd, todayYmd } = await import('../../js/core/dates.js');
+  const t = todayYmd(), at = n => addDaysYmd(t, n);
+  const cal = blocks => setDb({
+    properties: [{ id: 's1', type: 'short_term', name: 'Studio', currency: 'EUR' }],
+    strCalendars: [{ id: 'c1', propertyId: 's1', blocks }], payments: []
+  });
+  // a real closure (3 nights) + the window block running to the end of the feed
+  cal([
+    { uid: 'x', start: at(20), end: at(23), summary: 'Airbnb (Not available)' },
+    { uid: 'w', start: at(280), end: at(286), summary: 'Airbnb (Not available)' }
+  ]);
+  assert.equal(countUnresolvedGapNights(), 3);
+  // a booking further out than the closure: the closure isn't the window
+  cal([
+    { uid: 'x', start: at(200), end: at(203), summary: 'Airbnb (Not available)' },
+    { uid: 'r', start: at(250), end: at(252), summary: 'Reserved' }
+  ]);
+  assert.equal(countUnresolvedGapNights(), 3 + 2);
+  // a near-term closure at the end of a short feed is still asked about
+  cal([{ uid: 'x', start: at(10), end: at(14), summary: 'Airbnb (Not available)' }]);
+  assert.equal(countUnresolvedGapNights(), 4);
+});

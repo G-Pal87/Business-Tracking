@@ -622,6 +622,21 @@ function blockedDateSet(propertyId) {
   return set;
 }
 
+// Airbnb marks every night past the listing's availability window ("dates
+// more than N months ahead") as "Not available", as one block running to the
+// end of the feed. That trailing block is a setting, not a closure, so it's
+// never asked about. Recognised as: an owner-block that ends the feed (latest
+// end of all blocks) and reaches at least WINDOW_MIN_DAYS ahead.
+const WINDOW_MIN_DAYS = 180;
+function bookingWindowUid(cal) {
+  const blocks = (cal?.blocks || []).filter(b => b.start && b.end);
+  if (!blocks.length) return null;
+  const maxEnd = blocks.reduce((m, b) => (b.end > m ? b.end : m), '');
+  const today = todayStr();
+  const w = blocks.find(b => b.end === maxEnd && b.start > today && isOwnerBlockSummary(b.summary));
+  return w && maxEnd >= addDaysYmd(today, WINDOW_MIN_DAYS) ? w.uid || null : null;
+}
+
 // Closures you add yourself for nights Airbnb shows as open (e.g. a past
 // renovation from before the calendar was synced). Stored with the block
 // reasons in strBlockAnnotations (manual: true, a 'manual:' uid, end
@@ -676,9 +691,10 @@ function classifyBlockedDates(propertyId) {
   }
   const cal = calendarFor(propertyId);
   if (!cal) return map;
+  const windowUid = bookingWindowUid(cal);
   for (const b of cal.blocks || []) {
     if (!b.start || !b.end || !b.uid) continue;
-    const type = isOwnerBlockSummary(b.summary) ? 'owner' : 'reserved';
+    const type = b.uid === windowUid ? 'window' : isOwnerBlockSummary(b.summary) ? 'owner' : 'reserved';
     const annotation = getBlockAnnotation(propertyId, b.uid);
     for (const cur of nightsOf(b.start, b.end)) {
       map.set(cur, { type, uid: b.uid, summary: b.summary, annotation });
@@ -697,9 +713,10 @@ function findCalendarPaymentGaps(propertyId) {
   if (!cal) return [];
   const covered = historicNightMap(propertyId);
   const today = todayStr();
+  const windowUid = bookingWindowUid(cal);
   const gaps = [];
   for (const b of cal.blocks || []) {
-    if (!b.start || !b.end || !b.uid) continue;
+    if (!b.start || !b.end || !b.uid || b.uid === windowUid) continue;
     let total = 0, missing = 0;
     for (const cur of nightsOf(b.start, b.end)) {
       total++;
@@ -721,7 +738,8 @@ function findCalendarPaymentGaps(propertyId) {
 // given a reason yet. Drives the sidebar nav badge.
 // Called by app.js on every edit to refresh the badge — memoized until the
 // data changes (it reads properties, calendars, payments and annotations; the
-// count doesn't depend on today's date).
+// count only depends on today's date through the availability-window check,
+// which a day's drift can't meaningfully change).
 const _gapCountCache = derivedCache(['properties', 'strCalendars', 'payments', 'strBlockAnnotations']);
 export function countUnresolvedGapNights() {
   return memoGet(_gapCountCache(), 'count', () => {
@@ -1381,7 +1399,7 @@ function renderCalendar(card, { histMap, suggest, blocked, blockInfo, year, mont
       border = '1px solid rgba(100,116,139,0.4)';
       const rateVal = target ? target.targetADR : suggest(date)?.rate;
       rateEl = el('div', { style: 'font-size:12px;font-style:italic;color:var(--text-muted)' }, rateVal != null ? formatMoney(rateVal, ccy, { maxFrac: 0 }) : '—');
-      badge = 'closed';
+      badge = info?.type === 'window' ? 'window' : 'closed';
     } else if (date < tStr) {
       // A past night nobody booked or closed — just an unsold night, nothing
       // left to price.
@@ -1403,8 +1421,8 @@ function renderCalendar(card, { histMap, suggest, blocked, blockInfo, year, mont
       style: `position:relative;min-height:66px;padding:6px;border-radius:6px;border:${border};background:${bg};cursor:pointer;` +
              (isToday ? 'box-shadow:0 0 0 2px var(--accent,#6366f1) inset;' : '')
     });
-    const badgeColor = badge === 'booked' ? '#10b981' : badge === 'gap' ? '#ef4444' : badge === 'noted' ? '#8b5cf6' : badge === 'closed' ? '#64748b' : badge === 'why?' ? '#d97706' : badge === 'empty' ? 'var(--text-muted)' : badge === 'target' ? '#6366f1' : badge === 'low' ? '#f59e0b' : 'var(--text-muted)';
-    const badgeText  = badge === 'booked' ? 'booked' : badge === 'gap' ? 'gap' : badge === 'noted' ? 'noted' : badge === 'closed' ? 'closed' : badge === 'why?' ? 'why?' : badge === 'empty' ? 'empty' : badge === 'target' ? 'target' : badge === 'low' ? '?' : badge === 'medium' ? '~' : badge === 'high' ? 'sugg' : badge ? 'sugg' : '';
+    const badgeColor = badge === 'booked' ? '#10b981' : badge === 'gap' ? '#ef4444' : badge === 'noted' ? '#8b5cf6' : (badge === 'closed' || badge === 'window') ? '#64748b' : badge === 'why?' ? '#d97706' : badge === 'empty' ? 'var(--text-muted)' : badge === 'target' ? '#6366f1' : badge === 'low' ? '#f59e0b' : 'var(--text-muted)';
+    const badgeText  = badge === 'booked' ? 'booked' : badge === 'gap' ? 'gap' : badge === 'noted' ? 'noted' : badge === 'closed' ? 'closed' : badge === 'window' ? 'not open' : badge === 'why?' ? 'why?' : badge === 'empty' ? 'empty' : badge === 'target' ? 'target' : badge === 'low' ? '?' : badge === 'medium' ? '~' : badge === 'high' ? 'sugg' : badge ? 'sugg' : '';
     cell.appendChild(el('div', { style: 'display:flex;justify-content:space-between;align-items:center' },
       el('span', { style: 'font-size:12px;font-weight:600;color:var(--text-muted)' }, String(d)),
       badgeText ? el('span', { style: `font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${badgeColor}` }, badgeText) : null
@@ -1427,6 +1445,7 @@ function renderCalendar(card, { histMap, suggest, blocked, blockInfo, year, mont
   legend.appendChild(chip('rgba(139,92,246,0.25)', 'Reserved, no payment — reason noted'));
   legend.appendChild(chip('rgba(245,158,11,0.25)', 'Closed by owner, no payment — needs a reason'));
   legend.appendChild(chip('rgba(100,116,139,0.20)', 'Closed — reason noted'));
+  legend.appendChild(chip('rgba(100,116,139,0.20)', 'not open = beyond your Airbnb availability window'));
   legend.appendChild(chip('rgba(100,116,139,0.06)', 'Past, not booked (empty)'));
   if (target) legend.appendChild(chip('#6366f1', `target = confirmed ${formatMoney(target.targetADR, ccy, { maxFrac: 0 })} (published rate)`));
   legend.appendChild(chip('transparent', 'Open · sugg = high confidence · ~ = medium · ? = low'));
@@ -1544,6 +1563,7 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
     const statusLabel = blockInfo?.type === 'owner' ? 'Closed on Airbnb'
       : blockInfo?.type === 'reserved' ? 'Reserved on Airbnb — no payment recorded'
       : blockInfo?.type === 'manual' ? 'Closed (added by you)'
+      : blockInfo?.type === 'window' ? 'Not open for booking yet (beyond your Airbnb availability window)'
       : isBlocked ? 'Reserved / blocked (iCal)' : isPast ? 'Not booked (empty night)' : 'Open';
     body.appendChild(row('Status', statusLabel));
     // Status editing for nights without a booking: an Airbnb block's reason
