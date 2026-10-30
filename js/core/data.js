@@ -1234,6 +1234,43 @@ export function getContractExpiryFlag(tenant) {
 // as a past tenant today, everywhere status is displayed. This computes
 // the effective display status, holding at 'terminating' until that date
 // actually arrives.
+// ── Property status vs leases ────────────────────────────────────────────────
+// Leases running on `day` (default today): not prospective, started, not yet
+// ended or terminated.
+export function currentLeases(propertyId, day = today()) {
+  return listActive('tenants').filter(t =>
+    t.propertyId === propertyId && t.status !== 'prospective' &&
+    (t.leaseStartDate || '') <= day &&
+    (!t.leaseEndDate || t.leaseEndDate >= day) &&
+    !(t.terminationDate && t.terminationDate < day)
+  );
+}
+
+// The status a property's leases imply, or null when its current status
+// already agrees: a running lease means Active (whatever was set — a tenant
+// wins over Renovation / Vacant); a long-term property with no running lease
+// marked Active means Vacant. Sold is never changed, and Renovation / Vacant
+// without a tenant stay as set (only the owner knows when work starts).
+export function expectedPropertyStatus(prop, day = today()) {
+  if (!prop || prop.status === 'sold') return null;
+  const status = prop.status || 'active';
+  const leased = currentLeases(prop.id, day).length > 0;
+  if (leased) return status === 'active' ? null : 'active';
+  if (prop.type === 'long_term' && status === 'active') return 'vacant';
+  return null;
+}
+
+// Bring a property's status in line with its leases. Returns { from, to }
+// when it changed, else null.
+export function syncPropertyStatus(propertyId, day = today()) {
+  const prop = byId('properties', propertyId);
+  const to = expectedPropertyStatus(prop, day);
+  if (!to) return null;
+  const from = prop.status || 'active';
+  upsert('properties', { ...prop, status: to });
+  return { from, to };
+}
+
 export function getTenantDisplayStatus(tenant) {
   if (tenant?.status === 'past' && tenant.terminationDate && tenant.terminationDate > today()) {
     return 'terminating';

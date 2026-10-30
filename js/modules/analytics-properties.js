@@ -1,5 +1,6 @@
 // Property Performance Analytics Dashboard
 import { el, buildMultiSelect, button, fmtDate, today, drillDownModal, attachSortFilter, openModal } from '../core/ui.js';
+import { buildAttentionCard } from './attention.js';
 import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS, PROPERTY_STREAMS, PROPERTY_STATUSES } from '../core/config.js';
 import {
@@ -1211,89 +1212,6 @@ function computePropertyInsights({ totals, propData, opExpenses, capExpenses, av
   return signals;
 }
 
-// ── Lease Expiry Alerts ───────────────────────────────────────────────────────
-function toLeaseDetailRows(t) {
-  const propName  = byId('properties', t.propertyId)?.name || '—';
-  const daysLeft  = t.leaseEndDate ? diffDaysYmd(todayYmd(), t.leaseEndDate) : null;
-  const rateDate  = t.leaseStartDate || null;
-  return [
-    { metric: 'Property',       value: propName },
-    { metric: 'Tenant',         value: t.name  || '—' },
-    { metric: 'Phone',          value: t.phone || '—' },
-    { metric: 'Email',          value: t.email || '—' },
-    { metric: 'Lease Start',    value: t.leaseStartDate ? fmtDate(t.leaseStartDate) : '—' },
-    { metric: 'Lease End',      value: t.leaseEndDate   ? fmtDate(t.leaseEndDate)   : '—' },
-    { metric: 'Days Remaining', value: daysLeft != null ? String(daysLeft) : '—' },
-    { metric: 'Monthly Rent',   value: t.monthlyRent ? formatEUR(toEUR(t.monthlyRent, t.currency || 'EUR', rateDate)) : '—' },
-    { metric: 'Deposit',        value: t.deposit     ? formatEUR(toEUR(t.deposit,     t.currency || 'EUR', rateDate)) : '—' }
-  ];
-}
-const LEASE_DETAIL_COLS = [
-  { key: 'metric', label: 'Metric' },
-  { key: 'value',  label: 'Value'  }
-];
-
-function buildLeaseExpiryCard(props) {
-  const propIds = new Set(props.map(p => p.id));
-  const card = el('div', { class: 'card mb-16' });
-  card.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'Lease Expiry Alerts'),
-    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Tenants whose lease ends within the next 90 days from today · not affected by the period filter')
-  ));
-
-  const today = todayYmd();            // local calendar date (not UTC)
-  const in90  = addDaysYmd(today, 90);
-
-  const expiring = listActive('tenants').filter(t => {
-    const end = t.leaseEndDate;
-    return propIds.has(t.propertyId) && end && end >= today && end <= in90;
-  });
-
-  if (expiring.length === 0) {
-    card.appendChild(el('div', {
-      style: 'padding:12px 16px;display:flex;align-items:center;gap:8px;color:var(--success);font-size:13px'
-    }, '✓ No leases expiring in the next 90 days'));
-    return card;
-  }
-
-  const body = el('div', { style: 'padding:0 16px 16px' });
-
-  const table = el('table', { class: 'table' });
-  const htr   = el('tr');
-  ['Property', 'Tenant', 'Lease End', 'Days Left', 'Status'].forEach((h, i) => {
-    htr.appendChild(el('th', { class: i >= 3 ? 'right' : '' }, h));
-  });
-  table.appendChild(el('thead', {}, htr));
-
-  const tbody = el('tbody');
-  [...expiring].sort((a, b) => (a.leaseEndDate || '').localeCompare(b.leaseEndDate || '')).forEach(t => {
-    const daysLeft = Math.ceil((new Date(t.leaseEndDate) - new Date(today)) / 86400000);
-    const propName = byId('properties', t.propertyId)?.name || '—';
-    let badgeCls, badgeLbl;
-    if (daysLeft <= 30)       { badgeCls = 'danger';  badgeLbl = 'Urgent';  }
-    else if (daysLeft <= 60)  { badgeCls = 'warning'; badgeLbl = 'Warning'; }
-    else                      { badgeCls = 'info';    badgeLbl = 'Notice';  }
-
-    const tr = el('tr', { style: 'cursor:pointer', title: 'Click for lease detail' });
-    tr.onclick = () => drillDownModal(`${t.name || 'Tenant'} — Lease Detail`, toLeaseDetailRows(t), LEASE_DETAIL_COLS);
-    tr.appendChild(el('td', {}, propName));
-    tr.appendChild(el('td', {}, t.name || '—'));
-    tr.appendChild(el('td', {}, fmtDate(t.leaseEndDate)));
-    tr.appendChild(el('td', { class: 'right num' }, String(daysLeft)));
-    const tdS = el('td', { class: 'right' });
-    tdS.appendChild(el('span', { class: `badge ${badgeCls}` }, badgeLbl));
-    tr.appendChild(tdS);
-    tbody.appendChild(tr);
-  });
-  table.appendChild(tbody);
-
-  const tableWrap = el('div', { class: 'table-wrap' });
-  tableWrap.appendChild(table);
-  body.appendChild(tableWrap);
-  card.appendChild(body);
-  return card;
-}
-
 // ── Property Lifecycle Timeline ────────────────────────────────────────────────
 // Consolidated Gantt-style history per property — purchase date, renovation
 // periods, and tenant occupancy — all on one shared date axis. Mirrors the
@@ -1854,7 +1772,9 @@ function buildView() {
     wrap.appendChild(el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px' },
       buildOverviewValueCard(mvData), revCard, profitCard, yieldCard, vacancyCard));
     if (banner) wrap.appendChild(banner);
-    wrap.appendChild(buildLeaseExpiryCard(allProps));
+    // Needs attention (uncollected rent, empty / idle / renovation flats,
+    // leases ending, data to check) — as of today, for the filtered properties.
+    wrap.appendChild(buildAttentionCard(allProps, { weight: ownerWeight, onChange: rebuildView }));
   }
 
   if (gTab === 'performance') {

@@ -1,5 +1,6 @@
 // Executive Analytics Dashboard — morning-briefing single-glance overview
 import { el, fmtDate, drillDownModal, openModal } from '../core/ui.js';
+import { buildAttentionCard } from './attention.js';
 import * as charts from '../core/charts.js';
 import {
   formatEUR, toEUR, byId,
@@ -1419,6 +1420,14 @@ function buildView() {
 
   if (gTab === 'overview') {
     wrap.appendChild(buildKpiGrid(curData, cmpData, cmpRange));
+    // Needs attention — the properties the owner / scope filters let through,
+    // money at the selected owner's share.
+    {
+      const { mOwner, wOwner } = makeMatchers(gF);
+      const coPropIds = companyPropIds();
+      const props = listActive('properties').filter(p => mOwner(p) && (gScope === 'all' || coPropIds.has(p.id)));
+      wrap.appendChild(buildAttentionCard(props, { weight: p => wOwner({ propertyId: p.id }), onChange: rebuildView }));
+    }
     wrap.appendChild(buildInsights(curData, cmpData, cmpRange, curRange.start, curRange.end));
   }
 

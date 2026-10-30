@@ -1,7 +1,7 @@
 // Tenants module – CRUD for long-term rental tenants
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, attachSortFilter, buildMultiSelect } from '../core/ui.js';
-import { upsert, softDelete, listActive, byId, newId, formatMoney, generatePaymentSchedule, getContractExpiryFlag, getTenantDisplayStatus, getPeopleOwners, getPersonName } from '../core/data.js';
-import { CURRENCIES } from '../core/config.js';
+import { upsert, softDelete, listActive, byId, newId, formatMoney, generatePaymentSchedule, getContractExpiryFlag, getTenantDisplayStatus, getPeopleOwners, getPersonName, syncPropertyStatus } from '../core/data.js';
+import { CURRENCIES, PROPERTY_STATUSES } from '../core/config.js';
 import { recordRentPaymentsBulk } from './payments.js';
 import { mkTh } from './analytics-helpers.js';
 import { thisMonthYm } from '../core/dates.js';
@@ -141,7 +141,7 @@ function build() {
         const pmtCount = listActive('payments').filter(p => p.tenantId === r.id).length;
         if (pmtCount) { toast(`Cannot delete — ${pmtCount} payment(s) are linked to this tenant.`, 'danger', 5000); return; }
         const ok = await confirmDialog(`Delete tenant "${r.name}"?`, { danger: true, okLabel: 'Delete' });
-        if (ok) { softDelete('tenants', r.id); toast('Deleted', 'success'); renderTable(); }
+        if (ok) { softDelete('tenants', r.id); syncPropertyStatus(r.propertyId); toast('Deleted', 'success'); renderTable(); }
       }}));
       tr.appendChild(actions);
       tb.appendChild(tr);
@@ -190,7 +190,8 @@ function openForm(existing, onSave) {
     name: '', phone: '', email: '',
     propertyId: defaultProp,
     leaseStartDate: today(), leaseEndDate: '',
-    monthlyRent: 0, currency: 'EUR',
+    // Rent currency follows the apartment's own currency (its purchase price's).
+    monthlyRent: 0, currency: byId('properties', defaultProp)?.currency || 'EUR',
     deposit: 0, paymentDayOfMonth: 1,
     notes: '', status: 'active'
   };
@@ -244,6 +245,14 @@ function openForm(existing, onSave) {
   const syncRentFrom = () => {
     rentFromRow.style.display = existing && (rentChanged() || hasRentHist) ? '' : 'none';
   };
+  // A new tenant's rent currency follows the chosen apartment's currency
+  // until the currency is picked by hand.
+  let currencyTouched = !!existing;
+  currencyS.addEventListener('change', () => { currencyTouched = true; });
+  propS.addEventListener('change', () => {
+    const c = byId('properties', propS.value)?.currency;
+    if (!currencyTouched && c) currencyS.value = c;
+  });
   rentI.addEventListener('input', () => { syncRentFromDefault(); syncRentFrom(); });
   currencyS.addEventListener('change', () => { syncRentFromDefault(); syncRentFrom(); });
   syncRentFrom();
@@ -360,6 +369,11 @@ function openForm(existing, onSave) {
     const isNewPastTenant = !existing && updated.status === 'past';
     upsert('tenants', updated);
     const closedKinds = closeOpenPeriodsOnLeaseStart(updated.propertyId, updated.leaseStartDate);
+    // Keep the property's status in line with its leases (a tenant makes it
+    // Active; no running lease on an Active long-term flat makes it Vacant).
+    const statusChange = syncPropertyStatus(updated.propertyId);
+    if (existing && existing.propertyId !== updated.propertyId) syncPropertyStatus(existing.propertyId);
+    if (statusChange) toast(`${byId('properties', updated.propertyId)?.name || 'Property'} is now ${PROPERTY_STATUSES[statusChange.to]?.label || statusChange.to}`, 'info', 5000);
     toast(existing ? 'Tenant updated' : 'Tenant added', 'success');
     if (closedKinds.length) {
       toast(`Closed open ${[...new Set(closedKinds)].join(' & ')} as of ${fmtDate(updated.leaseStartDate)}`, 'info', 5000);
@@ -489,6 +503,9 @@ function openTerminationModal(tenant, onSave) {
       terminationComments:       comments || null,
       notes:                     updatedNotes
     });
+    // Lease over (as of today) and no other tenant → the flat is Vacant.
+    const statusChange = syncPropertyStatus(tenant.propertyId);
+    if (statusChange) toast(`${byId('properties', tenant.propertyId)?.name || 'Property'} is now ${PROPERTY_STATUSES[statusChange.to]?.label || statusChange.to}`, 'info', 5000);
 
     // Deposit: withheld → revenue payment; returned → nothing to book. The
     // deposit was never recorded as income, so booking its return as an opex
