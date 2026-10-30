@@ -74,3 +74,28 @@ test("a vendor's usual category comes from their past expenses", () => {
   const e = data.setVendorCollection('pay1', { vendorId: 'v2', amount: 1000 }); // no category given
   assert.equal(e.category, 'cleaning');
 });
+
+test('the vendor cost can belong to another property (e.g. renovation elsewhere) or the company', () => {
+  setDb({
+    settings: {},
+    properties: [
+      { id: 'p1', name: 'Flat', type: 'long_term', currency: 'HUF', owner: 'you' },
+      { id: 'p2', name: 'Renovation Flat', type: 'long_term', currency: 'HUF', owner: 'rita', status: 'renovation' }
+    ],
+    vendors: [{ id: 'v1', name: 'Builder' }],
+    expenses: [],
+    payments: [{ id: 'pay1', propertyId: 'p1', amount: 150000, currency: 'HUF', date: '2026-10-10', status: 'paid', type: 'rental', stream: 'long_term_rental', rentMonth: '2026-10' }]
+  });
+  const e = data.setVendorCollection('pay1', { vendorId: 'v1', category: 'renovation', amount: 150000, propertyId: 'p2' });
+  assert.equal(e.propertyId, 'p2');                       // cost on the flat being renovated
+  assert.equal(data.resolveExpenseFields(e).accountingType, 'capex');
+  assert.match(e.description, /of Flat/);                 // says whose rent paid for it
+  assert.equal(data.byId('payments', 'pay1').propertyId, 'p1'); // rent stays on its own flat
+  // re-saving without a property keeps the chosen one
+  const e2 = data.setVendorCollection('pay1', { vendorId: 'v1', category: 'renovation', amount: 100000 });
+  assert.equal(e2.propertyId, 'p2');
+  // company cost (no property)
+  const e3 = data.setVendorCollection('pay1', { vendorId: 'v1', category: 'maintenance', amount: 100000, propertyId: '' });
+  assert.equal(e3.propertyId, '');
+  assert.equal(e3.stream, null);
+});

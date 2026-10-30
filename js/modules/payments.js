@@ -683,18 +683,25 @@ function buildVendorCollectionFields(payment, getAmount) {
   const catS = select(Object.entries(EXPENSE_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label })),
     linked?.category || (payment?.collectedByVendorId ? vendorUsualCategory(payment.collectedByVendorId) : 'maintenance'));
   const amtI = input({ type: 'number', min: 0, step: 0.01, value: linked ? linked.amount : (getAmount() || 0) });
+  // The property the vendor's cost belongs to — e.g. renovation on another
+  // flat — defaulting to the rent's own property.
+  const props = listActive('properties').slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  const costPropS = select([...props.map(p => ({ value: p.id, label: p.name })), { value: '', label: 'Company (no specific property)' }],
+    linked ? (linked.propertyId || '') : (payment?.propertyId || ''));
   let amtTouched = !!linked;
+  let costPropTouched = false;
   amtI.addEventListener('input', () => { amtTouched = true; });
   const hint = el('div', { style: 'font-size:11px;color:var(--text-muted);margin:-4px 0 6px' });
   const detail = el('div', {},
     el('div', { class: 'form-row horizontal' }, formRow('Expense category', catS), formRow('Amount the vendor kept', amtI)),
+    formRow('Expense for property', costPropS),
     hint);
   const sync = () => {
     detail.style.display = byS.value ? '' : 'none';
     if (!amtTouched) amtI.value = getAmount() || 0;
     const kept = Number(amtI.value) || 0, rent = Number(getAmount()) || 0;
     hint.textContent = byS.value
-      ? `Books a ${EXPENSE_CATEGORIES[catS.value]?.label || catS.value} expense for this vendor, linked to this payment.` +
+      ? `Books a ${EXPENSE_CATEGORIES[catS.value]?.label || catS.value} expense for this vendor on ${costPropS.value ? (byId('properties', costPropS.value)?.name || 'that property') : 'the company'}, linked to this payment.` +
         (rent && kept < rent ? ` The other ${(rent - kept).toFixed(2)} stays owed to you by the vendor.` : '') +
         (rent && kept > rent ? ' That is more than the rent collected — check the amount.' : '')
       : '';
@@ -702,11 +709,15 @@ function buildVendorCollectionFields(payment, getAmount) {
   byS.addEventListener('change', () => { if (byS.value && !linked) catS.value = vendorUsualCategory(byS.value); sync(); });
   catS.addEventListener('change', sync);
   amtI.addEventListener('input', sync);
+  costPropS.addEventListener('change', () => { costPropTouched = true; sync(); });
   sync();
   return {
     el: el('div', {}, formRow('Collected by', byS), detail),
     sync,
-    read: () => byS.value ? { vendorId: byS.value, category: catS.value, amount: Number(amtI.value) || 0 } : null
+    read: () => byS.value ? { vendorId: byS.value, category: catS.value, amount: Number(amtI.value) || 0, propertyId: costPropS.value } : null,
+    // The payment form's property changed: an untouched, unlinked cost
+    // property follows it.
+    setDefaultProperty: id => { if (!linked && !costPropTouched) costPropS.value = id || ''; }
   };
 }
 
@@ -1578,6 +1589,7 @@ export function openPaymentForm(existing, { defaults = {}, onSaved } = {}) {
     const p = byId('properties', propS.value);
     if (p) { currencyS.value = p.currency; }
     syncRentMonthRow();
+    coll.setDefaultProperty(propS.value);
   };
 
   const save = button('Save', { variant: 'primary', onClick: async () => {

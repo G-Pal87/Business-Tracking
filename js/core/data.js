@@ -302,7 +302,10 @@ export function vendorUsualCategory(vendorId) {
 }
 
 // Link (or update) the vendor collection on a payment: `opts` =
-// { vendorId, category, amount }; null removes it (and its expense).
+// { vendorId, category, amount, propertyId }; null removes it (and its
+// expense). `propertyId` is the property the vendor's cost belongs to — not
+// necessarily the one whose rent was collected ('' = company, no property);
+// omitted, it stays as linked before, else the rent's property.
 export function setVendorCollection(paymentId, opts) {
   const p = byId('payments', paymentId);
   if (!p) return null;
@@ -316,7 +319,9 @@ export function setVendorCollection(paymentId, opts) {
     return null;
   }
   const vendor = byId('vendors', opts.vendorId);
-  const prop = byId('properties', p.propertyId);
+  const live = linked && !linked.deletedAt ? linked : null;
+  const costPropId = opts.propertyId !== undefined ? (opts.propertyId || '') : (live ? (live.propertyId || '') : (p.propertyId || ''));
+  const prop = costPropId ? byId('properties', costPropId) : null;
   const amount = Number(opts.amount) > 0 ? Number(opts.amount) : Number(p.amount) || 0;
   const month = p.rentMonth || (p.date || '').slice(0, 7);
   let expense;
@@ -324,19 +329,21 @@ export function setVendorCollection(paymentId, opts) {
     expense = {
       ...(linked && !linked.deletedAt ? linked : {}),
       id: linked && !linked.deletedAt ? linked.id : newId('exp'),
-      propertyId: p.propertyId || '',
+      propertyId: costPropId,
       vendorId: opts.vendorId,
       vendor: vendor?.name || '',
       category: opts.category || vendorUsualCategory(opts.vendorId),
       amount,
       currency: p.currency || 'EUR',
       date: p.date,
-      stream: prop?.type === 'short_term' ? 'short_term_rental' : prop?.type === 'long_term' ? 'long_term_rental' : (p.stream || null),
-      description: `Covered by rent ${month} collected in cash by ${vendor?.name || 'vendor'}`,
+      stream: prop?.type === 'short_term' ? 'short_term_rental' : prop?.type === 'long_term' ? 'long_term_rental' : (costPropId ? (p.stream || null) : null),
+      description: `Covered by rent ${month}${costPropId !== p.propertyId ? ` of ${byId('properties', p.propertyId)?.name || 'another property'}` : ''} collected in cash by ${vendor?.name || 'vendor'}`,
       linkedPaymentId: p.id,
       paidVia: 'rent_collected_by_vendor'
     };
-    if (p.personal) expense.personal = true; else delete expense.personal;
+    // A personal booking's cost on the same property stays personal; a cost
+    // on another property follows that property's own channel.
+    if (p.personal && costPropId === p.propertyId) expense.personal = true; else delete expense.personal;
     upsert('expenses', expense);
     upsert('payments', { ...p, collectedByVendorId: opts.vendorId, linkedExpenseId: expense.id, collectionMethod: 'vendor_cash' });
   });
