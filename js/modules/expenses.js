@@ -686,6 +686,14 @@ function openForm(existing, defaults = {}, onSave = null) {
   };
 
   const body = el('div', {});
+  // Booked automatically from rent a vendor collected in cash (see
+  // setVendorCollection) — say so, and where to change the link.
+  const linkedPay = r.linkedPaymentId ? byId('payments', r.linkedPaymentId) : null;
+  if (linkedPay && !linkedPay.deletedAt) {
+    body.appendChild(el('div', { style: 'margin-bottom:10px;padding:8px 10px;font-size:12px;border-radius:4px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2)' },
+      `Covered by rent collected in cash by the vendor — ${byId('properties', linkedPay.propertyId)?.name || 'payment'}, ${fmtDate(linkedPay.date)}, ${formatMoney(linkedPay.amount, linkedPay.currency)}. ` +
+      'To change the vendor or the amount kept, or to undo it, edit that payment ("Collected by").'));
+  }
   const catS = buildCategorySelect(r.category);
   const resolved = resolveExpenseFields(r);
 

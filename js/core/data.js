@@ -268,7 +268,79 @@ export function softDelete(collection, id) {
   item.updatedAt = nextStamp(item.updatedAt, now);
   item.updatedBy = actor;
   markDirty(collection);
+  // Rent collected by a vendor: the payment and its expense go together.
+  if (collection === 'payments' && item.linkedExpenseId) {
+    const e = byId('expenses', item.linkedExpenseId);
+    if (e && !e.deletedAt) softDelete('expenses', e.id);
+  } else if (collection === 'expenses' && item.linkedPaymentId) {
+    const p = byId('payments', item.linkedPaymentId);
+    if (p && !p.deletedAt && p.linkedExpenseId === item.id) {
+      const { collectedByVendorId, linkedExpenseId, collectionMethod, ...rest } = p;
+      upsert('payments', rest);
+    }
+  }
   return true;
+}
+
+// ── Rent collected by a vendor ───────────────────────────────────────────────
+// A vendor sometimes collects rent in cash and keeps it against their own
+// costs. The payment stays revenue (paid) and a linked expense records the
+// vendor's cost, so profit is right and nothing is counted twice. The payment
+// carries collectedByVendorId / linkedExpenseId / collectionMethod; the
+// expense carries linkedPaymentId. softDelete keeps the pair consistent.
+
+// The category a vendor's past expenses mostly use ('maintenance' if none).
+export function vendorUsualCategory(vendorId) {
+  const counts = new Map();
+  for (const e of listActive('expenses')) {
+    if (e.vendorId !== vendorId || !e.category) continue;
+    counts.set(e.category, (counts.get(e.category) || 0) + 1);
+  }
+  let best = 'maintenance', n = 0;
+  for (const [c, k] of counts) if (k > n) { best = c; n = k; }
+  return best;
+}
+
+// Link (or update) the vendor collection on a payment: `opts` =
+// { vendorId, category, amount }; null removes it (and its expense).
+export function setVendorCollection(paymentId, opts) {
+  const p = byId('payments', paymentId);
+  if (!p) return null;
+  const linked = p.linkedExpenseId ? byId('expenses', p.linkedExpenseId) : null;
+  if (!opts || !opts.vendorId) {
+    if (linked && !linked.deletedAt) softDelete('expenses', linked.id); // also clears the payment's link
+    else if (p.collectedByVendorId || p.linkedExpenseId) {
+      const { collectedByVendorId, linkedExpenseId, collectionMethod, ...rest } = p;
+      upsert('payments', rest);
+    }
+    return null;
+  }
+  const vendor = byId('vendors', opts.vendorId);
+  const prop = byId('properties', p.propertyId);
+  const amount = Number(opts.amount) > 0 ? Number(opts.amount) : Number(p.amount) || 0;
+  const month = p.rentMonth || (p.date || '').slice(0, 7);
+  let expense;
+  runBatch(() => {
+    expense = {
+      ...(linked && !linked.deletedAt ? linked : {}),
+      id: linked && !linked.deletedAt ? linked.id : newId('exp'),
+      propertyId: p.propertyId || '',
+      vendorId: opts.vendorId,
+      vendor: vendor?.name || '',
+      category: opts.category || vendorUsualCategory(opts.vendorId),
+      amount,
+      currency: p.currency || 'EUR',
+      date: p.date,
+      stream: prop?.type === 'short_term' ? 'short_term_rental' : prop?.type === 'long_term' ? 'long_term_rental' : (p.stream || null),
+      description: `Covered by rent ${month} collected in cash by ${vendor?.name || 'vendor'}`,
+      linkedPaymentId: p.id,
+      paidVia: 'rent_collected_by_vendor'
+    };
+    if (p.personal) expense.personal = true; else delete expense.personal;
+    upsert('expenses', expense);
+    upsert('payments', { ...p, collectedByVendorId: opts.vendorId, linkedExpenseId: expense.id, collectionMethod: 'vendor_cash' });
+  });
+  return expense;
 }
 
 // updatedAt for an edit of a record last stamped `prev`: now, or just after

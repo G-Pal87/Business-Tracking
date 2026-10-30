@@ -1,8 +1,8 @@
 // Payments module: manual payments, LT rental schedule, Airbnb CSV import
 import { state, runBatch } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, attachSortFilter, attachDataTable, buildMultiSelect } from '../core/ui.js';
-import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, getForecastEntries, upsertForecastEntry, applyReservationExpenseRules, removeReservationExpenses, deletePayment, buildGeneratedExpenseIndex, buildGeneratedExpenseCategoryIndex, buildReservationExpenseRefMap, formatRuleConflictWarning, getPeopleOwners, getPersonName, getContractExpiryFlag, dataStamp, sameDataStamp } from '../core/data.js';
-import { CURRENCIES, PAYMENT_STATUSES, STREAMS, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT } from '../core/config.js';
+import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, getForecastEntries, upsertForecastEntry, applyReservationExpenseRules, removeReservationExpenses, deletePayment, setVendorCollection, vendorUsualCategory, buildGeneratedExpenseIndex, buildGeneratedExpenseCategoryIndex, buildReservationExpenseRefMap, formatRuleConflictWarning, getPeopleOwners, getPersonName, getContractExpiryFlag, dataStamp, sameDataStamp } from '../core/data.js';
+import { CURRENCIES, PAYMENT_STATUSES, STREAMS, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, EXPENSE_CATEGORIES } from '../core/config.js';
 import { mkTh, mkExplainButton } from './analytics-helpers.js';
 import { navigate } from '../core/router.js';
 import { todayYmd, localYmd, diffDaysYmd } from '../core/dates.js';
@@ -670,23 +670,65 @@ export function recordRentPaymentsBulk(prop, entries) {
   return { created, skipped };
 }
 
-// Opens a small "add a comment?" modal after a payment is marked paid.
-// Resolves to the trimmed comment text, or null if the user skips/closes.
-function promptForComment() {
+// "Collected by" fields: us (default) or a vendor who collected the rent in
+// cash and kept it against their own costs — then the vendor's cost is booked
+// as a linked expense (setVendorCollection). `payment` gives the current
+// link (if any); getAmount() the payment amount the vendor's share defaults
+// to. read() → null (collected by us) or { vendorId, category, amount }.
+function buildVendorCollectionFields(payment, getAmount) {
+  const vendors = listActive('vendors').slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  const linked = payment?.linkedExpenseId ? byId('expenses', payment.linkedExpenseId) : null;
+  const byS = select([{ value: '', label: 'Us (bank transfer / paid to us)' }, ...vendors.map(v => ({ value: v.id, label: `A vendor: ${v.name}` }))],
+    payment?.collectedByVendorId || '');
+  const catS = select(Object.entries(EXPENSE_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label })),
+    linked?.category || (payment?.collectedByVendorId ? vendorUsualCategory(payment.collectedByVendorId) : 'maintenance'));
+  const amtI = input({ type: 'number', min: 0, step: 0.01, value: linked ? linked.amount : (getAmount() || 0) });
+  let amtTouched = !!linked;
+  amtI.addEventListener('input', () => { amtTouched = true; });
+  const hint = el('div', { style: 'font-size:11px;color:var(--text-muted);margin:-4px 0 6px' });
+  const detail = el('div', {},
+    el('div', { class: 'form-row horizontal' }, formRow('Expense category', catS), formRow('Amount the vendor kept', amtI)),
+    hint);
+  const sync = () => {
+    detail.style.display = byS.value ? '' : 'none';
+    if (!amtTouched) amtI.value = getAmount() || 0;
+    const kept = Number(amtI.value) || 0, rent = Number(getAmount()) || 0;
+    hint.textContent = byS.value
+      ? `Books a ${EXPENSE_CATEGORIES[catS.value]?.label || catS.value} expense for this vendor, linked to this payment.` +
+        (rent && kept < rent ? ` The other ${(rent - kept).toFixed(2)} stays owed to you by the vendor.` : '') +
+        (rent && kept > rent ? ' That is more than the rent collected — check the amount.' : '')
+      : '';
+  };
+  byS.addEventListener('change', () => { if (byS.value && !linked) catS.value = vendorUsualCategory(byS.value); sync(); });
+  catS.addEventListener('change', sync);
+  amtI.addEventListener('input', sync);
+  sync();
+  return {
+    el: el('div', {}, formRow('Collected by', byS), detail),
+    sync,
+    read: () => byS.value ? { vendorId: byS.value, category: catS.value, amount: Number(amtI.value) || 0 } : null
+  };
+}
+
+// Opens a small "payment details" modal after a payment is marked paid:
+// an optional comment and who collected the rent. Resolves to
+// { comment, collection } or null if the user skips/closes.
+function promptForPaymentDetails(payment) {
   return new Promise(resolve => {
     let resolved = false;
     const settle = v => { if (!resolved) { resolved = true; resolve(v); } };
     const notesI = textarea({ placeholder: 'Optional comment about this payment...' });
+    const coll = buildVendorCollectionFields(payment, () => payment.amount);
     const skipBtn = button('Skip', { variant: 'ghost' });
-    const saveBtn = button('Save Comment', { variant: 'primary' });
+    const saveBtn = button('Save', { variant: 'primary' });
     const { close } = openModal({
-      title: 'Add a comment?',
-      body: formRow('Comment', notesI),
+      title: 'Payment details',
+      body: el('div', {}, coll.el, formRow('Comment', notesI)),
       footer: [skipBtn, saveBtn],
       onClose: () => settle(null)
     });
     skipBtn.onclick = () => { close(); settle(null); };
-    saveBtn.onclick = () => { close(); settle(notesI.value.trim()); };
+    saveBtn.onclick = () => { close(); settle({ comment: notesI.value.trim(), collection: coll.read() }); };
   });
 }
 
@@ -699,13 +741,18 @@ async function recordRentPayment(prop, entry, onDone) {
   }
   toast('Payment recorded', 'success');
   if (onDone) onDone();
-  const comment = await promptForComment();
-  if (comment) {
-    upsert('payments', { ...created, notes: comment });
-    const shown = comment.length > 120 ? comment.slice(0, 117) + '…' : comment;
+  const details = await promptForPaymentDetails(created);
+  if (!details) return;
+  if (details.comment) {
+    upsert('payments', { ...byId('payments', created.id), notes: details.comment });
+    const shown = details.comment.length > 120 ? details.comment.slice(0, 117) + '…' : details.comment;
     toast(`Comment saved: "${shown}"`, 'success', 5000);
-    if (onDone) onDone();
   }
+  if (details.collection) {
+    const exp = setVendorCollection(created.id, details.collection);
+    if (exp) toast(`Expense booked for ${exp.vendor || 'the vendor'}: ${formatMoney(exp.amount, exp.currency)}`, 'success', 5000);
+  }
+  if (onDone) onDone();
 }
 
 function buildScheduleSection(wrap) {
@@ -1479,6 +1526,13 @@ export function openPaymentForm(existing, { defaults = {}, onSaved } = {}) {
   body.appendChild(personalRow);
   body.appendChild(formRow('Guest Name', guestNameI));
   body.appendChild(formRow('Notes', notesT));
+  // Who collected it — only meaningful once the payment is paid.
+  const coll = buildVendorCollectionFields(r, () => Number(amountI.value) || 0);
+  body.appendChild(coll.el);
+  const syncColl = () => { coll.el.style.display = statusS.value === 'paid' ? '' : 'none'; coll.sync(); };
+  statusS.addEventListener('change', syncColl);
+  amountI.addEventListener('input', () => coll.sync());
+  syncColl();
 
   // Rent month — which month's rent a long-term payment settles (September
   // rent paid on 2 October is still September's). Shown for long-term
@@ -1550,7 +1604,12 @@ export function openPaymentForm(existing, { defaults = {}, onSaved } = {}) {
     } else {
       delete r.rentMonth;
     }
+    // Keep any existing vendor-collection link fields from the stored record.
     upsert('payments', r);
+    // Vendor collection: book / update / remove the linked expense so it
+    // follows the payment's date, currency, property and amount kept.
+    const collection = statusS.value === 'paid' ? coll.read() : null;
+    if (collection || r.linkedExpenseId) setVendorCollection(r.id, collection);
     // Reservation expense rules (cleaning etc.) only for genuine STR stays —
     // an Airbnb adjustment/resolution row, or any long-term payment, isn't one.
     const isStrStay = r.stream === 'short_term_rental' &&
