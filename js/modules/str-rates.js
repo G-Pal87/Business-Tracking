@@ -833,6 +833,7 @@ function renderGapRow(gap, propertyId, onRerender) {
   const severity = gap.annotation ? 'resolved' : (gap.isPast ? 'urgent' : 'pending');
   const barColor = severity === 'urgent' ? '#ef4444' : severity === 'pending' ? '#f59e0b' : '#8b5cf6';
   const row = el('div', { style: `border-left:3px solid ${barColor};background:rgba(0,0,0,0.03);border-radius:6px;padding:10px 12px` });
+  row.dataset.gapUid = gap.uid;
 
   const nightsLabel = gap.nights === gap.totalNights
     ? `${gap.nights} night${gap.nights !== 1 ? 's' : ''} unmatched`
@@ -854,14 +855,15 @@ function renderGapRow(gap, propertyId, onRerender) {
   // same Add Payment form pre-filled with this property/date range, and once
   // saved the matching dates make the gap disappear on its own (see
   // historicNightMap/findCalendarPaymentGaps above), no annotation needed.
+  // Choosing the "Off-platform booking" reason opens this same form: the
+  // booking is a payment, not a tag.
+  const recordBooking = (notes = '') => openPaymentForm(null, {
+    defaults: { propertyId, checkIn: gap.start, checkOut: gap.end, date: gap.start,
+      currency: byId('properties', propertyId)?.currency || 'EUR', ...(notes ? { notes } : {}) },
+    onSaved: () => onRerender?.()
+  });
   const actionsRow = el('div', { style: 'margin-top:6px' });
-  actionsRow.appendChild(button('Record Off-Platform Booking →', {
-    variant: 'sm ghost',
-    onClick: () => openPaymentForm(null, {
-      defaults: { propertyId, checkIn: gap.start, checkOut: gap.end, date: gap.start },
-      onSaved: () => onRerender?.()
-    })
-  }));
+  actionsRow.appendChild(button('Record Off-Platform Booking →', { variant: 'sm ghost', onClick: () => recordBooking() }));
   row.appendChild(actionsRow);
 
   const formHost = el('div', { style: 'margin-top:8px' });
@@ -877,6 +879,12 @@ function renderGapRow(gap, propertyId, onRerender) {
       const editLink = el('span', { style: 'color:var(--accent,#6366f1);cursor:pointer;text-decoration:underline;font-size:11px' }, 'Edit');
       editLink.onclick = () => renderForm(true);
       summary.appendChild(editLink);
+      if (gap.annotation.reason === 'off_platform') {
+        // Saved before choosing it opened the payment form — no income yet.
+        const rec = el('span', { style: 'color:#d97706;cursor:pointer;text-decoration:underline;font-size:11px' }, 'Record the payment →');
+        rec.onclick = () => recordBooking(gap.annotation.note || '');
+        summary.appendChild(rec);
+      }
       formHost.appendChild(summary);
       return;
     }
@@ -884,21 +892,25 @@ function renderGapRow(gap, propertyId, onRerender) {
     const options = gap.annotation ? GAP_REASONS : [{ value: '', label: 'Choose a reason…' }, ...GAP_REASONS];
     const reasonSel = select(options, gap.annotation?.reason || '');
     const hint = el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:4px;display:none' },
-      'If the guest paid, use "Record Off-Platform Booking" above instead so the income is counted — the range then clears on its own.');
+      'An off-platform booking is recorded as a payment (amount, currency, guest…) — the range clears once it\'s saved.');
     const syncHint = () => { hint.style.display = reasonSel.value === 'off_platform' ? '' : 'none'; };
-    reasonSel.addEventListener('change', syncHint);
-    syncHint();
+    reasonSel.addEventListener('change', () => {
+      syncHint();
+      if (reasonSel.value === 'off_platform') recordBooking(noteInp.value.trim());
+    });
     reasonSel.style.maxWidth = '220px';
     const noteInp = textarea({ placeholder: 'Optional note — what happened here?', rows: 2 });
     noteInp.style.width = '100%';
     noteInp.style.marginTop = '6px';
     noteInp.style.fontSize = '12px';
     noteInp.value = gap.annotation?.note || '';
+    syncHint();
 
     const btnRow = el('div', { style: 'display:flex;gap:8px;margin-top:8px' });
     const saveBtn = button('Save', { variant: 'primary sm', onClick: () => {
       const reason = reasonSel.value;
       if (!reason) { toast('Choose a reason', 'warning'); return; }
+      if (reason === 'off_platform') { recordBooking(noteInp.value.trim()); return; }
       const record = gap.annotation ? { ...gap.annotation } : { id: newId('sba'), propertyId, uid: gap.uid };
       delete record.deletedAt;
       Object.assign(record, { start: gap.start, end: gap.end, reason, note: noteInp.value.trim() });
