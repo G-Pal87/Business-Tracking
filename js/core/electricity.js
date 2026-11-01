@@ -142,10 +142,11 @@ export function undoReading(c) {
 }
 
 // Step 2: invoice checked & paid — books an Electricity expense on the
-// property (with the provider as vendor when one is set) and links it.
-export function markInvoicePaid(c, { date, amount, currency, invoiceNo = '' }) {
+// property and links it. `vendorId`: the vendor paid (e.g. E.ON); omitted →
+// the default provider from settings, '' → no vendor.
+export function markInvoicePaid(c, { date, amount, currency, invoiceNo = '', vendorId }) {
   const p = c.property;
-  const providerId = state.db.settings?.electricity?.providerVendorId || '';
+  const providerId = vendorId !== undefined ? vendorId : (state.db.settings?.electricity?.providerVendorId || '');
   const provider = providerId ? byId('vendors', providerId) : null;
   const linked = c.record?.expenseId ? byId('expenses', c.record.expenseId) : null;
   let rec;
@@ -163,6 +164,7 @@ export function markInvoicePaid(c, { date, amount, currency, invoiceNo = '' }) {
       electricityCycleId: c.id,
       ...(provider ? { vendorId: provider.id, vendor: provider.name } : {})
     };
+    if (!provider) { delete expense.vendorId; delete expense.vendor; }
     upsert('expenses', expense);
     rec = saveRecord(c, { paidAt: date, invoiceAmount: Number(amount), invoiceCurrency: expense.currency, invoiceNo: invoiceNo || undefined, expenseId: expense.id });
   });

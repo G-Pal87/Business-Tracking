@@ -254,3 +254,20 @@ test('calendar for one flat only; per-flat hashes change independently', () => {
   assert.notEqual(after.hashes.h1, all.hashes.h1);
   assert.equal(after.hashes.h2, all.hashes.h2);
 });
+
+test('invoice paid: vendor chosen at payment overrides the default; none removes it', () => {
+  load();
+  data.upsert('vendors', { id: 'v2', name: 'E.ON', role: 'utility' });
+  const cyc = () => elec.cyclesFor(data.byId('properties', 'h1'), '2026-11-20').find(c => c.period === '2026-11');
+  elec.markReading(cyc(), { date: '2026-11-03', kwh: 1 });
+  elec.markInvoicePaid(cyc(), { date: '2026-11-14', amount: 100 });                    // default (Power Co)
+  let e = data.byId('expenses', cyc().record.expenseId);
+  assert.equal(e.vendor, 'Power Co');
+  elec.markInvoicePaid(cyc(), { date: '2026-11-14', amount: 100, vendorId: 'v2' });     // chosen
+  e = data.byId('expenses', cyc().record.expenseId);
+  assert.deepEqual([e.vendorId, e.vendor, e.category], ['v2', 'E.ON', 'electricity']);
+  elec.markInvoicePaid(cyc(), { date: '2026-11-14', amount: 100, vendorId: '' });       // none
+  e = data.byId('expenses', cyc().record.expenseId);
+  assert.ok(!('vendorId' in e) && !('vendor' in e));
+  assert.equal(data.listActive('expenses').length, 1);
+});

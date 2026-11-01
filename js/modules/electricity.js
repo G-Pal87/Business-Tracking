@@ -385,19 +385,52 @@ function openInvoiceModal(c, rerender) {
   const amountI = input({ type: 'number', min: 0, step: 1 });
   const ccyS = select(CURRENCIES, p.currency || 'HUF');
   const noI = input({ placeholder: 'Optional' });
-  const provider = messagingSettings().providerVendorId ? byId('vendors', messagingSettings().providerVendorId) : null;
+  // Vendor paid: the one on this cycle's expense if re-marking, else the
+  // default provider; a new one can be added here without leaving the form.
+  const defaultId = messagingSettings().providerVendorId;
+  const prevExp = c.record?.expenseId ? byId('expenses', c.record.expenseId) : null;
+  const vendorOpts = () => [{ value: '', label: '— no vendor —' },
+    ...listActive('vendors').slice().sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(v => ({ value: v.id, label: v.name }))];
+  const vendorS = select(vendorOpts(), (prevExp && !prevExp.deletedAt ? prevExp.vendorId : defaultId) || '');
+  const defChk = el('input', { type: 'checkbox', id: 'elecDefVendor' });
+  const defRow = el('label', { for: 'elecDefVendor', style: 'display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-top:4px' }, defChk, 'Use as the default provider for all flats');
+  const syncDef = () => { defRow.style.display = vendorS.value && vendorS.value !== defaultId ? '' : 'none'; };
+  vendorS.addEventListener('change', syncDef);
+  const newI = input({ placeholder: 'New vendor name, e.g. E.ON' });
+  const addBox = el('div', { style: 'display:none;gap:6px;margin-top:6px' }, newI, button('Add', { variant: 'sm primary', onClick: () => {
+    const name = newI.value.trim();
+    if (!name) { toast('Enter the vendor name', 'warning'); return; }
+    const existing = listActive('vendors').find(v => (v.name || '').trim().toLowerCase() === name.toLowerCase());
+    const v = existing || { id: newId('vnd'), name, role: 'utility' };
+    if (!existing) upsert('vendors', v);
+    vendorS.innerHTML = '';
+    for (const o of vendorOpts()) vendorS.appendChild(el('option', { value: o.value }, o.label));
+    vendorS.value = v.id;
+    addBox.style.display = 'none';
+    syncDef();
+    toast(existing ? `${v.name} already exists — selected` : `Vendor ${v.name} added`, 'success');
+  } }));
+  const addLink = el('span', { style: 'color:var(--accent,#6366f1);cursor:pointer;text-decoration:underline;font-size:12px' }, '+ add vendor');
+  addLink.onclick = () => { addBox.style.display = 'flex'; newI.focus(); };
   body.appendChild(el('div', { class: 'muted', style: 'margin-bottom:8px;font-size:13px' },
-    `${p.name} · ${c.period} — saved as an Electricity expense on this property${provider ? ` (vendor: ${provider.name})` : ''}.`));
+    `${p.name} · ${c.period} — saved as an Electricity expense on this property.`));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Amount', amountI), formRow('Currency', ccyS)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Paid on', dateI), formRow('Invoice no.', noI)));
+  body.appendChild(formRow('Vendor (provider)', el('div', {}, vendorS, el('div', { style: 'margin-top:4px' }, addLink), addBox, defRow)));
+  syncDef();
   openModal({ title: 'Invoice checked & paid', body, footer: [
     button('Cancel', { onClick: closeModal }),
     button('Save', { variant: 'primary', onClick: () => {
       const amt = Number(amountI.value);
       if (!(amt > 0)) { toast('Enter the invoice amount', 'warning'); return; }
       if (!dateI.value) { toast('Enter the payment date', 'warning'); return; }
-      markInvoicePaid(c, { date: dateI.value, amount: amt, currency: ccyS.value, invoiceNo: noI.value.trim() });
-      closeModal(); toast('Invoice paid — Electricity expense added', 'success'); rerender();
+      markInvoicePaid(c, { date: dateI.value, amount: amt, currency: ccyS.value, invoiceNo: noI.value.trim(), vendorId: vendorS.value });
+      if (defChk.checked && vendorS.value) {
+        state.db.settings.electricity = { ...(state.db.settings.electricity || {}), providerVendorId: vendorS.value };
+        markDirty();
+      }
+      const vName = vendorS.value ? byId('vendors', vendorS.value)?.name : '';
+      closeModal(); toast(`Invoice paid — Electricity expense added${vName ? ` (${vName})` : ''}`, 'success'); rerender();
     } })
   ] });
 }

@@ -82,6 +82,7 @@ export const VENDOR_ROLES = {
   electrician: { label: 'Electrician', color: '#f59e0b' },
   handyman:    { label: 'Handyman',    color: '#10b981' },
   gardener:    { label: 'Gardener',    color: '#14b8a6' },
+  utility:     { label: 'Utility provider', color: '#6366f1' },
   other:       { label: 'Other',       color: '#8b93b0' }
 };
 
