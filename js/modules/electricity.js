@@ -9,7 +9,8 @@ import { CURRENCIES } from '../core/config.js';
 import { todayYmd, addDaysYmd } from '../core/dates.js';
 import {
   electricityProperties, elecConfig, cyclesFor, electricityRows, electricityActions, DEFAULT_ELEC_CONFIG,
-  markReading, undoReading, markInvoicePaid, undoInvoice, markMessaged, messagingSettings, fillTemplate, messageLink, MESSAGE_LEAD_DAYS
+  markReading, undoReading, markInvoicePaid, undoInvoice, markMessaged, messagingSettings, fillTemplate, messageLink, MESSAGE_LEAD_DAYS,
+  buildCalendar, applySentMarks
 } from '../core/electricity.js';
 
 export default {
@@ -22,7 +23,66 @@ export default {
 };
 
 // Sidebar badge: readings whose window is open/past + invoices due.
-export function countElectricityActions() { return electricityActions().count; }
+// Also picks up "sent" notes left by calendar links tapped in this browser.
+export function countElectricityActions() { applySentMarks(); return electricityActions().count; }
+
+// The app's own address: calendar links come back to it (#go=, js/go.js).
+const appBaseUrl = () => `${window.location.origin}${window.location.pathname}`;
+
+// Open the tenant's chat / email with the reading request and record it.
+async function sendTo(c) {
+  const text = fillTemplate(messagingSettings().template, c, fmtDate);
+  const ml = messageLink(c.tenant, text);
+  if (!ml) return false;
+  if (ml.copyText) {
+    try { await navigator.clipboard.writeText(ml.copyText); toast('Message copied — paste it in the Viber chat', 'info', 6000); }
+    catch { toast('Could not copy the message — type it in the chat', 'warning'); }
+  }
+  if (ml.via !== 'call') window.open(ml.href, '_blank', 'noopener');
+  else window.location.href = ml.href;
+  markMessaged(c, { via: ml.via, accountId: _accountId });
+  return true;
+}
+
+// Tenants whose window has opened (or is about to) and who haven't been asked yet.
+const dueMessages = today => electricityRows(today).filter(c => c.messageable && !c.record?.messagedAt &&
+  messageLink(c.tenant, 'x'));
+
+// Step through every due message: each click opens one chat (a click per
+// chat keeps the browser from blocking the pop-ups).
+function openSendAll(list, rerender) {
+  let i = 0;
+  const body = el('div', {});
+  const draw = () => {
+    body.innerHTML = '';
+    if (i >= list.length) {
+      body.appendChild(el('div', { style: 'font-size:14px;color:var(--success)' }, `✓ Done — ${list.length} tenant(s) messaged.`));
+      return;
+    }
+    const c = list[i];
+    const ml = messageLink(c.tenant, fillTemplate(messagingSettings().template, c, fmtDate));
+    body.appendChild(el('div', { class: 'muted', style: 'font-size:12px;margin-bottom:6px' }, `${i + 1} of ${list.length}`));
+    body.appendChild(el('div', { style: 'font-size:15px;font-weight:600' }, `${c.tenant.name} — ${c.property.name}`));
+    body.appendChild(el('div', { class: 'muted', style: 'font-size:12px;margin:2px 0 10px' }, `via ${VIA_LABEL[ml.via]} · window ${fmtDate(c.windowFrom)} – ${fmtDate(c.windowTo)}`));
+    body.appendChild(el('div', { style: 'display:flex;gap:8px' },
+      button(`Open ${VIA_LABEL[ml.via]} & mark sent`, { variant: 'primary', onClick: async () => { await sendTo(c); i++; draw(); } }),
+      button('Skip', { variant: 'ghost', onClick: () => { i++; draw(); } })));
+  };
+  draw();
+  openModal({ title: 'Send reading requests', body, footer: [button('Close', { onClick: closeModal })], onClose: rerender });
+}
+
+function downloadCalendar(rerender) {
+  const cal = buildCalendar(appBaseUrl());
+  if (!cal.events.length) { toast('No reminders to add — set up reading windows and tenants first', 'warning'); return; }
+  const a = el('a', { href: URL.createObjectURL(new Blob([cal.ics], { type: 'text/calendar' })), download: 'electricity-reminders.ics' });
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  state.db.settings.electricity = { ...(state.db.settings.electricity || {}), calendarHash: cal.hash, calendarExportedAt: todayYmd() };
+  markDirty();
+  toast(`Calendar file with ${cal.events.length} reminder(s) downloaded — open it on your phone to add it to your calendar`, 'success', 7000);
+  rerender();
+}
 
 let _filter = 'all';      // all | action | done
 let _history = false;
@@ -44,6 +104,8 @@ function build() {
   const wrap = el('div', { class: 'view active' });
   const rerender = () => { const c = document.getElementById('content'); c.innerHTML = ''; c.appendChild(build()); };
   const today = todayYmd();
+  const applied = applySentMarks(today);
+  if (applied) setTimeout(() => toast(`${applied} reading request(s) sent from calendar links marked as sent`, 'info'), 0);
   const props = electricityProperties();
   if (!props.length) {
     wrap.appendChild(el('div', { class: 'empty' }, 'No Hungarian properties — this tracker covers properties whose country is Hungary.'));
@@ -67,6 +129,18 @@ function build() {
       acts.count ? `${acts.readings.length} reading(s) and ${acts.invoices.length} invoice(s) need action` : '✓ Nothing needs action'));
   wrap.appendChild(summary);
 
+  // Calendar reminders: offer the download, and flag a file that no longer
+  // matches (window, tenant, number or message changed since).
+  const cal = buildCalendar(appBaseUrl(), today);
+  const es = state.db.settings?.electricity || {};
+  if (cal.events.length && es.calendarHash !== cal.hash) {
+    wrap.appendChild(el('div', { class: 'card mb-16', style: 'padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:13px;border-left:3px solid var(--info)' },
+      el('span', { style: 'flex:1;min-width:220px' }, es.calendarHash
+        ? '📅 Your calendar reminders are out of date (a reading window, tenant, number or the message changed). Download the file again and re-import it.'
+        : `📅 Get a phone reminder on the day each reading window opens, with a one-tap link that opens WhatsApp / Viber with the message (${cal.events.length} flat(s)).`),
+      button(es.calendarHash ? 'Download updated calendar' : 'Add to calendar', { variant: 'sm primary', onClick: () => downloadCalendar(rerender) })));
+  }
+
   // ── Filters + sender account ──
   const s = messagingSettings();
   if (_accountId === null || !s.accounts.some(a => a.id === _accountId)) _accountId = s.defaultAccountId || s.accounts[0]?.id || '';
@@ -87,6 +161,9 @@ function build() {
     bar.appendChild(el('span', { class: 'muted', style: 'font-size:12px' }, 'Send messages from'));
     bar.appendChild(accS);
   }
+  const due = dueMessages(today);
+  if (due.length) bar.appendChild(button(`Send all due (${due.length})`, { variant: 'sm primary', onClick: () => openSendAll(due, rerender) }));
+  bar.appendChild(button('Add to calendar', { variant: 'sm ghost', onClick: () => downloadCalendar(rerender) }));
   bar.appendChild(button('Messages & provider', { variant: 'sm ghost', onClick: () => openMessagingSettings(rerender) }));
   wrap.appendChild(bar);
 
@@ -168,20 +245,14 @@ function renderRow(c, today, rerender) {
 
   // Message to the tenant asking for the reading
   const m = el('td', {});
-  if (rec.messagedAt) m.appendChild(el('div', { class: 'muted', style: 'font-size:12px' }, `Sent ${fmtDate(rec.messagedAt)} via ${VIA_LABEL[rec.messagedVia] || rec.messagedVia}`));
+  if (rec.messagedAt) m.appendChild(el('div', { class: 'muted', style: 'font-size:12px' }, `Sent ${fmtDate(rec.messagedAt)} via ${VIA_LABEL[rec.messagedVia] || rec.messagedVia}${rec.messagedFrom === 'calendar' ? ' (calendar link)' : ''}`));
   if (c.messageable) {
     const text = fillTemplate(messagingSettings().template, c, fmtDate);
     const ml = messageLink(c.tenant, text);
     if (!ml) m.appendChild(el('span', { class: 'muted', style: 'font-size:12px' }, 'No phone/email on the tenant'));
     else {
       m.appendChild(button(`${rec.messagedAt ? 'Send again' : 'Send'} (${VIA_LABEL[ml.via]})`, { variant: rec.messagedAt ? 'sm ghost' : 'sm', onClick: async () => {
-        if (ml.copyText) {
-          try { await navigator.clipboard.writeText(ml.copyText); toast('Message copied — paste it in the Viber chat', 'info', 6000); }
-          catch { toast('Could not copy the message — it is shown in the tenant chat link only', 'warning'); }
-        }
-        if (ml.via !== 'call') window.open(ml.href, '_blank', 'noopener');
-        else window.location.href = ml.href;
-        markMessaged(c, { via: ml.via, accountId: _accountId });
+        await sendTo(c);
         rerender();
       } }));
     }

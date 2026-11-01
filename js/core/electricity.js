@@ -168,7 +168,7 @@ export function undoInvoice(c) {
 }
 
 export function markMessaged(c, { via, accountId }) {
-  return saveRecord(c, { messagedAt: todayYmd(), messagedVia: via, messagedAccountId: accountId || undefined });
+  return saveRecord(c, { messagedAt: todayYmd(), messagedVia: via, messagedAccountId: accountId || undefined, messagedFrom: undefined });
 }
 
 // ── Messages to tenants ───────────────────────────────────────────────────────
@@ -200,4 +200,112 @@ export function messageLink(t, text) {
   };
   const pref = t.preferredContact;
   return (pref && ways[pref]) || ways.whatsapp || ways.viber || ways.email || ways.call || null;
+}
+
+// ── Calendar reminders (.ics) with one-tap message links ──────────────────────
+// One repeating event per tracked flat with a tenant to ask, on the day the
+// reading window opens, at 9:00 with an alert. The event carries a link to the
+// app's #go= hand-over (js/go.js), which opens WhatsApp / Viber / email with
+// the message and notes "sent" for the app (applySentMarks).
+const ordinal = n => `${n}${n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th'}`;
+const b64url = s => btoa(unescape(encodeURIComponent(s))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+export function goLink(baseUrl, t, text, propertyId) {
+  let ml = messageLink(t, text);
+  if (ml?.via === 'call') ml = messageLink({ ...t, preferredContact: '' }, text); // a call can't carry the message
+  if (!ml || ml.via === 'call') return null;
+  const n = ml.via === 'whatsapp' ? digits(t.whatsapp || t.phone) : ml.via === 'viber' ? digits(t.viber || t.phone) : '';
+  const payload = { c: ml.via[0], t: text, p: propertyId, ...(n ? { n } : {}), ...(ml.via === 'email' ? { e: t.email } : {}) };
+  return { via: ml.via, url: `${baseUrl}#go=${b64url(JSON.stringify(payload))}` };
+}
+
+const icsEscape = s => String(s).replace(/\\/g, '\\\\').replace(/;/g, '\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+// Lines longer than 75 octets are folded (RFC 5545), never inside a UTF-8 character.
+function icsFold(line) {
+  const enc = new TextEncoder();
+  if (enc.encode(line).length <= 75) return line;
+  const out = [];
+  let cur = '', len = 0;
+  for (const ch of line) {
+    const l = enc.encode(ch).length;
+    if (len + l > (out.length ? 74 : 75)) { out.push(cur); cur = ''; len = 0; }
+    cur += ch; len += l;
+  }
+  out.push(cur);
+  return out.join('\r\n ');
+}
+const icsDate = ymd => ymd.replace(/-/g, '');
+
+// { ics, hash, events: [{ property, tenant, via }] } — hash covers everything
+// but the creation stamp, so the app can tell when a downloaded file is stale.
+export function buildCalendar(baseUrl, today = todayYmd()) {
+  const tpl = messagingSettings().template;
+  const events = [], body = [];
+  for (const p of electricityProperties()) {
+    const cfg = elecConfig(p);
+    if (!cfg || cfg.active === false) continue;
+    const cs = cyclesFor(p, today);
+    const c = cs.find(x => x.windowTo >= today);
+    if (!c || c.excluded || !c.tenant) continue;
+    const t = c.tenant;
+    const text = fillTemplate(tpl, c, d => `the ${ordinal(Number(d.slice(8, 10)))}`);
+    const link = goLink(baseUrl, t, text, p.id);
+    if (!link) continue;
+    const every = Math.min(Math.max(1, Math.floor(Number(cfg.everyMonths)) || 1), 12);
+    const day = Number(cfg.windowFrom);
+    // Days past 28 fall on the month's last day in short months, as in the tracker.
+    const byDay = day > 28 ? `BYMONTHDAY=${Array.from({ length: day - 27 }, (_, i) => 28 + i).join(',')};BYSETPOS=-1` : `BYMONTHDAY=${day}`;
+    const end = [t.leaseEndDate, t.terminationDate].filter(Boolean).sort()[0];
+    const first = (t.name || '').split(' ')[0] || 'tenant';
+    const how = link.via === 'whatsapp' ? `Tap to send it on WhatsApp: ${link.url}`
+      : link.via === 'viber' ? `Tap to open Viber with the message, then pick ${first}: ${link.url}`
+      : `Tap to email it: ${link.url}`;
+    body.push(
+      'BEGIN:VEVENT',
+      `UID:elec-${p.id}@business-tracking`,
+      `DTSTART:${icsDate(c.windowFrom)}T090000`,
+      'DURATION:PT15M',
+      `RRULE:FREQ=MONTHLY;INTERVAL=${every};${byDay}${end ? `;UNTIL=${icsDate(end)}T235959` : ''}`,
+      `SUMMARY:${icsEscape(`Electricity reading: ${p.name} (${first})`)}`,
+      `DESCRIPTION:${icsEscape(`Ask ${first} for the meter reading (window day ${cfg.windowFrom}–${cfg.windowTo}).\n\n${how}\n\nMessage:\n${text}`)}`,
+      `URL:${link.url}`,
+      'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape(`Electricity reading: ${p.name}`)}`, 'TRIGGER:PT0M', 'END:VALARM',
+      'END:VEVENT'
+    );
+    events.push({ property: p, tenant: t, via: link.via });
+  }
+  const content = body.join('\n');
+  let hash = 5381;
+  for (let i = 0; i < content.length; i++) hash = ((hash * 33) ^ content.charCodeAt(i)) >>> 0;
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Business Tracking//Electricity readings//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+    ...body.flatMap(l => l === 'BEGIN:VEVENT' ? [l, `DTSTAMP:${stamp}`] : [l]), 'END:VCALENDAR'];
+  return { ics: lines.map(icsFold).join('\r\n') + '\r\n', hash: hash.toString(36), events };
+}
+
+// "Sent" notes left by js/go.js when a calendar link was tapped in this
+// browser: each marks the cycle it belongs to (the latest whose window had
+// opened, or was about to, on that day) as messaged. Notes for properties not
+// loaded yet are kept for 60 days; returns how many were applied.
+export function applySentMarks(today = todayYmd()) {
+  let q;
+  try { q = JSON.parse(localStorage.getItem('bt_elec_sent') || '[]'); } catch { return 0; }
+  if (!Array.isArray(q) || !q.length) return 0;
+  const via = { w: 'whatsapp', v: 'viber', e: 'email' };
+  const keep = [];
+  let applied = 0;
+  for (const m of q) {
+    const p = m && byId('properties', m.p);
+    if (!p || p.deletedAt || !/^\d{4}-\d{2}-\d{2}$/.test(m.at || '')) {
+      if (m && /^\d{4}-\d{2}-\d{2}$/.test(m.at || '') && m.at >= addDaysYmd(today, -60)) keep.push(m);
+      continue;
+    }
+    const c = [...cyclesFor(p, m.at)].reverse().find(x => x.windowFrom <= addDaysYmd(m.at, MESSAGE_LEAD_DAYS));
+    if (c && !(c.record?.messagedAt && c.record.messagedAt >= addDaysYmd(c.windowFrom, -MESSAGE_LEAD_DAYS))) {
+      saveRecord(c, { messagedAt: m.at, messagedVia: via[m.c] || 'whatsapp', messagedFrom: 'calendar' });
+      applied++;
+    }
+  }
+  try { if (keep.length) localStorage.setItem('bt_elec_sent', JSON.stringify(keep)); else localStorage.removeItem('bt_elec_sent'); } catch { /* ignore */ }
+  return applied;
 }

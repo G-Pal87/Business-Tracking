@@ -113,3 +113,64 @@ test('message: preferred contact, else WhatsApp; template filled', () => {
   elec.markMessaged(c, { via: 'viber', accountId: 'acc1' });
   assert.equal(data.byId('electricityCycles', c.id).messagedVia, 'viber');
 });
+
+const decodeGo = url => JSON.parse(Buffer.from(url.split('#go=')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+
+test('calendar: one repeating event per tracked flat, with a one-tap link and the lease end as UNTIL', () => {
+  load();
+  const cal = elec.buildCalendar('https://app.example/', '2026-11-03');
+  assert.equal(cal.events.length, 2);
+  const ics = cal.ics.replace(/\r\n /g, '');          // unfold
+  assert.match(ics, /^BEGIN:VCALENDAR\r\n/);
+  assert.match(ics, /UID:elec-h1@business-tracking/);
+  assert.match(ics, /DTSTART:20261101T090000/);        // current window (still open) for h1
+  assert.match(ics, /RRULE:FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=1;UNTIL=20271231T235959/);
+  assert.match(ics, /RRULE:FREQ=MONTHLY;INTERVAL=2;BYMONTHDAY=10;UNTIL=20271231T235959/);
+  assert.match(ics, /SUMMARY:Electricity reading: Flat A \(Anna\)/);
+  assert.match(ics, /TRIGGER:PT0M/);
+  assert.ok(cal.ics.split('\r\n').every(l => new TextEncoder().encode(l).length <= 75), 'lines folded');
+  // h1 prefers Viber, h2 WhatsApp; the message uses day ordinals
+  const urls = [...ics.matchAll(/URL:(\S+)/g)].map(m => m[1]);
+  const viber = decodeGo(urls[0]), wa = decodeGo(urls[1]);
+  assert.deepEqual({ c: viber.c, p: viber.p, n: viber.n }, { c: 'v', p: 'h1', n: '36301112222' });
+  assert.match(viber.t, /^Hi Anna, .* at Flat A between the 1st and the 5th/);
+  assert.deepEqual({ c: wa.c, p: wa.p, n: wa.n }, { c: 'w', p: 'h2', n: '36303334444' });
+  assert.match(wa.t, /between the 10th and the 12th/);
+  // the hash changes when something in the reminders changes, not otherwise
+  assert.equal(elec.buildCalendar('https://app.example/', '2026-11-03').hash, cal.hash);
+  data.upsert('tenants', { ...data.byId('tenants', 't2'), phone: '+36 30 999 0000' });
+  assert.notEqual(elec.buildCalendar('https://app.example/', '2026-11-03').hash, cal.hash);
+});
+
+test('calendar: skips flats whose tenant pays, with no tenant, or no way to message; window day 31 → last day', () => {
+  load();
+  data.upsert('tenants', { ...data.byId('tenants', 't1'), electricityPaidBy: 'tenant' });
+  data.upsert('tenants', { ...data.byId('tenants', 't2'), phone: '', preferredContact: '' });
+  assert.equal(elec.buildCalendar('https://app.example/', '2026-11-03').events.length, 0);
+  load();
+  data.upsert('properties', { ...data.byId('properties', 'h2'), electricity: { windowFrom: 31, windowTo: 31, everyMonths: 1, startMonth: '2026-11' } });
+  const ics = elec.buildCalendar('https://app.example/', '2026-11-03').ics.replace(/\r\n /g, '');
+  assert.match(ics, /BYMONTHDAY=28,29,30,31;BYSETPOS=-1/);
+  // preferred "call" can't carry the message → falls back to WhatsApp
+  data.upsert('tenants', { ...data.byId('tenants', 't1'), preferredContact: 'call' });
+  const l = elec.goLink('https://app.example/', data.byId('tenants', 't1'), 'hi', 'h1');
+  assert.equal(l.via, 'whatsapp');
+});
+
+test('sent notes from calendar links mark the right cycle once', () => {
+  load();
+  localStorage.setItem('bt_elec_sent', JSON.stringify([
+    { p: 'h1', at: '2026-11-02', c: 'v' },
+    { p: 'h2', at: '2026-10-09', c: 'w' },              // 1 day before h2's Oct window → Oct cycle
+    { p: 'gone', at: '2026-11-01', c: 'w' },            // unknown property, recent → kept
+    { p: 'gone', at: '2026-01-01', c: 'w' }             // unknown and old → dropped
+  ]));
+  assert.equal(elec.applySentMarks('2026-11-03'), 2);
+  const r1 = data.byId('electricityCycles', 'h1|2026-11'), r2 = data.byId('electricityCycles', 'h2|2026-10');
+  assert.deepEqual([r1.messagedAt, r1.messagedVia, r1.messagedFrom], ['2026-11-02', 'viber', 'calendar']);
+  assert.deepEqual([r2.messagedAt, r2.messagedVia], ['2026-10-09', 'whatsapp']);
+  assert.deepEqual(JSON.parse(localStorage.getItem('bt_elec_sent')).map(m => m.at), ['2026-11-01']);
+  // applying again changes nothing
+  localStorage.setItem('bt_elec_sent', JSON.stringify([{ p: 'h1', at: '2026-11-04', c: 'v' }]));
+  assert.equal(elec.applySentMarks('2026-11-04'), 0);
+});
