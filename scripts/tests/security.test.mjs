@@ -285,6 +285,32 @@ test('an existing plaintext token (older version) keeps working locked, and is m
   assert.equal(state.github.token, 'ghp_LEGACY2');
 });
 
+test('tokenStatus: a token stored under an old (rotated) key reads as undecryptable, not connected', async () => {
+  freshDevice();
+  cr.setBootstrapDataKey(key);
+  await gh.saveConfig({ owner: 'o', repo: 'r', branch: 'main', dbPath: DB, token: 'ghp_SYNTHETIC3' });
+  await gh.adoptStoredToken();
+  assert.equal(gh.tokenStatus(), 'ok');
+  // Another device / after a key rotation: same stored config, different key.
+  const { key: other } = await cr.generateDataKey();
+  state.github.token = '';
+  gh.loadConfig();
+  cr.setBootstrapDataKey(other);
+  await gh.adoptStoredToken();
+  assert.equal(state.github.token, '');
+  assert.equal(gh.tokenStatus(), 'undecryptable');
+  // Re-entering the token fixes it.
+  await gh.saveConfig({ owner: 'o', repo: 'r', branch: 'main', dbPath: DB, token: 'ghp_SYNTHETIC4' });
+  assert.equal(gh.tokenStatus(), 'ok');
+  cr.setBootstrapDataKey(key);
+});
+
+test('tokenStatus: missing when no token was ever saved', () => {
+  freshDevice();
+  state.github.token = '';
+  assert.equal(gh.tokenStatus(), 'missing');
+});
+
 // ── config validation ────────────────────────────────────────────────────────
 
 test('saveConfig / applyDbConfig validate owner, repo, branch and path', () => {

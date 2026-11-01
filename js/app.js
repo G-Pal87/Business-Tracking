@@ -209,7 +209,7 @@ async function boot() {
       loaded = true;
       initialSyncDone = true;
       if (!pushAfterBoot) lastAppliedSha = state.github.lastFetchedSha;
-      updateSyncStatus('online', `Connected: ${state.github.owner}/${state.github.repo}`);
+      connectedStatus();
       // GitHub's Contents API can occasionally serve a read that lags a few
       // seconds behind the very latest commit — documented eventual-consistency
       // behavior on their end, confirmed elsewhere in this file (see mergeDb's
@@ -345,7 +345,7 @@ async function boot() {
   // sidebar status, so without this it stays stuck showing Phase 2's earlier
   // failure ("GitHub unreachable") even though the data actually loaded fine.
   if (state.github.connected) {
-    updateSyncStatus('online', `Connected: ${state.github.owner}/${state.github.repo}`);
+    connectedStatus();
   }
   buildUserFooter();
 
@@ -616,7 +616,7 @@ async function boot() {
       // Same db.json as the last one this tab reconciled — nothing to do
       // (skips the whole-database diff every 60s on an idle tab).
       if (state.github.lastFetchedSha && state.github.lastFetchedSha === lastAppliedSha) {
-        updateSyncStatus('online', `Synced ${new Date().toLocaleTimeString()}`);
+        if (github.tokenStatus() === 'ok') updateSyncStatus('online', `Synced ${new Date().toLocaleTimeString()}`); else connectedStatus();
         return;
       }
       // resyncDb: pure last-writer-wins by updatedAt — no 3-way base.
@@ -645,13 +645,13 @@ async function boot() {
         // confirmed-synced marker, skip the rebuild entirely.
         state.db._syncedAt = synced._syncedAt;
         github.saveLocalCache(state.db);
-        updateSyncStatus('online', `Synced ${new Date().toLocaleTimeString()}`);
+        if (github.tokenStatus() === 'ok') updateSyncStatus('online', `Synced ${new Date().toLocaleTimeString()}`); else connectedStatus();
         return;
       }
 
       setDb(synced);                                    // triggers data-loaded → view refresh
       github.saveLocalCache(synced);
-      updateSyncStatus('online', `Synced ${new Date().toLocaleTimeString()}`);
+      if (github.tokenStatus() === 'ok') updateSyncStatus('online', `Synced ${new Date().toLocaleTimeString()}`); else connectedStatus();
       // A stale fetch means local has something this push cycle should confirm
       // properly — nudge a real push rather than leaving it to the next edit.
       if (staleFetch && state.github.token && !pushPending) schedulePush();
@@ -732,7 +732,7 @@ async function boot() {
         // If pushPending, the in-flight push will detect state.dirty and re-push
         // automatically — no need to schedule another timer.
       } else {
-        updateSyncStatus('offline', 'Unsaved — connect GitHub in Settings');
+        updateSyncStatus('offline', noTokenMessage('Not saved'));
       }
     }
     syncBeforeUnload();
@@ -793,7 +793,7 @@ async function boot() {
           lastAppliedSha = state.github.lastFetchedSha;
           github.applyDbConfig(state.db.appConfig?.github);
           github.saveLocalCache(state.db);
-          updateSyncStatus('online', `Connected: ${state.github.owner}/${state.github.repo}`);
+          connectedStatus();
           initialSyncDone = true;
           pendingSaveBeforeSync = false;
           migrateDb();
@@ -812,7 +812,7 @@ async function boot() {
         if (!hasLocalChanges) lastAppliedSha = state.github.lastFetchedSha;
         github.applyDbConfig(merged.appConfig?.github);
         github.saveLocalCache(merged);
-        updateSyncStatus('online', `Connected: ${state.github.owner}/${state.github.repo}`);
+        connectedStatus();
         initialSyncDone = true;
         // Discard any dirty flag that came from migrateDb() running on the stale
         // local cache before this point — that data has now been replaced by the
@@ -1155,6 +1155,18 @@ function describeConflictActors(conflicts) {
     return `${list} modified the same data.`;
   }
   return 'Another user modified the same data.';
+}
+
+// "Connected" only when this device can also push; reading works without a
+// token (public repo), so without one say why saving won't work.
+function noTokenMessage(prefix) {
+  return github.tokenStatus() === 'undecryptable'
+    ? `${prefix} — this device's GitHub token was saved under an old encryption key. Re-enter it in Settings → GitHub`
+    : `${prefix} — no GitHub token on this device. Add one in Settings → GitHub`;
+}
+function connectedStatus() {
+  if (github.tokenStatus() === 'ok') updateSyncStatus('online', `Connected: ${state.github.owner}/${state.github.repo}`);
+  else updateSyncStatus('offline', noTokenMessage('Read-only'));
 }
 
 function updateSyncStatus(dotState, message, showRetry = false) {

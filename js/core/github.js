@@ -539,6 +539,17 @@ export function pinnedLocation() { return _pin ? { ..._pin } : null; }
 
 // Called once the data key is unlocked (after sign-in / key entry): decrypts
 // a stored `tokenEnc`, or encrypts a still-plain token in place.
+let _tokenUndecryptable = false;
+// Why this device can't push: 'ok' (a token is loaded), 'undecryptable' (a
+// token is stored but under an encryption key this device doesn't hold —
+// e.g. after a key rotation), or 'missing' (none was ever saved here).
+// Reading still works without a token (public repo), so "connected" alone
+// doesn't mean saving works.
+export function tokenStatus() {
+  if (state.github.token) return 'ok';
+  return _tokenUndecryptable ? 'undecryptable' : 'missing';
+}
+
 export async function adoptStoredToken() {
   if (!isUnlocked()) return;
   const cfg = readCfg();
@@ -551,8 +562,9 @@ export async function adoptStoredToken() {
     try {
       const bytes = await decryptBytes(Uint8Array.from(atob(cfg.tokenEnc), c => c.charCodeAt(0)));
       state.github.token = new TextDecoder().decode(bytes);
+      _tokenUndecryptable = false;
       _tokenStoredEncrypted = state.github.token;
-    } catch { return; } // encrypted under a key this device no longer holds
+    } catch { _tokenUndecryptable = true; return; } // encrypted under a key this device no longer holds
     // Already stored encrypted, and nothing about it would change: skip the
     // re-encrypt + rewrite every sign-in used to do. Only when this device
     // holds no previous keys (so it was the CURRENT key that opened it — a
@@ -614,6 +626,7 @@ export function saveConfig({ owner, repo, branch, dbPath, token }) {
 }
 
 export function clearConfig() {
+  _tokenUndecryptable = false;
   state.github.token         = '';
   state.github.owner         = '';
   state.github.repo          = '';
