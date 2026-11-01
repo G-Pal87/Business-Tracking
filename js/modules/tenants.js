@@ -125,11 +125,16 @@ function build() {
       tr.appendChild(el('td', { class: 'muted' }, prop?.owner ? getPersonName(prop.owner) : '—'));
       tr.appendChild(el('td', {}, contactCell(r)));
       tr.appendChild(el('td', {}, r.leaseStartDate ? fmtDate(r.leaseStartDate) : '—'));
-      tr.appendChild(el('td', {}, r.leaseEndDate ? fmtDate(r.leaseEndDate) : 'Open-ended'));
+      tr.appendChild(el('td', {}, r.leaseEndDate ? fmtDate(r.leaseEndDate) : 'Open-ended',
+        r.terminationDate ? el('div', { class: 'muted', style: 'font-size:11px' }, `terminated ${fmtDate(r.terminationDate)}`) : null));
       tr.appendChild(el('td', { class: 'right num' }, r.monthlyRent ? formatMoney(r.monthlyRent, r.currency || 'EUR', { maxFrac: 0 }) : '—'));
       tr.appendChild(el('td', { class: 'right num muted' }, r.deposit ? formatMoney(r.deposit, r.currency || 'EUR', { maxFrac: 0 }) : '—'));
       tr.appendChild(el('td', { class: 'right num' }, ordinalDay(r.paymentDayOfMonth)));
       const statusCell = el('td', {}, el('span', { class: `badge ${sm.css}` }, sm.label));
+      // Terminating = terminated with a move-out date still ahead: say when.
+      if (getTenantDisplayStatus(r) === 'terminating') {
+        statusCell.appendChild(el('div', { class: 'muted', style: 'font-size:11px;margin-top:2px' }, `leaves ${fmtDate(r.terminationDate)}`));
+      }
       const expiryFlag = getContractExpiryFlag(r);
       if (expiryFlag) {
         statusCell.appendChild(expiryFlag.status === 'expired'
@@ -335,6 +340,38 @@ function openForm(existing, onSave) {
   const moveInRow   = el('div', { style: 'display:flex;align-items:center;gap:8px;margin:2px 0 8px' }, moveInChk,
     el('label', { for: moveInChk.id, style: 'font-size:12px;cursor:pointer' }, 'Rent runs from move-in day (e.g. 13th to 12th of next month)'));
 
+  // A terminated lease: say so, and allow undoing a termination made by
+  // mistake (back to Active; the lease end stays editable below).
+  let cancelTermination = false;
+  let termDateI = null;
+  if (existing?.terminationDate) {
+    const future = existing.terminationDate > today();
+    const box = el('div', { style: 'margin-bottom:12px;padding:8px 12px;border-radius:6px;font-size:13px;border-left:3px solid var(--warning);background:var(--warning-soft, rgba(245,158,11,0.10));display:flex;align-items:center;gap:10px;flex-wrap:wrap' });
+    const msg = el('span', { style: 'flex:1;min-width:200px' },
+      `${future ? 'Terminating' : 'Terminated'} — ${future ? 'leaves' : 'left'} on ${fmtDate(existing.terminationDate)}` +
+      (existing.terminationComments ? ` · ${existing.terminationComments}` : ''));
+    box.appendChild(msg);
+    const undo = button('Cancel termination', { variant: 'sm ghost', onClick: () => {
+      cancelTermination = !cancelTermination;
+      undo.textContent = cancelTermination ? 'Keep termination' : 'Cancel termination';
+      msg.textContent = cancelTermination
+        ? 'Termination will be cancelled when you save — status goes back to Active. Check the Lease End date below.'
+        : `${future ? 'Terminating' : 'Terminated'} — ${future ? 'leaves' : 'left'} on ${fmtDate(existing.terminationDate)}`;
+      if (cancelTermination) statusS.value = 'active';
+      else statusS.value = existing.status;
+    } });
+    box.appendChild(undo);
+    // Correct a wrong termination date: the lease end moves with it (the
+    // rent schedule stops there) and so do the payments booked at
+    // termination (withheld deposit / fee).
+    termDateI = input({ type: 'date', value: existing.terminationDate });
+    termDateI.style.maxWidth = '170px';
+    termDateI.addEventListener('change', () => { if (termDateI.value) leaseEndI.value = termDateI.value; });
+    box.appendChild(el('label', { style: 'display:flex;align-items:center;gap:6px;font-size:12px;width:100%' }, 'Termination date', termDateI,
+      el('span', { class: 'muted' }, 'rent stops on this day; changing it moves the lease end and the termination payments')));
+    body.appendChild(box);
+  }
+
   body.appendChild(formRow('Name', nameI));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Phone', phoneI), formRow('Email', emailI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('WhatsApp number', whatsappI), formRow('Viber number', viberI)));
@@ -354,6 +391,11 @@ function openForm(existing, onSave) {
     if (!propS.value) { toast('Select a property', 'danger'); return; }
     const pref = prefChks.find(o => o.chk.checked)?.key || '';
     const prefMissing = { whatsapp: !(whatsappI.value.trim() || phoneI.value.trim()), viber: !(viberI.value.trim() || phoneI.value.trim()), call: !phoneI.value.trim(), email: !emailI.value.trim() }[pref];
+    const newTerm = termDateI && !cancelTermination ? termDateI.value : '';
+    if (termDateI && !cancelTermination) {
+      if (!newTerm) { toast('Termination date is required (or use Cancel termination)', 'danger'); return; }
+      if (leaseStartI.value && newTerm < leaseStartI.value) { toast('Termination date cannot be before the lease start', 'danger'); return; }
+    }
     if (pref && prefMissing) { toast(`Preferred contact is ${CONTACT_METHODS[pref]} — add ${pref === 'email' ? 'an email address' : 'a phone number'} first`, 'danger'); return; }
     if (Number(rentI.value) <= 0) { toast('Monthly rent must be greater than zero', 'danger'); return; }
     if (Number(depositI.value) < 0) { toast('Deposit cannot be negative', 'danger'); return; }
@@ -379,6 +421,14 @@ function openForm(existing, onSave) {
       notes: notesT.value.trim(),
       status: statusS.value
     };
+    const termMoved = newTerm && newTerm !== existing.terminationDate;
+    if (termMoved) { updated.terminationDate = newTerm; updated.leaseEndDate = newTerm; }
+    if (cancelTermination) {
+      delete updated.terminationDate;
+      delete updated.terminationDepositAction;
+      delete updated.terminationComments;
+      updated.status = statusS.value === 'past' ? 'active' : statusS.value;
+    }
     if (prorateChk.checked) delete updated.prorateRent; else updated.prorateRent = false;
     if (moveInChk.checked) updated.rentFromMoveIn = true; else delete updated.rentFromMoveIn;
     // Rent / currency changed on an existing tenant → record it from the
@@ -445,6 +495,20 @@ function openForm(existing, onSave) {
     if (existing && existing.propertyId !== updated.propertyId) syncPropertyStatus(existing.propertyId);
     if (statusChange) toast(`${byId('properties', updated.propertyId)?.name || 'Property'} is now ${PROPERTY_STATUSES[statusChange.to]?.label || statusChange.to}`, 'info', 5000);
     toast(existing ? 'Tenant updated' : 'Tenant added', 'success');
+    if (termMoved) {
+      const termPays = listActive('payments').filter(p => p.tenantId === updated.id && (p.type === 'deposit_withheld' || p.type === 'termination_fee') && p.date === existing.terminationDate);
+      for (const p of termPays) upsert('payments', { ...p, date: newTerm });
+      // Rent already received for months after the new date stays (it's real
+      // money) — point it out so it can be refunded/re-filed.
+      const after = listActive('payments').filter(p => p.tenantId === updated.id && p.status === 'paid' &&
+        !['deposit_withheld', 'termination_fee', 'deposit'].includes(p.type) && (p.rentMonth || (p.date || '').slice(0, 7)) > newTerm.slice(0, 7));
+      toast(`Termination moved to ${fmtDate(newTerm)} — rent schedule updated${termPays.length ? `, ${termPays.length} termination payment(s) re-dated` : ''}.`, 'info', 7000);
+      if (after.length) toast(`${after.length} rent payment(s) already received for months after ${fmtDate(newTerm)} are kept — check them in Payments (refund or move them).`, 'warning', 10000);
+    }
+    if (cancelTermination) {
+      const termPays = listActive('payments').filter(p => p.tenantId === updated.id && (p.type === 'deposit_withheld' || p.type === 'termination_fee'));
+      if (termPays.length) toast(`Termination cancelled — ${termPays.length} payment(s) booked at termination (withheld deposit / fee) are still in Payments; delete them there if they no longer apply.`, 'warning', 9000);
+    }
     if (closedKinds.length) {
       toast(`Closed open ${[...new Set(closedKinds)].join(' & ')} as of ${fmtDate(updated.leaseStartDate)}`, 'info', 5000);
     }
