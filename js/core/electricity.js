@@ -272,12 +272,26 @@ function icsFold(line) {
 }
 const icsDate = ymd => ymd.replace(/-/g, '');
 
-// { ics, hash, events: [{ property, tenant, via }], skipped: [{ property, reason }] } —
-// hash covers everything but the creation stamp, so the app can tell when a
-// downloaded file is stale; `skipped` says why a flat has no reminder.
-export function buildCalendar(baseUrl, today = todayYmd()) {
-  const events = [], body = [], skipped = [];
+const strHash = str => { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h * 33) ^ str.charCodeAt(i)) >>> 0; return h.toString(36); };
+// Monthly repeat on a day of the month; days past 28 fall on the month's last
+// day in short months, as in the tracker.
+const byMonthDay = day => (day > 28 ? `BYMONTHDAY=${Array.from({ length: day - 27 }, (_, i) => 28 + i).join(',')};BYSETPOS=-1` : `BYMONTHDAY=${day}`);
+
+// Two repeating events per tracked flat:
+//   reading — on the day the window opens, with the one-tap message link
+//             (needs a tenant with a phone/email);
+//   invoice — on the window's last day + the invoice delay, to check & pay
+//             the provider's invoice and mark it paid in the app.
+// Returns { ics, hash, hashes: {propertyId: hash}, events: [{ kind,
+// property, tenant?, via?, google }], skipped: [{ property, reason }] } —
+// the hashes cover everything but the creation stamp, so the app can tell
+// which flats' reminders are missing or out of date; `skipped` says why a flat
+// has no reading reminder. `propertyIds` limits it to those flats.
+export function buildCalendar(baseUrl, today = todayYmd(), { propertyIds = null } = {}) {
+  const events = [], skipped = [], hashes = {};
+  const bodies = [];
   for (const p of electricityProperties()) {
+    if (propertyIds && !propertyIds.includes(p.id)) continue;
     const cfg = elecConfig(p);
     if (!cfg) { skipped.push({ property: p, reason: 'reading window not set up' }); continue; }
     if (cfg.active === false) { skipped.push({ property: p, reason: 'tracking switched off' }); continue; }
@@ -285,45 +299,46 @@ export function buildCalendar(baseUrl, today = todayYmd()) {
     const c = cs.find(x => x.windowTo >= today);
     if (!c) { skipped.push({ property: p, reason: 'no upcoming reading window' }); continue; }
     if (c.excluded) { skipped.push({ property: p, reason: 'tenant pays the electricity directly' }); continue; }
-    if (!c.tenant) { skipped.push({ property: p, reason: 'no current tenant' }); continue; }
-    const t = c.tenant;
-    const text = messageFor(c, { calendar: true });
-    const link = goLink(baseUrl, t, text, p.id);
-    if (!link) { skipped.push({ property: p, reason: `no phone number or email on ${t.name || 'the tenant'}` }); continue; }
     const every = Math.min(Math.max(1, Math.floor(Number(cfg.everyMonths)) || 1), 12);
-    const day = Number(cfg.windowFrom);
-    // Days past 28 fall on the month's last day in short months, as in the tracker.
-    const byDay = day > 28 ? `BYMONTHDAY=${Array.from({ length: day - 27 }, (_, i) => 28 + i).join(',')};BYSETPOS=-1` : `BYMONTHDAY=${day}`;
-    const end = [t.leaseEndDate, t.terminationDate].filter(Boolean).sort()[0];
-    const first = (t.name || '').split(' ')[0] || 'tenant';
-    const how = link.via === 'whatsapp' ? `Tap to send it on WhatsApp: ${link.url}`
-      : link.via === 'viber' ? `Tap, then "Copy message & open Viber chat" — paste and send to ${first}: ${link.url}`
-      : `Tap to email it: ${link.url}`;
-    const title = `Electricity reading: ${p.name} (${first})`;
-    const details = `Ask ${first} for the meter reading (window day ${cfg.windowFrom}–${cfg.windowTo}).\n\n${how}\n\nMessage:\n${text}`;
-    const rrule = `RRULE:FREQ=MONTHLY;INTERVAL=${every};${byDay}${end ? `;UNTIL=${icsDate(end)}T235959` : ''}`;
-    body.push(
-      'BEGIN:VEVENT',
-      `UID:elec-${p.id}@business-tracking`,
-      `DTSTART:${icsDate(c.windowFrom)}T090000`,
-      'DURATION:PT15M',
-      rrule,
-      `SUMMARY:${icsEscape(title)}`,
-      `DESCRIPTION:${icsEscape(details)}`,
-      `URL:${link.url}`,
-      'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape(`Electricity reading: ${p.name}`)}`, 'TRIGGER:PT0M', 'END:VALARM',
-      'END:VEVENT'
-    );
-    events.push({ property: p, tenant: t, via: link.via,
-      google: googleCalendarLink({ title, details, start: `${icsDate(c.windowFrom)}T090000`, end: `${icsDate(c.windowFrom)}T091500`, rrule }) });
+    const t = c.tenant;
+    const end = t ? [t.leaseEndDate, t.terminationDate].filter(Boolean).sort()[0] : '';
+    const until = end ? `;UNTIL=${icsDate(end)}T235959` : '';
+    const body = [];
+    const add = (kind, start, day, title, details, url, extra) => {
+      const rrule = `RRULE:FREQ=MONTHLY;INTERVAL=${every};${byMonthDay(day)}${until}`;
+      const dt = `${icsDate(start)}T090000`;
+      body.push('BEGIN:VEVENT', `UID:elec-${kind === 'reading' ? '' : 'invoice-'}${p.id}@business-tracking`, `DTSTART:${dt}`, 'DURATION:PT15M', rrule,
+        `SUMMARY:${icsEscape(title)}`, `DESCRIPTION:${icsEscape(details)}`, `URL:${url}`,
+        'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape(title)}`, 'TRIGGER:PT0M', 'END:VALARM', 'END:VEVENT');
+      events.push({ kind, property: p, ...extra, google: googleCalendarLink({ title, details, start: dt, end: `${icsDate(start)}T091500`, rrule }) });
+    };
+    // Reading request
+    if (!t) skipped.push({ property: p, reason: 'no current tenant — no reading reminder' });
+    else {
+      const text = messageFor(c, { calendar: true });
+      const link = goLink(baseUrl, t, text, p.id);
+      if (!link) skipped.push({ property: p, reason: `no phone number or email on ${t.name || 'the tenant'} — no reading reminder` });
+      else {
+        const first = (t.name || '').split(' ')[0] || 'tenant';
+        const how = link.via === 'whatsapp' ? `Tap to send it on WhatsApp: ${link.url}`
+          : link.via === 'viber' ? `Tap, then "Copy message & open Viber chat" — paste and send to ${first}: ${link.url}`
+          : `Tap to email it: ${link.url}`;
+        add('reading', c.windowFrom, Number(cfg.windowFrom), `Electricity reading: ${p.name} (${first})`,
+          `Ask ${first} for the meter reading (window day ${cfg.windowFrom}–${cfg.windowTo}).\n\n${how}\n\nMessage:\n${text}`, link.url, { tenant: t, via: link.via });
+      }
+    }
+    // Invoice check & pay
+    const due = addDaysYmd(c.windowTo, Math.max(0, Number(cfg.invoiceDelayDays) || 0));
+    const appUrl = `${baseUrl}#electricity`;
+    add('invoice', due, Number(due.slice(8, 10)), `Pay electricity invoice: ${p.name}`,
+      `The provider's invoice for ${p.name} should be in (about ${cfg.invoiceDelayDays} days after the reading). Check it, pay it, then mark it paid in the app (it's booked as an Electricity expense): ${appUrl}`, appUrl, {});
+    hashes[p.id] = strHash(body.join('\n'));
+    bodies.push(...body);
   }
-  const content = body.join('\n');
-  let hash = 5381;
-  for (let i = 0; i < content.length; i++) hash = ((hash * 33) ^ content.charCodeAt(i)) >>> 0;
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Business Tracking//Electricity readings//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
-    ...body.flatMap(l => l === 'BEGIN:VEVENT' ? [l, `DTSTAMP:${stamp}`] : [l]), 'END:VCALENDAR'];
-  return { ics: lines.map(icsFold).join('\r\n') + '\r\n', hash: hash.toString(36), events, skipped };
+    ...bodies.flatMap(l => l === 'BEGIN:VEVENT' ? [l, `DTSTAMP:${stamp}`] : [l]), 'END:VCALENDAR'];
+  return { ics: lines.map(icsFold).join('\r\n') + '\r\n', hash: strHash(bodies.join('\n')), hashes, events, skipped };
 }
 
 // "Sent" notes left by js/go.js when a calendar link was tapped in this

@@ -76,40 +76,61 @@ function openSendAll(list, rerender) {
 // "add" link per flat) or a downloaded .ics file (Outlook / Apple).
 const calendarApp = () => (state.db.settings?.electricity?.calendarApp === 'file' ? 'file' : 'google');
 const calendarButtonLabel = () => (calendarApp() === 'google' ? 'Add to Google Calendar' : 'Add to calendar');
-const saveCalendarHash = cal => {
-  state.db.settings.electricity = { ...(state.db.settings.electricity || {}), calendarHash: cal.hash, calendarExportedAt: todayYmd() };
+// Per flat, what its reminders looked like when last added to the calendar
+// (buildCalendar hashes) — a flat whose hash differs is missing or stale.
+const savedHashes = () => state.db.settings?.electricity?.calendarHashes || {};
+const saveCalendarHashes = cal => {
+  state.db.settings.electricity = { ...(state.db.settings.electricity || {}), calendarHashes: { ...savedHashes(), ...cal.hashes }, calendarExportedAt: todayYmd() };
   markDirty();
 };
+const staleFlats = cal => Object.keys(cal.hashes).filter(id => savedHashes()[id] !== cal.hashes[id]);
 
-function addToCalendar(rerender) {
-  const cal = buildCalendar(appBaseUrl());
+// Add the reading + invoice reminders of the given flats (all when omitted).
+// Google Calendar: everything at once by importing one file on the Google
+// Calendar website, or event by event with pre-filled "add" links.
+function addToCalendar(rerender, propertyIds = null, title = null) {
+  const cal = buildCalendar(appBaseUrl(), todayYmd(), { propertyIds });
   if (!cal.events.length) { showSkipped(cal.skipped, 'No reminders to add yet'); return; }
   if (calendarApp() === 'file') return downloadCalendar(cal, rerender);
-  // Google: one tap per flat opens Google Calendar's event form, pre-filled.
+  const updating = Object.keys(cal.hashes).some(id => savedHashes()[id]);
   const body = el('div', {});
-  body.appendChild(el('div', { class: 'muted', style: 'font-size:13px;margin-bottom:10px' },
-    'Tap each flat: Google Calendar opens with the repeating reminder filled in — press Save. ' +
-    (state.db.settings?.electricity?.calendarHash ? 'Updating? Delete the old "Electricity reading" events first (open one → Delete → All events), so they aren\'t doubled.' : '')));
+  body.appendChild(el('div', { style: 'font-size:13px;padding:10px 12px;border-radius:6px;background:var(--info-soft);margin-bottom:12px' },
+    el('div', { style: 'font-weight:700;margin-bottom:4px' }, `All at once (${cal.events.length} events)`),
+    el('div', { class: 'muted', style: 'margin-bottom:8px' }, 'Download the file, then on the Google Calendar website: ⚙ Settings → Import & export → Import → choose the file → Import.'),
+    button('Download file for Google Calendar', { variant: 'sm primary', onClick: () => { saveFile(cal); toast('File downloaded — import it in Google Calendar (Settings → Import & export)', 'success', 7000); } })));
+  body.appendChild(el('div', { class: 'muted', style: 'font-size:13px;margin-bottom:6px' },
+    'Or one by one: each Add opens Google Calendar with the repeating reminder filled in — press Save.' +
+    (updating ? ' Updating? Delete the old events of these flats first (open one → Delete → All events), so they aren\'t doubled.' : '')));
   for (const ev of cal.events) {
     const a = el('a', { href: ev.google, target: '_blank', rel: 'noopener', class: 'btn sm', style: 'text-decoration:none' }, 'Add');
     a.onclick = () => { a.textContent = '✓ Opened'; };
+    const what = ev.kind === 'reading'
+      ? `Reading request · ${ev.tenant.name} · ${ev.via === 'whatsapp' ? 'WhatsApp' : ev.via === 'viber' ? 'Viber' : 'Email'} · ${MESSAGE_LANGUAGES[langOf(ev.tenant)]}`
+      : 'Invoice check & pay';
     body.appendChild(el('div', { style: 'display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px' },
-      el('div', { style: 'flex:1' }, el('strong', {}, ev.property.name), el('span', { class: 'muted' }, ` · ${ev.tenant.name} · ${ev.via === 'whatsapp' ? 'WhatsApp' : ev.via === 'viber' ? 'Viber' : 'Email'} · ${MESSAGE_LANGUAGES[langOf(ev.tenant)]}`)), a));
+      el('div', { style: 'flex:1' }, el('strong', {}, ev.property.name), el('span', { class: 'muted' }, ` · ${what}`)), a));
   }
   if (cal.skipped.length) {
     body.appendChild(el('div', { class: 'muted', style: 'font-size:12px;margin-top:12px' }, 'Left out:'));
     for (const s of cal.skipped) body.appendChild(el('div', { class: 'muted', style: 'font-size:12px' }, `${s.property.name} — ${s.reason}`));
   }
-  openModal({ title: 'Add reminders to Google Calendar', body, footer: [button('Done', { variant: 'primary', onClick: () => { saveCalendarHash(cal); closeModal(); rerender(); } })] });
+  openModal({ title: title || 'Add reminders to Google Calendar', body, footer: [
+    button('Later', { onClick: closeModal }),
+    button('Done — added', { variant: 'primary', onClick: () => { saveCalendarHashes(cal); closeModal(); rerender(); } })
+  ] });
 }
 
-function downloadCalendar(cal, rerender) {
+function saveFile(cal) {
   const a = el('a', { href: URL.createObjectURL(new Blob([cal.ics], { type: 'text/calendar' })), download: 'electricity-reminders.ics' });
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-  saveCalendarHash(cal);
+}
+
+function downloadCalendar(cal, rerender) {
+  saveFile(cal);
+  saveCalendarHashes(cal);
   toast(`Calendar file with ${cal.events.length} reminder(s) downloaded — open it on your phone to add it to your calendar`, 'success', 7000);
-  if (cal.skipped.length) showSkipped(cal.skipped, `${cal.events.length} reminder(s) downloaded — these flats were left out`);
+  if (cal.skipped.length) showSkipped(cal.skipped, `${cal.events.length} reminder(s) downloaded — note`);
   rerender();
 }
 
@@ -126,7 +147,7 @@ function showSkipped(skipped, title) {
   openModal({ title, body, footer: [button('Close', { onClick: closeModal })] });
 }
 
-let _filter = 'all';      // all | action | done
+let _filter = 'all';      // all | action | overdue | open | invoice | awaiting | paid | done
 let _history = false;
 let _accountId = null;     // account messages are sent from (this session)
 
@@ -163,31 +184,59 @@ function build() {
     if (cur.reading === 'done') rDone++;
     if (cur.invoice === 'done') iDone++;
   }
-  const acts = electricityActions(today);
-  const summary = el('div', { class: 'card mb-16', style: 'padding:12px 16px;display:flex;gap:24px;flex-wrap:wrap;align-items:center;font-size:13px' },
-    el('div', {}, el('strong', {}, `${rDone}/${n}`), ' readings submitted (current cycle)'),
-    el('div', {}, el('strong', {}, `${iDone}/${n}`), ' invoices paid (current cycle)'),
-    el('div', { style: `color:${acts.count ? 'var(--warning)' : 'var(--success)'}` },
-      acts.count ? `${acts.readings.length} reading(s) and ${acts.invoices.length} invoice(s) need action` : '✓ Nothing needs action'));
+  // Open / overdue steps across every cycle (not just the current one) —
+  // each counter filters the table to those rows.
+  const all = electricityRows(today).filter(c => !c.excluded);
+  const month = today.slice(0, 7);
+  const paidThisMonth = listActive('electricityCycles').filter(r => (r.paidAt || '').startsWith(month)).length;
+  const counters = [
+    { key: 'overdue', label: 'Readings overdue', n: all.filter(c => c.reading === 'overdue').length, color: 'var(--danger)' },
+    { key: 'open', label: 'Readings to submit now', n: all.filter(c => c.reading === 'open').length, color: 'var(--warning)' },
+    { key: 'invoice', label: 'Invoices to pay', n: all.filter(c => c.invoice === 'due').length, color: 'var(--warning)' },
+    { key: 'awaiting', label: 'Invoices awaited', n: all.filter(c => c.invoice === 'upcoming').length, color: 'var(--text-muted)' },
+    { key: 'paid', label: 'Paid this month', n: paidThisMonth, color: 'var(--success)' }
+  ];
+  const summary = el('div', { class: 'card mb-16', style: 'padding:12px 16px' });
+  const chips = el('div', { style: 'display:flex;gap:10px;flex-wrap:wrap' });
+  for (const k of counters) {
+    const active = _filter === k.key;
+    const chip = el('div', {
+      style: `cursor:pointer;padding:8px 14px;border-radius:8px;border:1px solid ${active ? k.color : 'var(--border)'};min-width:120px;${active ? 'background:var(--bg-alt,rgba(0,0,0,.04))' : ''}`,
+      title: active ? 'Click again to show all' : 'Show these rows'
+    }, el('div', { style: `font-size:20px;font-weight:700;color:${k.n ? k.color : 'var(--text-muted)'}` }, String(k.n)),
+       el('div', { class: 'muted', style: 'font-size:12px' }, k.label));
+    chip.onclick = () => { _filter = active ? 'all' : k.key; rerender(); };
+    chips.appendChild(chip);
+  }
+  summary.appendChild(chips);
+  summary.appendChild(el('div', { class: 'muted', style: 'font-size:12px;margin-top:8px' },
+    `Current cycle: ${rDone}/${n} readings submitted · ${iDone}/${n} invoices paid`));
   wrap.appendChild(summary);
 
   // Calendar reminders: offer the download, and flag a file that no longer
   // matches (window, tenant, number or message changed since).
   const cal = buildCalendar(appBaseUrl(), today);
-  const es = state.db.settings?.electricity || {};
-  if (cal.events.length && es.calendarHash !== cal.hash) {
+  const stale = staleFlats(cal);
+  if (stale.length) {
+    const names = stale.map(id => byId('properties', id)?.name).filter(Boolean);
+    const outdated = stale.filter(id => savedHashes()[id]).length;
     wrap.appendChild(el('div', { class: 'card mb-16', style: 'padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:13px;border-left:3px solid var(--info)' },
-      el('span', { style: 'flex:1;min-width:220px' }, es.calendarHash
-        ? `📅 Your calendar reminders are out of date (a reading window, tenant, number or the message changed). ${calendarApp() === 'google' ? 'Add them to Google Calendar again.' : 'Download the file again and re-import it.'}`
-        : `📅 Get a phone reminder on the day each reading window opens, with a one-tap link that opens WhatsApp / Viber with the message (${cal.events.length} flat(s)).`),
-      button(es.calendarHash ? (calendarApp() === 'google' ? 'Update Google Calendar' : 'Download updated calendar') : calendarButtonLabel(), { variant: 'sm primary', onClick: () => addToCalendar(rerender) })));
+      el('span', { style: 'flex:1;min-width:220px' },
+        `📅 Calendar reminders (reading request + invoice payment) ${outdated ? 'missing or out of date' : 'not added yet'} for: ${names.join(', ')}.`),
+      button(outdated ? (calendarApp() === 'google' ? 'Update Google Calendar' : 'Download updated calendar') : calendarButtonLabel(),
+        { variant: 'sm primary', onClick: () => addToCalendar(rerender, stale) })));
   }
 
   // ── Filters + sender account ──
   const s = messagingSettings();
   if (_accountId === null || !s.accounts.some(a => a.id === _accountId)) _accountId = s.defaultAccountId || s.accounts[0]?.id || '';
   const bar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });
-  const filterS = select([{ value: 'all', label: 'All open & upcoming' }, { value: 'action', label: 'Needs action' }, { value: 'done', label: 'Done' }], _filter);
+  const filterS = select([
+    { value: 'all', label: 'All open & upcoming' }, { value: 'action', label: 'Needs action' },
+    { value: 'overdue', label: 'Readings overdue' }, { value: 'open', label: 'Readings to submit now' },
+    { value: 'invoice', label: 'Invoices to pay' }, { value: 'awaiting', label: 'Invoices awaited' },
+    { value: 'paid', label: 'Paid this month' }, { value: 'done', label: 'Done' }
+  ], _filter);
   filterS.onchange = () => { _filter = filterS.value; rerender(); };
   filterS.style.width = 'auto';
   const histChk = el('input', { type: 'checkbox', id: 'elecHist' });
@@ -213,6 +262,11 @@ function build() {
   let rows = electricityRows(today, { history: _history });
   if (_filter === 'action') rows = rows.filter(c => !c.excluded && (['open', 'overdue'].includes(c.reading) || c.invoice === 'due'));
   if (_filter === 'done') rows = rows.filter(c => c.complete && !c.excluded);
+  if (_filter === 'overdue') rows = rows.filter(c => !c.excluded && c.reading === 'overdue');
+  if (_filter === 'open') rows = rows.filter(c => !c.excluded && c.reading === 'open');
+  if (_filter === 'invoice') rows = rows.filter(c => !c.excluded && c.invoice === 'due');
+  if (_filter === 'awaiting') rows = rows.filter(c => !c.excluded && c.invoice === 'upcoming');
+  if (_filter === 'paid') rows = electricityRows(today, { history: true }).filter(c => (c.record?.paidAt || '').startsWith(today.slice(0, 7)));
   const tableWrap = el('div', { class: 'table-wrap mb-16' });
   if (!rows.length) tableWrap.appendChild(el('div', { class: 'empty' }, 'No cycles match'));
   else {
@@ -374,6 +428,8 @@ function openSetup(p, rerender) {
         active: activeChk.checked, windowFrom: f, windowTo: t, everyMonths: Number(everyS.value), startMonth: startI.value, invoiceDelayDays: d
       } });
       closeModal(); toast('Reading window saved', 'success'); rerender();
+      // Straight on to this flat's calendar reminders (reading + invoice).
+      if (activeChk.checked) setTimeout(() => addToCalendar(rerender, [p.id], `Add ${p.name} reminders to ${calendarApp() === 'google' ? 'Google Calendar' : 'your calendar'}`), 300);
     } })
   ] });
 }

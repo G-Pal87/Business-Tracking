@@ -119,7 +119,7 @@ const decodeGo = url => JSON.parse(Buffer.from(url.split('#go=')[1].replace(/-/g
 test('calendar: one repeating event per tracked flat, with a one-tap link and the lease end as UNTIL', () => {
   load();
   const cal = elec.buildCalendar('https://app.example/', '2026-11-03');
-  assert.equal(cal.events.length, 2);
+  assert.deepEqual(cal.events.map(e => `${e.kind}:${e.property.id}`), ['reading:h1', 'invoice:h1', 'reading:h2', 'invoice:h2']);
   const ics = cal.ics.replace(/\r\n /g, '');          // unfold
   assert.match(ics, /^BEGIN:VCALENDAR\r\n/);
   assert.match(ics, /UID:elec-h1@business-tracking/);
@@ -130,8 +130,14 @@ test('calendar: one repeating event per tracked flat, with a one-tap link and th
   assert.match(ics, /TRIGGER:PT0M/);
   assert.ok(cal.ics.split('\r\n').every(l => new TextEncoder().encode(l).length <= 75), 'lines folded');
   // h1 prefers Viber, h2 WhatsApp; the message uses day ordinals
-  const urls = [...ics.matchAll(/URL:(\S+)/g)].map(m => m[1]);
+  const urls = [...ics.matchAll(/URL:(\S+)/g)].map(m => m[1]).filter(u => u.includes('#go='));
   const viber = decodeGo(urls[0]), wa = decodeGo(urls[1]);
+  // invoice reminders: window end + delay (5 Nov + 10 days; 12 Dec + 7 days), linking to the app
+  assert.match(ics, /UID:elec-invoice-h1@business-tracking\r\nDTSTART:20261115T090000\r\nDURATION:PT15M\r\nRRULE:FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=15;UNTIL=20271231T235959/);
+  assert.match(ics, /UID:elec-invoice-h2@business-tracking\r\nDTSTART:20261219T090000\r\nDURATION:PT15M\r\nRRULE:FREQ=MONTHLY;INTERVAL=2;BYMONTHDAY=19;/);
+  assert.match(ics, /SUMMARY:Pay electricity invoice: Flat A/);
+  assert.match(ics, /URL:https:\/\/app\.example\/#electricity/);
+  assert.deepEqual(Object.keys(cal.hashes), ['h1', 'h2']);
   assert.deepEqual({ c: viber.c, p: viber.p, n: viber.n }, { c: 'v', p: 'h1', n: '36301112222' });
   assert.match(viber.t, /^Hi Anna, .* at Flat A between the 1st and the 5th/);
   assert.deepEqual({ c: wa.c, p: wa.p, n: wa.n }, { c: 'w', p: 'h2', n: '36303334444' });
@@ -146,7 +152,8 @@ test('calendar: skips flats whose tenant pays, with no tenant, or no way to mess
   load();
   data.upsert('tenants', { ...data.byId('tenants', 't1'), electricityPaidBy: 'tenant' });
   data.upsert('tenants', { ...data.byId('tenants', 't2'), phone: '', preferredContact: '' });
-  assert.equal(elec.buildCalendar('https://app.example/', '2026-11-03').events.length, 0);
+  const evs = elec.buildCalendar('https://app.example/', '2026-11-03').events;
+  assert.deepEqual(evs.map(e => `${e.kind}:${e.property.id}`), ['invoice:h2']); // h1: tenant pays; h2: no way to message, invoice still reminded
   load();
   data.upsert('properties', { ...data.byId('properties', 'h2'), electricity: { windowFrom: 31, windowTo: 31, everyMonths: 1, startMonth: '2026-11' } });
   const ics = elec.buildCalendar('https://app.example/', '2026-11-03').ics.replace(/\r\n /g, '');
@@ -191,7 +198,7 @@ test('calendar: says why each flat has no reminder', () => {
   data.upsert('tenants', { ...data.byId('tenants', 't2'), phone: '', preferredContact: '' });
   const cal = elec.buildCalendar('https://app.example/', '2026-11-03');
   assert.deepEqual(cal.skipped.map(s => [s.property.id, s.reason]), [
-    ['h2', 'no phone number or email on Bela Nagy'],
+    ['h2', 'no phone number or email on Bela Nagy — no reading reminder'],
     ['h3', 'reading window not set up']
   ]);
   data.upsert('tenants', { ...data.byId('tenants', 't1'), electricityPaidBy: 'tenant' });
@@ -220,7 +227,7 @@ test('messages follow the tenant language (English default, Hungarian), in the a
   assert.equal(elec.messageFor(cyc()), 'Kedves Anna! Kérem, küldjön egy fotót a villanyóra állásáról (Flat A) november 1. és november 5. között. Köszönöm!');
   assert.match(elec.messageFor(cyc(), { calendar: true }), /\(Flat A\) 1\. és 5\. között/);
   const ics = elec.buildCalendar('https://app.example/', '2026-11-03').ics.replace(/\r\n /g, '');
-  const urls = [...ics.matchAll(/URL:(\S+)/g)].map(m => decodeGo(m[1]));
+  const urls = [...ics.matchAll(/URL:(\S+)/g)].map(m => m[1]).filter(u => u.includes('#go=')).map(decodeGo);
   assert.match(urls.find(u => u.p === 'h1').t, /^Kedves Anna!/);
   assert.match(urls.find(u => u.p === 'h2').t, /^Hi Bela,/);
   // edited templates per language; the old single template still counts as English
@@ -234,4 +241,16 @@ test('messages follow the tenant language (English default, Hungarian), in the a
   assert.match(elec.messageLink(data.byId('tenants', 't2'), 'x').href, /subject=Villany%C3%B3ra-%C3%A1ll%C3%A1s/);
   const l = elec.goLink('https://app.example/', data.byId('tenants', 't2'), 'x', 'h2');
   assert.equal(decodeGo(l.url).s, 'Villanyóra-állás');
+});
+
+test('calendar for one flat only; per-flat hashes change independently', () => {
+  load();
+  const one = elec.buildCalendar('https://app.example/', '2026-11-03', { propertyIds: ['h2'] });
+  assert.deepEqual(one.events.map(e => `${e.kind}:${e.property.id}`), ['reading:h2', 'invoice:h2']);
+  const all = elec.buildCalendar('https://app.example/', '2026-11-03');
+  assert.equal(one.hashes.h2, all.hashes.h2);
+  data.upsert('properties', { ...data.byId('properties', 'h1'), electricity: { ...data.byId('properties', 'h1').electricity, invoiceDelayDays: 12 } });
+  const after = elec.buildCalendar('https://app.example/', '2026-11-03');
+  assert.notEqual(after.hashes.h1, all.hashes.h1);
+  assert.equal(after.hashes.h2, all.hashes.h2);
 });
