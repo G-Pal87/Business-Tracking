@@ -271,3 +271,34 @@ test('invoice paid: vendor chosen at payment overrides the default; none removes
   assert.ok(!('vendorId' in e) && !('vendor' in e));
   assert.equal(data.listActive('expenses').length, 1);
 });
+
+test('vendor website: normalised, only http(s) kept', () => {
+  assert.equal(data.normalizeWebsite(''), '');
+  assert.equal(data.normalizeWebsite(' www.eon.hu '), 'https://www.eon.hu/');
+  assert.equal(data.normalizeWebsite('https://www.eon.hu/ugyfelszolgalat'), 'https://www.eon.hu/ugyfelszolgalat');
+  assert.equal(data.normalizeWebsite('javascript:alert(1)'), null);
+  assert.equal(data.normalizeWebsite('not a site'), null);
+});
+
+test('invoice reminder carries the provider portal link (latest vendor used for the flat, else the default)', () => {
+  load();
+  data.upsert('vendors', { id: 'v1', name: 'Power Co', website: 'https://power.example/login' });
+  data.upsert('vendors', { id: 'v2', name: 'E.ON', role: 'utility', website: 'https://www.eon.hu/' });
+  let ics = elec.buildCalendar('https://app.example/', '2026-11-03').ics.replace(/\r\n /g, '');
+  assert.match(ics, /Check and pay it on Power Co: https:\/\/power\.example\/login/);
+  assert.match(ics, /SUMMARY:Pay electricity invoice: Flat A\r\nDESCRIPTION:[^\r]*\r\nURL:https:\/\/power\.example\/login/);
+  // h1's last invoice was paid to E.ON → its reminder links E.ON; h2 keeps the default
+  const cyc = elec.cyclesFor(data.byId('properties', 'h1'), '2026-11-03').find(c => c.period === '2026-10');
+  elec.markReading(cyc, { date: '2026-10-03' });
+  elec.markInvoicePaid(elec.cyclesFor(data.byId('properties', 'h1'), '2026-11-03').find(c => c.period === '2026-10'), { date: '2026-10-20', amount: 1, vendorId: 'v2' });
+  const cal = elec.buildCalendar('https://app.example/', '2026-11-03');
+  ics = cal.ics.replace(/\r\n /g, '');
+  assert.match(ics, /invoice for Flat A[^\r]*Check and pay it on E\.ON: https:\/\/www\.eon\.hu\//);
+  assert.match(ics, /invoice for Flat B[^\r]*Check and pay it on Power Co/);
+  const inv = cal.events.find(e => e.kind === 'invoice' && e.property.id === 'h1');
+  assert.equal(inv.provider.name, 'E.ON');
+  assert.match(new URL(inv.google).searchParams.get('details'), /https:\/\/www\.eon\.hu\//);
+  // changing the website marks the flat's reminders as changed
+  data.upsert('vendors', { ...data.byId('vendors', 'v2'), website: 'https://www.eon.hu/new' });
+  assert.notEqual(elec.buildCalendar('https://app.example/', '2026-11-03').hashes.h1, cal.hashes.h1);
+});

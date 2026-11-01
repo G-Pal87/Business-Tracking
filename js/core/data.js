@@ -306,6 +306,18 @@ export function vendorUsualCategory(vendorId) {
 // expense). `propertyId` is the property the vendor's cost belongs to — not
 // necessarily the one whose rent was collected ('' = company, no property);
 // omitted, it stays as linked before, else the rent's property.
+// A vendor's website / customer portal as entered: '' when blank, the full
+// https URL ("www.eon.hu" → "https://www.eon.hu/"), or null when it isn't a
+// web address (only http/https links are ever kept).
+export function normalizeWebsite(value) {
+  const v = String(value || '').trim();
+  if (!v) return '';
+  try {
+    const u = new URL(/^[a-z][a-z0-9+.-]*:/i.test(v) ? v : `https://${v}`);
+    return (u.protocol === 'https:' || u.protocol === 'http:') && u.hostname.includes('.') ? u.href : null;
+  } catch { return null; }
+}
+
 export function setVendorCollection(paymentId, opts) {
   const p = byId('payments', paymentId);
   if (!p) return null;

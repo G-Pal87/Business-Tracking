@@ -141,6 +141,16 @@ export function undoReading(c) {
   return saveRecord(c, { readingAt: undefined, kwh: undefined, note: undefined });
 }
 
+// The provider a flat's invoices go to: the vendor on its latest paid
+// electricity invoice, else the default provider (settings).
+export function providerFor(p) {
+  const last = listActive('expenses').filter(e => e.propertyId === p.id && e.electricityCycleId && e.vendorId)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
+  const id = last?.vendorId || state.db.settings?.electricity?.providerVendorId || '';
+  const v = id ? byId('vendors', id) : null;
+  return v && !v.deletedAt ? v : null;
+}
+
 // Step 2: invoice checked & paid — books an Electricity expense on the
 // property and links it. `vendorId`: the vendor paid (e.g. E.ON); omitted →
 // the default provider from settings, '' → no vendor.
@@ -332,8 +342,12 @@ export function buildCalendar(baseUrl, today = todayYmd(), { propertyIds = null 
     // Invoice check & pay
     const due = addDaysYmd(c.windowTo, Math.max(0, Number(cfg.invoiceDelayDays) || 0));
     const appUrl = `${baseUrl}#electricity`;
+    const prov = providerFor(p);
+    const site = /^https?:\/\//i.test(prov?.website || '') ? prov.website : '';
     add('invoice', due, Number(due.slice(8, 10)), `Pay electricity invoice: ${p.name}`,
-      `The provider's invoice for ${p.name} should be in (about ${cfg.invoiceDelayDays} days after the reading). Check it, pay it, then mark it paid in the app (it's booked as an Electricity expense): ${appUrl}`, appUrl, {});
+      `The ${prov ? `${prov.name} ` : 'provider\'s '}invoice for ${p.name} should be in (about ${cfg.invoiceDelayDays} days after the reading).` +
+      (site ? `\n\nCheck and pay it on ${prov.name}: ${site}` : '') +
+      `\n\nThen mark it paid in the app (it's booked as an Electricity expense): ${appUrl}`, site || appUrl, { provider: prov || null });
     hashes[p.id] = strHash(body.join('\n'));
     bodies.push(...body);
   }

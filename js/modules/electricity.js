@@ -4,7 +4,7 @@
 // system, ② invoice checked & paid (books an Electricity expense).
 import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, toast, select, input, formRow, textarea, button, fmtDate } from '../core/ui.js';
-import { listActive, byId, formatMoney, newId, upsert } from '../core/data.js';
+import { listActive, byId, formatMoney, newId, upsert, normalizeWebsite } from '../core/data.js';
 import { CURRENCIES } from '../core/config.js';
 import { todayYmd, addDaysYmd } from '../core/dates.js';
 import {
@@ -106,7 +106,7 @@ function addToCalendar(rerender, propertyIds = null, title = null) {
     a.onclick = () => { a.textContent = '✓ Opened'; };
     const what = ev.kind === 'reading'
       ? `Reading request · ${ev.tenant.name} · ${ev.via === 'whatsapp' ? 'WhatsApp' : ev.via === 'viber' ? 'Viber' : 'Email'} · ${MESSAGE_LANGUAGES[langOf(ev.tenant)]}`
-      : 'Invoice check & pay';
+      : `Invoice check & pay${ev.provider ? ` · ${ev.provider.name}${ev.provider.website ? ' (with website link)' : ' — add its website under Vendors to get the link'}` : ''}`;
     body.appendChild(el('div', { style: 'display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px' },
       el('div', { style: 'flex:1' }, el('strong', {}, ev.property.name), el('span', { class: 'muted' }, ` · ${what}`)), a));
   }
@@ -397,12 +397,15 @@ function openInvoiceModal(c, rerender) {
   const syncDef = () => { defRow.style.display = vendorS.value && vendorS.value !== defaultId ? '' : 'none'; };
   vendorS.addEventListener('change', syncDef);
   const newI = input({ placeholder: 'New vendor name, e.g. E.ON' });
-  const addBox = el('div', { style: 'display:none;gap:6px;margin-top:6px' }, newI, button('Add', { variant: 'sm primary', onClick: () => {
+  const webI = input({ type: 'url', placeholder: 'Website / customer portal (optional)' });
+  const addBox = el('div', { style: 'display:none;gap:6px;margin-top:6px;flex-wrap:wrap' }, newI, webI, button('Add', { variant: 'sm primary', onClick: () => {
     const name = newI.value.trim();
     if (!name) { toast('Enter the vendor name', 'warning'); return; }
+    const website = normalizeWebsite(webI.value);
+    if (website === null) { toast('Website must be a web address, e.g. https://www.eon.hu', 'warning'); return; }
     const existing = listActive('vendors').find(v => (v.name || '').trim().toLowerCase() === name.toLowerCase());
-    const v = existing || { id: newId('vnd'), name, role: 'utility' };
-    if (!existing) upsert('vendors', v);
+    const v = existing ? (website && !existing.website ? { ...existing, website } : existing) : { id: newId('vnd'), name, role: 'utility', ...(website ? { website } : {}) };
+    if (!existing || v !== existing) upsert('vendors', v);
     vendorS.innerHTML = '';
     for (const o of vendorOpts()) vendorS.appendChild(el('option', { value: o.value }, o.label));
     vendorS.value = v.id;

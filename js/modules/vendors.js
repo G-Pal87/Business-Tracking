@@ -1,6 +1,6 @@
 // Vendors module
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, buildMultiSelect, searchBox, matchesSearch } from '../core/ui.js';
-import { upsert, softDelete, listActive, byId, newId, formatMoney, toEUR, formatEUR } from '../core/data.js';
+import { upsert, softDelete, listActive, byId, newId, formatMoney, toEUR, formatEUR, normalizeWebsite } from '../core/data.js';
 import { VENDOR_ROLES, PROPERTY_TYPES, CURRENCIES } from '../core/config.js';
 import { navigate } from '../core/router.js';
 
@@ -120,6 +120,10 @@ function openDetail(id) {
     smallStat('Phone', v.phone || '—'),
     smallStat('Email', v.email || '—')
   ));
+  if (v.website) {
+    body.appendChild(el('div', { class: 'mb-16', style: 'font-size:13px' }, 'Website: ',
+      el('a', { href: v.website, target: '_blank', rel: 'noopener noreferrer' }, v.website)));
+  }
   body.appendChild(el('div', { class: 'grid grid-3 mb-16' },
     smallStat('Total Paid', formatEUR(totalPaidEUR)),
     el('div', {}),
@@ -408,18 +412,22 @@ function openForm(existing) {
   const roleS  = select(Object.entries(VENDOR_ROLES).map(([val, m]) => ({ value: val, label: m.label })), v.role);
   const phoneI = input({ type: 'tel', value: v.phone || '', placeholder: '+1 555 0000' });
   const emailI = input({ type: 'email', value: v.email || '', placeholder: 'email@example.com' });
+  const webI   = input({ type: 'url', value: v.website || '', placeholder: 'https://… (e.g. the provider\'s customer portal)' });
   const notesT = textarea({ placeholder: 'Notes (bank details, contact info, etc.)' });
   notesT.value = v.notes || '';
 
   body.appendChild(formRow('Name', nameI));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Role', roleS)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Phone', phoneI), formRow('Email', emailI)));
+  body.appendChild(formRow('Website / customer portal', webI, 'For a utility provider this link goes into the "Pay electricity invoice" calendar reminder.'));
   body.appendChild(formRow('Notes', notesT));
 
   const saveBtn = button('Save', {
     variant: 'primary',
     onClick: () => {
       if (!nameI.value.trim()) { toast('Name is required', 'danger'); return; }
+      const website = normalizeWebsite(webI.value);
+      if (website === null) { toast('Website must be a web address, e.g. https://www.eon.hu', 'danger'); return; }
       // Merge the form fields onto the CURRENT record (not the snapshot taken
       // when the form opened) so a background sync isn't overwritten.
       const upd = existing ? latestVendorCopy(v) : v;
@@ -428,6 +436,7 @@ function openForm(existing) {
         role:  roleS.value,
         phone: phoneI.value.trim(),
         email: emailI.value.trim(),
+        website,
         notes: notesT.value.trim()
       });
       upsert('vendors', upd);
