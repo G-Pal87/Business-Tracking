@@ -255,7 +255,9 @@ function build() {
   }
   const due = dueMessages(today);
   if (due.length) bar.appendChild(button(`Send all due (${due.length})`, { variant: 'sm primary', onClick: () => openSendAll(due, rerender) }));
-  bar.appendChild(button(calendarButtonLabel(), { variant: 'sm ghost', onClick: () => addToCalendar(rerender) }));
+  // One calendar button at a time: the banner above while some flats'
+  // reminders are missing / out of date; this one (all flats) otherwise.
+  if (!stale.length) bar.appendChild(button('Calendar reminders', { variant: 'sm ghost', onClick: () => addToCalendar(rerender) }));
   bar.appendChild(button('Messages & provider', { variant: 'sm ghost', onClick: () => openMessagingSettings(rerender) }));
   wrap.appendChild(bar);
 
