@@ -95,21 +95,3 @@ export function recordSettlement(tenant, s) {
   }
   return made;
 }
-
-// Plain-text summary for the tenant, in their message language.
-export function settlementText(tenant, s, fmtMoney, fmtDay) {
-  const hu = tenant.messageLanguage === 'hu';
-  const first = (tenant.name || '').split(' ')[0];
-  const m = n => fmtMoney(n, s.currency);
-  const L = [];
-  L.push(hu ? `Kedves ${first}! Az albérlet elszámolása (kiköltözés: ${fmtDay(s.termDate)}):` : `Hi ${first}, here is the settlement for your move-out (${fmtDay(s.termDate)}):`);
-  if (s.period && s.refund > 0) {
-    L.push(hu ? `• Visszajáró bérleti díj (${s.refundDays} nap, ${fmtDay(addDaysYmd(s.period.to, 1 - s.refundDays))} – ${fmtDay(s.period.to)}): ${m(s.refund)}`
-      : `• Rent refund (${s.refundDays} day(s), ${fmtDay(addDaysYmd(s.period.to, 1 - s.refundDays))} – ${fmtDay(s.period.to)}): ${m(s.refund)}`);
-  }
-  if (s.deposit) L.push(hu ? `• Kaució: ${m(s.deposit)}` : `• Deposit: ${m(s.deposit)}`);
-  for (const d of [...s.rentRows, ...s.deductions]) L.push(`• ${d.reason}: −${m(d.amount)}`);
-  if (s.tenantOwes > 0) L.push(hu ? `Fizetendő: ${m(s.tenantOwes)}` : `Amount you owe: ${m(s.tenantOwes)}`);
-  else L.push(hu ? `Visszafizetjük: ${m(s.toGiveBack)}` : `We will pay you back: ${m(s.toGiveBack)}`);
-  return L.join('\n');
-}

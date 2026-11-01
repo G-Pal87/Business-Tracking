@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 const { setDb } = await import('../../js/core/state.js');
 const data = await import('../../js/core/data.js');
-const { computeSettlement, recordSettlement, settlementText } = await import('../../js/core/settlement.js');
+const { computeSettlement, recordSettlement } = await import('../../js/core/settlement.js');
 
 // Synthetic lease: 1 000 a month, calendar months, deposit 1 000.
 const load = ({ paidSep = true, paidAug = true, moveIn = false, deposit = 1000 } = {}) => setDb({
@@ -78,13 +78,4 @@ test('recording: refund lowers revenue, unpaid rent and kept deductions become i
   // net money for September: 1 000 paid − 600 refunded = 400 = the 12 days used
   const sepNet = data.listActivePayments().filter(p => (p.rentMonth || p.date.slice(0, 7)) === '2026-09' && p.type !== 'deposit_withheld').reduce((t, p) => t + p.amount, 0);
   assert.equal(sepNet, 400);
-});
-
-test('settlement message in the tenant language', () => {
-  load();
-  const s = computeSettlement({ tenant: tenant(), termDate: '2026-09-12', deductions: [{ reason: 'Cleaning', amount: 50 }] });
-  const fmt = (n, c) => `${n} ${c}`, day = d => d;
-  assert.match(settlementText(tenant(), s, fmt, day), /^Hi Anna, here is the settlement[\s\S]*Rent refund \(18 day\(s\), 2026-09-13 – 2026-09-30\): 600 EUR[\s\S]*Deposit: 1000 EUR[\s\S]*Cleaning: −50 EUR[\s\S]*We will pay you back: 1550 EUR$/);
-  data.upsert('tenants', { ...tenant(), messageLanguage: 'hu' });
-  assert.match(settlementText(tenant(), s, fmt, day), /^Kedves Anna! Az albérlet elszámolása[\s\S]*Visszafizetjük: 1550 EUR$/);
 });

@@ -2,8 +2,8 @@
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, attachSortFilter, buildMultiSelect } from '../core/ui.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, generatePaymentSchedule, getContractExpiryFlag, getTenantDisplayStatus, getPeopleOwners, getPersonName, syncPropertyStatus } from '../core/data.js';
 import { CURRENCIES, PROPERTY_STATUSES } from '../core/config.js';
-import { isHungary, MESSAGE_LANGUAGES, messageLink } from '../core/electricity.js';
-import { computeSettlement, recordSettlement, settlementText } from '../core/settlement.js';
+import { isHungary, MESSAGE_LANGUAGES } from '../core/electricity.js';
+import { computeSettlement, recordSettlement } from '../core/settlement.js';
 import { runBatch } from '../core/state.js';
 import { recordRentPaymentsBulk } from './payments.js';
 import { mkTh } from './analytics-helpers.js';
@@ -743,37 +743,19 @@ function openTerminationModal(tenant, onSave) {
   });
 }
 
-// After a termination: the settlement to send the tenant (their language),
-// and — when a replacement takes over — their new lease from that date.
+// After a termination: the amount to give back (or owed), and — when a
+// replacement takes over — their new lease from that date.
 function openSettlementSummary(tenant, s, onSave) {
-  const text = settlementText(tenant, s, (n, c) => formatMoney(n, c, { maxFrac: 0 }), fmtDate);
+  const result = s.tenantOwes > 0 ? `Tenant owes ${formatMoney(s.tenantOwes, s.currency, { maxFrac: 0 })}` : `To give back: ${formatMoney(s.toGiveBack, s.currency, { maxFrac: 0 })}`;
+  const replacement = s.policy === 'replacement' && s.replacementFrom && s.period && s.replacementFrom <= s.period.to;
+  if (!replacement) { toast(`${tenant.name}: ${result}`, 'info', 8000); return; }
   const body = el('div', {});
-  body.appendChild(el('div', { style: 'font-size:15px;font-weight:700;margin-bottom:8px' },
-    s.tenantOwes > 0 ? `Tenant owes ${formatMoney(s.tenantOwes, s.currency, { maxFrac: 0 })}` : `To give back: ${formatMoney(s.toGiveBack, s.currency, { maxFrac: 0 })}`));
-  const ta = textarea({ rows: 8 });
-  ta.value = text;
-  ta.readOnly = true;
-  ta.style.width = '100%';
-  body.appendChild(ta);
-  const btns = el('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;margin-top:8px' });
-  btns.appendChild(button('Copy', { variant: 'sm', onClick: async () => {
-    try { await navigator.clipboard.writeText(text); toast('Copied', 'success'); } catch { ta.select(); toast('Select the text and copy it', 'warning'); }
-  } }));
-  const ml = messageLink(tenant, text);
-  if (ml && ml.via !== 'call') {
-    btns.appendChild(button(`Send via ${{ whatsapp: 'WhatsApp', viber: 'Viber', email: 'email' }[ml.via]}`, { variant: 'sm', onClick: async () => {
-      if (ml.copyText) { try { await navigator.clipboard.writeText(text); toast('Copied — paste it in the Viber chat', 'info'); } catch { /* shown above */ } }
-      window.open(ml.href, '_blank', 'noopener');
-    } }));
-  }
-  body.appendChild(btns);
-  if (s.policy === 'replacement' && s.replacementFrom && s.period && s.replacementFrom <= s.period.to) {
-    body.appendChild(el('div', { style: 'margin-top:14px;padding:10px 12px;border-radius:6px;background:var(--info-soft);font-size:13px' },
-      el('div', { style: 'margin-bottom:6px' }, `The replacement pays from ${fmtDate(s.replacementFrom)}. Add their lease so their rent is expected from that day.`),
-      button(`Create the new tenant from ${fmtDate(s.replacementFrom)}`, { variant: 'sm primary', onClick: () => {
-        closeModal();
-        setTimeout(() => openForm(null, onSave, { propertyId: tenant.propertyId, leaseStartDate: s.replacementFrom, monthlyRent: tenant.monthlyRent, currency: tenant.currency }), 220);
-      } })));
-  }
-  openModal({ title: 'Move-out settlement', body, footer: [button('Close', { onClick: closeModal })] });
+  body.appendChild(el('div', { style: 'font-size:15px;font-weight:700;margin-bottom:10px' }, result));
+  body.appendChild(el('div', { style: 'padding:10px 12px;border-radius:6px;background:var(--info-soft);font-size:13px' },
+    el('div', { style: 'margin-bottom:6px' }, `The replacement pays from ${fmtDate(s.replacementFrom)}. Add their lease so their rent is expected from that day.`),
+    button(`Create the new tenant from ${fmtDate(s.replacementFrom)}`, { variant: 'sm primary', onClick: () => {
+      closeModal();
+      setTimeout(() => openForm(null, onSave, { propertyId: tenant.propertyId, leaseStartDate: s.replacementFrom, monthlyRent: tenant.monthlyRent, currency: tenant.currency }), 220);
+    } })));
+  openModal({ title: 'Move-out settlement', body, footer: [button('Later', { onClick: closeModal })] });
 }
