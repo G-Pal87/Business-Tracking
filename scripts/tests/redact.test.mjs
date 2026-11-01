@@ -55,3 +55,14 @@ test('does not modify its input', () => {
   redactForDebug(input);
   assert.equal(JSON.stringify(input), before);
 });
+
+test('redacts WhatsApp / Viber numbers and messaging-account contacts', () => {
+  const out = redactForDebug({
+    tenants: [{ id: 't1', whatsapp: '+36 30 999 0001', viber: '+36 30 999 0002', preferredContact: 'viber' }],
+    settings: { electricity: { accounts: [{ id: 'a1', label: 'Company', channel: 'whatsapp', contact: '+36 20 999 0003' }] } },
+    electricityCycles: [{ id: 'p1|2026-11', note: 'meter behind the door' }]
+  });
+  const json = JSON.stringify(out);
+  for (const leak of ['999 0001', '999 0002', '999 0003', 'behind the door']) assert.ok(!json.includes(leak), `leaked: ${leak}`);
+  assert.equal(out.electricityCycles[0].id, 'p1|2026-11');
+});

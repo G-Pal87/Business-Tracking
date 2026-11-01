@@ -2,6 +2,7 @@
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, attachSortFilter, buildMultiSelect } from '../core/ui.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, generatePaymentSchedule, getContractExpiryFlag, getTenantDisplayStatus, getPeopleOwners, getPersonName, syncPropertyStatus } from '../core/data.js';
 import { CURRENCIES, PROPERTY_STATUSES } from '../core/config.js';
+import { isHungary } from '../core/electricity.js';
 import { recordRentPaymentsBulk } from './payments.js';
 import { mkTh } from './analytics-helpers.js';
 import { thisMonthYm } from '../core/dates.js';
@@ -273,6 +274,9 @@ function openForm(existing, onSave) {
     c.addEventListener('change', () => { if (c.checked) prefChks.forEach(o => { if (o.chk !== c) o.chk.checked = false; }); });
     return { key, chk: c, row: el('label', { for: c.id, style: 'display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer' }, c, label) };
   });
+  // Who pays the electricity provider: we do on the tenant's behalf (default)
+  // or the tenant directly — then the flat is left out of the Electricity tracker.
+  const elecPaidS = select([{ value: 'us', label: "We pay (on the tenant's behalf)" }, { value: 'tenant', label: 'Tenant pays the provider directly' }], r.electricityPaidBy === 'tenant' ? 'tenant' : 'us');
   const prefRow = el('div', { style: 'display:flex;gap:16px;flex-wrap:wrap;padding:6px 0' }, ...prefChks.map(o => o.row));
   const propS       = select(ltProps.map(p => ({ value: p.id, label: p.name })), r.propertyId);
   const leaseStartI = input({ type: 'date', value: r.leaseStartDate || '' });
@@ -380,7 +384,11 @@ function openForm(existing, onSave) {
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Lease Start', leaseStartI), formRow('Lease End', leaseEndI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Monthly Rent', rentI), formRow('Currency', currencyS)));
   body.appendChild(rentFromRow);
+  const elecRow = formRow('Electricity', elecPaidS, 'Hungarian flats only: "Tenant pays" leaves this flat out of the meter-reading / invoice tracker while this lease runs.');
+  if (!isHungary(byId('properties', propS.value))) elecRow.style.display = 'none';
+  propS.addEventListener('change', () => { elecRow.style.display = isHungary(byId('properties', propS.value)) ? '' : 'none'; });
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Deposit', depositI), formRow('Payment Day (1–31)', payDayI)));
+  body.appendChild(elecRow);
   body.appendChild(moveInRow);
   body.appendChild(prorateRow);
   body.appendChild(formRow('Status', statusS));
@@ -411,6 +419,7 @@ function openForm(existing, onSave) {
       whatsapp: whatsappI.value.trim(),
       viber: viberI.value.trim(),
       preferredContact: pref,
+      electricityPaidBy: elecPaidS.value,
       propertyId: propS.value,
       leaseStartDate: leaseStartI.value,
       leaseEndDate: leaseEndI.value,

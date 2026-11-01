@@ -9,7 +9,7 @@ const DROP_KEY = /pass(word|wd)?$|password|salt|token|secret|api.?key|private.?k
 // String values under these keys (and everything nested inside them) are
 // replaced with a placeholder.
 const PII_KEY = new RegExp([
-  'e-?mail', 'phone', 'mobile', '^tel$', '^fax$', 'iban', 'swift', '^bic$', 'account.?(number|no)$',
+  'e-?mail', 'phone', 'mobile', 'whatsapp', 'viber', '^tel$', '^fax$', 'iban', 'swift', '^bic$', 'account.?(number|no)$',
   'address', 'street', '^city$', 'zip', 'post.?code', 'postal', '^vat(number|no|id)?$', 'tax.?(id|number|no)$',
   'registration', 'passport', 'id.?(number|card|no)$', 'birth', '^dob$', 'nationality',
   'guest', 'tenant.?name', 'client.?name', 'customer', 'contact', 'payer', 'payee', 'owner.?name',

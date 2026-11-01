@@ -4145,7 +4145,7 @@ function buildDangerCard() {
   const ALL_COLLECTIONS = [
     'properties', 'payments', 'expenses', 'vendors', 'tenants',
     'clients', 'services', 'invoices', 'users', 'forecasts',
-    'inventory', 'reservationExpenseRules'
+    'inventory', 'reservationExpenseRules', 'electricityCycles'
   ];
 
   // Build a versioned snapshot of the full app state.

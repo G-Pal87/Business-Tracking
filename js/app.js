@@ -24,6 +24,7 @@ const ROUTES = [
   { id: 'expenses',             label: 'Expenses',          icon: '💸', file: 'expenses.js' },
   { id: 'dividends',            label: 'Dividends',         icon: '💰', file: 'dividends.js' },
   { id: 'tenants',              label: 'Tenants',           icon: '👥', file: 'tenants.js' },
+  { id: 'electricity',          label: 'Electricity',       icon: '⚡', file: 'electricity.js' },
   { id: 'vendors',              label: 'Vendors',           icon: '🔧', file: 'vendors.js' },
   { id: 'inventory',            label: 'Inventory',         icon: '📦', file: 'inventory.js' },
   { id: 'company-structure',    label: 'Company Structure', icon: '🏢', file: 'company-structure.js' },
@@ -355,6 +356,7 @@ async function boot() {
   // that the user is signed in and real data (if any) has landed. (It used to
   // run before sign-in, loading str-rates + payments against an empty db.)
   scheduleStrGapBadge();
+  scheduleElecBadge();
   // Warm the remaining views' code at idle so later navigation stays instant —
   // but only once the initial GitHub sync has finished (and at least 5s after
   // the first render), so it never competes with the sync or the first screen.
@@ -713,6 +715,7 @@ async function boot() {
     // property's calendar, and 'dirty' fires on every single edit.
     if (evt === 'data-loaded' || evt === 'dirty') {
       scheduleStrGapBadge();
+      scheduleElecBadge();
     }
     if (evt === 'dirty') {
       github.saveLocalCache(state.db);
@@ -996,7 +999,7 @@ function buildUserFooter() {
 function buildSidebar(MODULES) {
   const navGroups = [
     { title: 'Analysis', items: ['analytics', 'analytics-revenue', 'analytics-expenses', 'analytics-properties', 'analytics-str', 'analytics-cashflow', 'reconciliation', 'analytics-forecast', 'analytics-owner', 'analytics-personal', 'analytics-tax'] },
-    { title: 'Operations', items: ['properties', 'payments', 'str-rates', 'expenses', 'dividends', 'tenants', 'vendors', 'inventory', 'company-structure', 'clients', 'invoices', 'time-off', 'forecast'] },
+    { title: 'Operations', items: ['properties', 'payments', 'str-rates', 'expenses', 'dividends', 'tenants', 'electricity', 'vendors', 'inventory', 'company-structure', 'clients', 'invoices', 'time-off', 'forecast'] },
     { title: 'System', items: ['settings', 'users'] }
   ];
   const nav = document.getElementById('nav');
@@ -1022,6 +1025,13 @@ function buildSidebar(MODULES) {
       if (id === 'str-rates') {
         const badge = document.createElement('span');
         badge.id = 'nav-str-gap-badge';
+        badge.className = 'nav-item-badge danger';
+        badge.style.display = 'none';
+        item.appendChild(badge);
+      }
+      if (id === 'electricity') {
+        const badge = document.createElement('span');
+        badge.id = 'nav-elec-badge';
         badge.className = 'nav-item-badge danger';
         badge.style.display = 'none';
         item.appendChild(badge);
@@ -1063,6 +1073,30 @@ function updateStrGapBadge(countUnresolvedGapNights) {
   try { count = countUnresolvedGapNights(); } catch (e) { console.error(e); }
   badge.textContent = String(count);
   badge.style.display = count > 0 ? '' : 'none';
+}
+
+// Electricity readings/invoices needing action (Hungarian flats) — same
+// pattern as the STR badge, count from electricity.js.
+let _elecBadgePending = false;
+function scheduleElecBadge() {
+  if (_elecBadgePending || !document.getElementById('nav-elec-badge')) return;
+  _elecBadgePending = true;
+  const run = () => {
+    import(moduleUrl('electricity.js')).then(m => {
+      _elecBadgePending = false;
+      const badge = document.getElementById('nav-elec-badge');
+      if (!badge) return;
+      let count = 0;
+      try { count = m.countElectricityActions(); } catch (e) { console.error(e); }
+      badge.textContent = String(count);
+      badge.style.display = count > 0 ? '' : 'none';
+    }, err => {
+      _elecBadgePending = false;
+      console.warn('Electricity badge: could not load electricity.js', err);
+    });
+  };
+  if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(run, { timeout: 2000 });
+  else setTimeout(run, 500);
 }
 
 function initMobileNav() {

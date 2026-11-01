@@ -8,6 +8,7 @@ import { listActive, listActivePayments, generatePaymentSchedule, currentLeases,
 import { PROPERTY_STATUSES } from '../core/config.js';
 import { navigate } from '../core/router.js';
 import { todayYmd, diffDaysYmd, addDaysYmd } from '../core/dates.js';
+import { electricityActions } from '../core/electricity.js';
 
 const LEASE_WARN_DAYS = 90;
 const STR_IDLE_DAYS = 60;
@@ -36,7 +37,7 @@ function lastRentEUR(p, day) {
 // `props`: the properties to check (already filtered by the dashboard).
 // `weight(prop)`: the owner share applied to money (1 without an owner filter).
 export function getAttentionItems(props, weight = () => 1, day = todayYmd()) {
-  const out = { overdue: [], empty: [], idle: [], ending: [], checks: [] };
+  const out = { overdue: [], empty: [], idle: [], ending: [], checks: [], electricity: [] };
   const live = props.filter(p => p.status !== 'sold');
   const pays = listActivePayments();
   for (const p of live) {
@@ -78,6 +79,11 @@ export function getAttentionItems(props, weight = () => 1, day = todayYmd()) {
     if (want) out.checks.push({ prop: p, kind: 'status', from: p.status || 'active', to: want, text: leases.length ? `marked ${PROPERTY_STATUSES[p.status]?.label || p.status} but has a tenant` : 'marked Active but has no tenant' });
     if (leases.length > 1) out.checks.push({ prop: p, kind: 'overlap', text: `${leases.length} leases running at the same time (${leases.map(t => t.name || '—').join(', ')}) — end the old one` });
   }
+  // Electricity (Hungarian flats): readings to submit, invoices to pay.
+  const ids = new Set(live.map(p => p.id));
+  const ea = electricityActions(day);
+  for (const c of ea.readings) if (ids.has(c.property.id)) out.electricity.push({ prop: c.property, kind: 'reading', c });
+  for (const c of ea.invoices) if (ids.has(c.property.id)) out.electricity.push({ prop: c.property, kind: 'invoice', c });
   out.overdue.sort((a, b) => b.eur - a.eur);
   out.empty.sort((a, b) => (b.days || 0) - (a.days || 0));
   out.idle.sort((a, b) => (b.days || 0) - (a.days || 0));
@@ -89,7 +95,7 @@ export function buildAttentionCard(props, { weight = () => 1, onChange = null } 
   const day = todayYmd();
   const it = getAttentionItems(props, weight, day);
   const card = el('div', { class: 'card mb-16' });
-  const total = it.overdue.length + it.empty.length + it.idle.length + it.ending.length + it.checks.length;
+  const total = it.overdue.length + it.empty.length + it.idle.length + it.ending.length + it.checks.length + it.electricity.length;
   card.appendChild(el('div', { class: 'card-header' },
     el('div', {}, el('div', { class: 'card-title' }, 'Needs attention'),
       el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'As of today · follows the owner, property and scope filters · not affected by the period filter'))));
@@ -127,6 +133,11 @@ export function buildAttentionCard(props, { weight = () => 1, onChange = null } 
       : (o.since ? `no bookings for ${o.days} days (last stay ended ${fmtDate(o.since)}), none upcoming` : 'no bookings recorded, none upcoming'))));
   section(`Leases ending within ${LEASE_WARN_DAYS} days`, 'var(--info)', it.ending.map(o => row(o.prop.name,
     `${o.tenant.name || 'Tenant'} · ends ${fmtDate(o.end)} (in ${o.days} days) · no next lease yet`)));
+  section('Electricity', '#d97706', it.electricity.map(o => row(o.prop.name,
+    o.kind === 'reading'
+      ? `meter reading ${o.c.period} — ${o.c.reading === 'overdue' ? `window closed ${fmtDate(o.c.windowTo)}` : `submit by ${fmtDate(o.c.windowTo)}`}`
+      : `invoice ${o.c.period} — check & pay (expected since ${fmtDate(o.c.invoiceDue)})`,
+    null, () => navigate('electricity'))));
   const fixable = it.checks.filter(c => c.kind === 'status');
   section('Data to check', 'var(--accent)', it.checks.map(c => row(c.prop.name, c.text,
     c.kind === 'status' ? button(`Set to ${PROPERTY_STATUSES[c.to]?.label || c.to}`, { variant: 'sm ghost', onClick: e => {

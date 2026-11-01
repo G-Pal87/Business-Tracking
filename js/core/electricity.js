@@ -1,0 +1,203 @@
+// Electricity meter readings & invoices for the Hungarian flats.
+//
+// Each Hungarian property can have a repeating reading window (e.g. the 1st–5th
+// of every month, or every 2 months from a start month). Each cycle has two
+// steps the owner tracks:
+//   1. the meter reading is submitted in the provider's system (in the window);
+//   2. the provider posts the invoice ~N days later — it's checked and paid,
+//      which books an Electricity expense on the property.
+// A flat whose current tenant pays the provider directly
+// (tenant.electricityPaidBy === 'tenant') is left out of that cycle.
+//
+// Config lives on the property (`electricity`), the per-cycle record in the
+// `electricityCycles` collection (id `${propertyId}|${period}`), and the
+// messaging accounts/template in settings.electricity.
+import { state, runBatch } from './state.js';
+import { listActive, byId, upsert, softDelete, newId, currentLeases } from './data.js';
+import { todayYmd, addDaysYmd, addMonthsYmd, daysInMonth } from './dates.js';
+
+export const DEFAULT_ELEC_CONFIG = { active: true, windowFrom: 1, windowTo: 5, everyMonths: 1, invoiceDelayDays: 10, startMonth: '' };
+export const DEFAULT_READING_TEMPLATE =
+  'Hi {tenant}, could you please send me a photo of the electricity meter at {property} between {from} and {to}? Thank you!';
+// How many days before the window opens the "message tenant" step shows.
+export const MESSAGE_LEAD_DAYS = 3;
+
+export const isHungary = p => /^(hungary|magyarország|magyarorszag|hu)$/i.test(String(p?.country || '').trim());
+
+export function elecConfig(p) {
+  const c = p?.electricity;
+  if (!c) return null;
+  return { ...DEFAULT_ELEC_CONFIG, ...c };
+}
+
+export function electricityProperties() {
+  return listActive('properties').filter(p => isHungary(p) && p.status !== 'sold');
+}
+
+const dayIn = (ym, d) => `${ym}-${String(Math.min(Math.max(1, d), daysInMonth(+ym.slice(0, 4), +ym.slice(5, 7)))).padStart(2, '0')}`;
+const addMonthsYm = (ym, n) => addMonthsYmd(`${ym}-01`, n).slice(0, 7);
+
+export const cycleId = (propertyId, period) => `${propertyId}|${period}`;
+const recordOf = (propertyId, period) => {
+  const r = byId('electricityCycles', cycleId(propertyId, period));
+  return r && !r.deletedAt ? r : null;
+};
+
+// The tenant whose lease covers the start of the reading window (the one to
+// ask for the reading), and whether they pay the provider themselves.
+function tenantFor(p, day) {
+  const leases = currentLeases(p.id, day);
+  return leases.sort((a, b) => (b.leaseStartDate || '').localeCompare(a.leaseStartDate || ''))[0] || null;
+}
+
+function buildCycle(p, cfg, period, today) {
+  const windowFrom = dayIn(period, cfg.windowFrom);
+  const windowTo = dayIn(period, Math.max(cfg.windowFrom, cfg.windowTo));
+  const rec = recordOf(p.id, period);
+  const tenant = tenantFor(p, windowFrom);
+  const excluded = tenant?.electricityPaidBy === 'tenant';
+  const readingDone = !!rec?.readingAt;
+  const invoiceDue = addDaysYmd(rec?.readingAt || windowTo, Math.max(0, Number(cfg.invoiceDelayDays) || 0));
+  const invoiceDone = !!rec?.paidAt;
+  const reading = readingDone ? 'done' : today < windowFrom ? 'upcoming' : today <= windowTo ? 'open' : 'overdue';
+  const invoice = invoiceDone ? 'done' : !readingDone ? 'waiting' : today < invoiceDue ? 'upcoming' : 'due';
+  return {
+    id: cycleId(p.id, period), property: p, period, windowFrom, windowTo, invoiceDue, record: rec,
+    tenant, excluded, reading, invoice,
+    complete: excluded || (readingDone && invoiceDone),
+    messageable: !excluded && !readingDone && !!tenant && addDaysYmd(windowFrom, -MESSAGE_LEAD_DAYS) <= today
+  };
+}
+
+// Every cycle of a property from its start month up to the next one that
+// hasn't opened yet (so the upcoming window is always listed).
+export function cyclesFor(p, today = todayYmd()) {
+  const cfg = elecConfig(p);
+  if (!cfg || cfg.active === false) return [];
+  const every = Math.min(Math.max(1, Math.floor(Number(cfg.everyMonths)) || 1), 12);
+  const start = /^\d{4}-\d{2}$/.test(cfg.startMonth) ? cfg.startMonth : (p.electricity?.createdMonth || today.slice(0, 7));
+  const out = [];
+  for (let k = 0, period = start; k < 600; k++, period = addMonthsYm(start, k * every)) {
+    const c = buildCycle(p, cfg, period, today);
+    out.push(c);
+    if (c.windowFrom > today) break;
+  }
+  return out;
+}
+
+// The rows the tracker shows: per property, every cycle that still needs a
+// step plus the latest finished one and the upcoming one; `history` adds all.
+export function electricityRows(today = todayYmd(), { history = false } = {}) {
+  const rows = [];
+  for (const p of electricityProperties()) {
+    const cs = cyclesFor(p, today);
+    if (!cs.length) continue;
+    const lastDone = [...cs].reverse().find(c => c.complete && c.windowFrom <= today);
+    for (const c of cs) {
+      const upcoming = c.windowFrom > today;
+      if (history || !c.complete || upcoming || c === lastDone) rows.push(c);
+    }
+  }
+  return rows.sort((a, b) => a.windowFrom.localeCompare(b.windowFrom) || a.property.name.localeCompare(b.property.name));
+}
+
+// Steps needing action now: readings whose window is open or past, invoices
+// due. Drives the sidebar badge and the Needs-attention card.
+export function electricityActions(today = todayYmd()) {
+  const readings = [], invoices = [];
+  for (const p of electricityProperties()) {
+    for (const c of cyclesFor(p, today)) {
+      if (c.excluded) continue;
+      if (c.reading === 'open' || c.reading === 'overdue') readings.push(c);
+      if (c.invoice === 'due') invoices.push(c);
+    }
+  }
+  return { readings, invoices, count: readings.length + invoices.length };
+}
+
+function saveRecord(c, patch) {
+  const prev = recordOf(c.property.id, c.period) || { id: c.id, propertyId: c.property.id, period: c.period };
+  const next = { ...prev, ...patch };
+  for (const k of Object.keys(next)) if (next[k] === undefined) delete next[k];
+  upsert('electricityCycles', next);
+  return next;
+}
+
+// Step 1: reading submitted to the provider (date, meter reading in kWh).
+export function markReading(c, { date, kwh, note = '' }) {
+  return saveRecord(c, { readingAt: date, kwh: kwh === '' || kwh == null ? undefined : Number(kwh), note: note || undefined });
+}
+export function undoReading(c) {
+  if (c.record?.paidAt) throw new Error('Undo the invoice first');
+  return saveRecord(c, { readingAt: undefined, kwh: undefined, note: undefined });
+}
+
+// Step 2: invoice checked & paid — books an Electricity expense on the
+// property (with the provider as vendor when one is set) and links it.
+export function markInvoicePaid(c, { date, amount, currency, invoiceNo = '' }) {
+  const p = c.property;
+  const providerId = state.db.settings?.electricity?.providerVendorId || '';
+  const provider = providerId ? byId('vendors', providerId) : null;
+  const linked = c.record?.expenseId ? byId('expenses', c.record.expenseId) : null;
+  let rec;
+  runBatch(() => {
+    const expense = {
+      ...(linked && !linked.deletedAt ? linked : {}),
+      id: linked && !linked.deletedAt ? linked.id : newId('exp'),
+      propertyId: p.id,
+      category: 'electricity',
+      amount: Number(amount),
+      currency: currency || p.currency || 'HUF',
+      date,
+      stream: p.type === 'short_term' ? 'short_term_rental' : 'long_term_rental',
+      description: `Electricity invoice ${c.period}${invoiceNo ? ` · ${invoiceNo}` : ''}${c.record?.kwh != null ? ` · reading ${c.record.kwh} kWh` : ''}`,
+      electricityCycleId: c.id,
+      ...(provider ? { vendorId: provider.id, vendor: provider.name } : {})
+    };
+    upsert('expenses', expense);
+    rec = saveRecord(c, { paidAt: date, invoiceAmount: Number(amount), invoiceCurrency: expense.currency, invoiceNo: invoiceNo || undefined, expenseId: expense.id });
+  });
+  return rec;
+}
+export function undoInvoice(c) {
+  runBatch(() => {
+    const e = c.record?.expenseId ? byId('expenses', c.record.expenseId) : null;
+    if (e && !e.deletedAt) softDelete('expenses', e.id);
+    saveRecord(c, { paidAt: undefined, invoiceAmount: undefined, invoiceCurrency: undefined, invoiceNo: undefined, expenseId: undefined });
+  });
+}
+
+export function markMessaged(c, { via, accountId }) {
+  return saveRecord(c, { messagedAt: todayYmd(), messagedVia: via, messagedAccountId: accountId || undefined });
+}
+
+// ── Messages to tenants ───────────────────────────────────────────────────────
+export function messagingSettings() {
+  const s = state.db.settings?.electricity || {};
+  return { accounts: s.accounts || [], defaultAccountId: s.defaultAccountId || '', template: s.template || DEFAULT_READING_TEMPLATE, providerVendorId: s.providerVendorId || '' };
+}
+
+export function fillTemplate(tpl, c, fmt = d => d) {
+  return String(tpl)
+    .replaceAll('{tenant}', (c.tenant?.name || '').split(' ')[0] || 'there')
+    .replaceAll('{property}', c.property.name || '')
+    .replaceAll('{from}', fmt(c.windowFrom))
+    .replaceAll('{to}', fmt(c.windowTo));
+}
+
+const digits = n => (n || '').replace(/[^\d+]/g, '').replace(/^00/, '+').replace(/\+/g, '');
+// How to reach the tenant: their preferred contact if it's possible, else
+// WhatsApp, Viber, email. Returns { via, href, copyText? } or null.
+export function messageLink(t, text) {
+  if (!t) return null;
+  const wa = digits(t.whatsapp || t.phone), vb = digits(t.viber || t.phone);
+  const ways = {
+    whatsapp: wa && { via: 'whatsapp', href: `https://wa.me/${wa}?text=${encodeURIComponent(text)}` },
+    // Viber can't pre-fill a chat with a given number: the text is copied and the chat opened.
+    viber: vb && { via: 'viber', href: `viber://chat?number=%2B${vb}`, copyText: text },
+    email: t.email && { via: 'email', href: `mailto:${encodeURIComponent(t.email).replace(/%40/g, '@')}?subject=${encodeURIComponent('Electricity meter reading')}&body=${encodeURIComponent(text)}` },
+    call: digits(t.phone) && { via: 'call', href: `tel:+${digits(t.phone)}` }
+  };
+  const pref = t.preferredContact;
+  return (pref && ways[pref]) || ways.whatsapp || ways.viber || ways.email || ways.call || null;
+}
