@@ -1128,7 +1128,8 @@ export function forecastMonthlyEUR(year) {
 // Payments on a long-term property that are NOT a month's rent — a withheld
 // deposit or termination fee (tenants.js) used to be stored as type
 // 'rental', which marked the final month's unpaid rent as paid.
-export const NON_RENT_PAYMENT_TYPES = new Set(['deposit_withheld', 'termination_fee']);
+// rent_refund: unused days given back at a lease termination (negative amount).
+export const NON_RENT_PAYMENT_TYPES = new Set(['deposit_withheld', 'termination_fee', 'rent_refund']);
 export function isRentPayment(p) {
   return (p.stream === 'long_term_rental' || p.type === 'rental') && !NON_RENT_PAYMENT_TYPES.has(p.type);
 }

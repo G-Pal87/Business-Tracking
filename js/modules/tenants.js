@@ -2,10 +2,12 @@
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, attachSortFilter, buildMultiSelect } from '../core/ui.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, generatePaymentSchedule, getContractExpiryFlag, getTenantDisplayStatus, getPeopleOwners, getPersonName, syncPropertyStatus } from '../core/data.js';
 import { CURRENCIES, PROPERTY_STATUSES } from '../core/config.js';
-import { isHungary, MESSAGE_LANGUAGES } from '../core/electricity.js';
+import { isHungary, MESSAGE_LANGUAGES, messageLink } from '../core/electricity.js';
+import { computeSettlement, recordSettlement, settlementText } from '../core/settlement.js';
+import { runBatch } from '../core/state.js';
 import { recordRentPaymentsBulk } from './payments.js';
 import { mkTh } from './analytics-helpers.js';
-import { thisMonthYm } from '../core/dates.js';
+import { thisMonthYm, addDaysYmd } from '../core/dates.js';
 
 let _sortCol = -1, _sortDir = 1, _tenSearch = '';
 
@@ -237,7 +239,8 @@ function closeOpenPeriodsOnLeaseStart(propertyId, leaseStartDate) {
   return closedKinds;
 }
 
-function openForm(existing, onSave) {
+// `defaults` pre-fills a new tenant (e.g. a replacement after a termination).
+function openForm(existing, onSave, defaults = {}) {
   const ltProps = listActive('properties').filter(p => p.type === 'long_term');
   const defaultProp = ltProps[0]?.id || '';
   const r = existing ? { ...existing } : {
@@ -248,7 +251,8 @@ function openForm(existing, onSave) {
     // Rent currency follows the apartment's own currency (its purchase price's).
     monthlyRent: 0, currency: byId('properties', defaultProp)?.currency || 'EUR',
     deposit: 0, paymentDayOfMonth: 1,
-    notes: '', status: 'active'
+    notes: '', status: 'active',
+    ...defaults
   };
 
   const body = el('div', {});
@@ -517,6 +521,9 @@ function openForm(existing, onSave) {
       const after = listActive('payments').filter(p => p.tenantId === updated.id && p.status === 'paid' &&
         !['deposit_withheld', 'termination_fee', 'deposit'].includes(p.type) && (p.rentMonth || (p.date || '').slice(0, 7)) > newTerm.slice(0, 7));
       toast(`Termination moved to ${fmtDate(newTerm)} — rent schedule updated${termPays.length ? `, ${termPays.length} termination payment(s) re-dated` : ''}.`, 'info', 7000);
+      if (listActive('payments').some(p => p.tenantId === updated.id && p.type === 'rent_refund')) {
+        toast('This lease has a move-out settlement worked out for the old date — check its rent refund in Payments (or cancel and re-terminate).', 'warning', 10000);
+      }
       if (after.length) toast(`${after.length} rent payment(s) already received for months after ${fmtDate(newTerm)} are kept — check them in Payments (refund or move them).`, 'warning', 10000);
     }
     if (cancelTermination) {
@@ -566,9 +573,9 @@ function openForm(existing, onSave) {
 }
 
 function openTerminationModal(tenant, onSave) {
-  const prop       = byId('properties', tenant.propertyId);
-  const currency   = tenant.currency || 'EUR';
-  const hasDeposit = (tenant.deposit || 0) > 0;
+  const prop     = byId('properties', tenant.propertyId);
+  const currency = tenant.currency || 'EUR';
+  const money    = n => formatMoney(n, currency, { maxFrac: 0 });
 
   const body = el('div');
 
@@ -584,53 +591,111 @@ function openTerminationModal(tenant, onSave) {
 
   // Termination date — defaults to today
   const termDateI = input({ type: 'date', value: today() });
-  body.appendChild(formRow('Termination Date', termDateI));
+  body.appendChild(formRow('Termination Date (last day)', termDateI));
 
-  // Deposit handling — only shown when a deposit amount exists on the tenant record
-  let depositAction = 'withheld';
-  if (hasDeposit) {
-    const rWithheld = el('input', { type: 'radio', name: 'ten-dep-action', value: 'withheld' });
-    const rReturned = el('input', { type: 'radio', name: 'ten-dep-action', value: 'returned' });
-    rWithheld.checked = true;
-    rWithheld.addEventListener('change', () => { depositAction = 'withheld'; });
-    rReturned.addEventListener('change', () => { depositAction = 'returned'; });
+  // ── Move-out settlement (core/settlement.js) ──
+  // Unused days of the last paid rent period: refund only what a replacement
+  // pays for (default), all of them, or none; then deposit minus deductions.
+  let policy = 'replacement';
+  const deductions = [];
+  const replI = input({ type: 'date' });
+  const unpaidChk = el('input', { type: 'checkbox', id: 'setUnpaid' });
+  unpaidChk.checked = true;
+  const card = el('div', { style: 'border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin:8px 0 12px' });
+  card.appendChild(el('div', { style: 'font-weight:700;margin-bottom:8px' }, 'Move-out settlement'));
+  const periodBox = el('div', { style: 'font-size:13px;margin-bottom:8px' });
+  const policyBox = el('div', { style: 'display:flex;flex-direction:column;gap:6px;margin-bottom:10px;font-size:13px' });
+  const radio = (val, label) => {
+    const r = el('input', { type: 'radio', name: 'set-policy', value: val });
+    r.checked = policy === val;
+    r.onchange = () => { policy = val; recalc(); };
+    return el('label', { style: 'display:flex;align-items:center;gap:8px;cursor:pointer' }, r, label);
+  };
+  policyBox.appendChild(radio('replacement', 'Refund only the days a replacement pays for'));
+  const replRow = el('div', { style: 'display:flex;align-items:center;gap:8px;margin-left:24px' }, el('span', { class: 'muted' }, 'Replacement pays from'), replI);
+  policyBox.appendChild(replRow);
+  policyBox.appendChild(radio('all', 'Refund all unused days'));
+  policyBox.appendChild(radio('none', 'No refund'));
+  const unpaidRow = el('label', { for: 'setUnpaid', style: 'display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:8px' }, unpaidChk, 'Settle unpaid rent from the deposit');
+  const dedBox = el('div', { style: 'display:flex;flex-direction:column;gap:6px;margin-bottom:8px' });
+  const dedBtns = el('div', { style: 'display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap' },
+    button('+ Add deduction', { variant: 'sm ghost', onClick: () => { deductions.push({ reason: '', amount: '' }); drawDeductions(); } }),
+    (tenant.deposit || 0) > 0 ? button('Keep the whole deposit', { variant: 'sm ghost', onClick: () => { deductions.push({ reason: 'Deposit kept', amount: tenant.deposit }); drawDeductions(); } }) : null);
+  const breakdown = el('div', { style: 'font-size:13px;border-top:1px solid var(--border);padding-top:8px' });
+  card.appendChild(periodBox);
+  card.appendChild(policyBox);
+  card.appendChild(unpaidRow);
+  card.appendChild(el('div', { class: 'muted', style: 'font-size:12px;margin-bottom:4px' }, `Deductions from the deposit (${money(tenant.deposit || 0)} held) — damage, cleaning, termination fee…`));
+  card.appendChild(dedBox);
+  card.appendChild(dedBtns);
+  card.appendChild(breakdown);
+  body.appendChild(card);
 
-    const depWrap = el('div', { style: 'display:flex;flex-direction:column;gap:8px' });
-    depWrap.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:2px' },
-      `Deposit on record: ${formatMoney(tenant.deposit, currency, { maxFrac: 0 })}`
-    ));
-    const lW = el('label', { style: 'display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer' });
-    lW.appendChild(rWithheld);
-    lW.appendChild(document.createTextNode('Withheld — record as revenue'));
-    const lR = el('label', { style: 'display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer' });
-    lR.appendChild(rReturned);
-    lR.appendChild(document.createTextNode('Returned to tenant — no revenue impact'));
-    depWrap.appendChild(lW);
-    depWrap.appendChild(lR);
-    body.appendChild(formRow('Deposit', depWrap));
+  function drawDeductions() {
+    dedBox.innerHTML = '';
+    deductions.forEach((d, i) => {
+      const rI = input({ value: d.reason, placeholder: 'Reason, e.g. cleaning' });
+      const aI = input({ type: 'number', value: d.amount, min: 0, step: 1, placeholder: 'Amount' });
+      aI.style.maxWidth = '140px';
+      rI.oninput = () => { d.reason = rI.value; recalc(); };
+      aI.oninput = () => { d.amount = aI.value; recalc(); };
+      dedBox.appendChild(el('div', { style: 'display:flex;gap:6px;align-items:center' }, rI, aI,
+        button('✕', { variant: 'sm ghost', onClick: () => { deductions.splice(i, 1); drawDeductions(); } })));
+    });
+    recalc();
   }
 
-  // Additional payment (e.g. unpaid rent, damage, early-termination fee)
-  const addPayI = input({ type: 'number', value: 0, min: 0, step: 0.01 });
-  body.appendChild(formRow('Additional Payment', addPayI));
+  let settlement = null;
+  function recalc() {
+    const termDate = termDateI.value || today();
+    if (!replI.value || replI.dataset.auto === '1') { replI.value = addDaysYmd(termDate, 1); replI.dataset.auto = '1'; }
+    settlement = computeSettlement({ tenant, termDate, policy, replacementFrom: replI.value, deductions, includeUnpaidRent: unpaidChk.checked });
+    const s = settlement, pd = s.period;
+    periodBox.innerHTML = '';
+    if (!pd) periodBox.appendChild(el('div', { class: 'muted' }, 'No rent period of this lease covers that date — nothing to split.'));
+    else {
+      periodBox.appendChild(el('div', {}, `Rent period ${fmtDate(pd.from)} – ${fmtDate(pd.to)}: `,
+        el('strong', {}, pd.paid > 0 ? `${money(pd.paid)} paid` : 'not paid'),
+        el('span', { class: 'muted' }, ` · ${pd.usedDays} day(s) used, ${pd.unusedDays} unused`)));
+    }
+    const showPolicy = pd && pd.paid > 0 && pd.unusedDays > 0;
+    policyBox.style.display = showPolicy ? 'flex' : 'none';
+    replRow.style.display = policy === 'replacement' ? 'flex' : 'none';
+    unpaidRow.style.display = s.rentRows.length || (pd && pd.paid <= 0) ? 'flex' : 'none';
+    breakdown.innerHTML = '';
+    const line = (label, amt, strong) => el('div', { style: `display:flex;justify-content:space-between;padding:2px 0;${strong ? 'font-weight:700;font-size:15px;border-top:1px solid var(--border);margin-top:4px;padding-top:6px' : ''}` },
+      el('span', {}, label), el('span', {}, amt));
+    if (showPolicy) breakdown.appendChild(line(`Rent refund (${s.refundDays} of ${pd.unusedDays} unused day(s))`, `+${money(s.refund)}`));
+    if (s.deposit) breakdown.appendChild(line('Deposit', `+${money(s.deposit)}`));
+    for (const d of [...s.rentRows, ...s.deductions]) breakdown.appendChild(line(d.reason, `−${money(d.amount)}`));
+    breakdown.appendChild(s.tenantOwes > 0
+      ? line('Tenant owes', money(s.tenantOwes), true)
+      : line('To give back', money(s.toGiveBack), true));
+  }
+  termDateI.addEventListener('input', recalc);
+  termDateI.addEventListener('change', recalc);
+  replI.addEventListener('change', () => { replI.dataset.auto = ''; recalc(); });
+  unpaidChk.addEventListener('change', recalc);
+  recalc();
 
   // Comments
   const commentsT = textarea({ placeholder: 'Reason for termination, notes…' });
   commentsT.value = '';
   body.appendChild(formRow('Comments', commentsT));
 
-  const terminateBtn = button('Terminate Lease', { variant: 'primary', onClick: async () => {
-    if (Number(addPayI.value) < 0) { toast('Additional payment cannot be negative', 'danger'); return; }
-    const termDate    = termDateI.value || today();
-    const addPay      = Number(addPayI.value) || 0;
-    const comments    = commentsT.value.trim();
-    const finalAction = hasDeposit ? depositAction : 'none';
+  const terminateBtn = button('Terminate & record settlement', { variant: 'primary', onClick: async () => {
+    const termDate = termDateI.value || today();
+    const comments = commentsT.value.trim();
     if (tenant.leaseStartDate && termDate < tenant.leaseStartDate) {
       toast('Termination date cannot be before the lease start', 'danger'); return;
     }
-
+    if (deductions.some(d => d.amount !== '' && !(Number(d.amount) >= 0))) { toast('Deduction amounts must be positive numbers', 'danger'); return; }
+    recalc();
+    const s = settlement;
     const ok = await confirmDialog(
-      `Terminate the lease for "${tenant.name}" effective ${fmtDate(termDate)}?\nStatus will be set to Past and payments recorded accordingly.`,
+      `Terminate the lease for "${tenant.name}" effective ${fmtDate(termDate)}?\n\n` +
+      (s.tenantOwes > 0 ? `The tenant owes ${money(s.tenantOwes)}.` : `You give back ${money(s.toGiveBack)}.`) +
+      '\nStatus will be set to Past and the settlement recorded.',
       { danger: true, okLabel: 'Confirm Termination' }
     );
     if (!ok) return;
@@ -640,65 +705,32 @@ function openTerminationModal(tenant, onSave) {
     if (comments) {
       updatedNotes = (updatedNotes ? updatedNotes + '\n\n' : '') + `[Terminated ${termDate}] ${comments}`;
     }
-
-    // Update tenant record
-    upsert('tenants', {
-      ...tenant,
-      status:                    'past',
-      leaseEndDate:              termDate,
-      terminationDate:           termDate,
-      terminationDepositAction:  finalAction,
-      terminationComments:       comments || null,
-      notes:                     updatedNotes
+    const kept = Math.min(s.deposit, s.totalDeductions);
+    runBatch(() => {
+      upsert('tenants', {
+        ...tenant,
+        status:                    'past',
+        leaseEndDate:              termDate,
+        terminationDate:           termDate,
+        terminationDepositAction:  !s.deposit ? 'none' : kept <= 0 ? 'returned' : kept >= s.deposit ? 'withheld' : 'partial',
+        terminationComments:       comments || null,
+        terminationSettlement: {
+          policy: s.policy, replacementFrom: s.replacementFrom || null, refund: s.refund, refundDays: s.refundDays,
+          deposit: s.deposit, deductions: [...s.rentRows, ...s.deductions], toGiveBack: s.toGiveBack, tenantOwes: s.tenantOwes,
+          period: s.period ? { from: s.period.from, to: s.period.to, paid: s.period.paid } : null
+        },
+        notes:                     updatedNotes
+      });
+      recordSettlement(tenant, s);
     });
     // Lease over (as of today) and no other tenant → the flat is Vacant.
     const statusChange = syncPropertyStatus(tenant.propertyId);
     if (statusChange) toast(`${byId('properties', tenant.propertyId)?.name || 'Property'} is now ${PROPERTY_STATUSES[statusChange.to]?.label || statusChange.to}`, 'info', 5000);
 
-    // Deposit: withheld → revenue payment; returned → nothing to book. The
-    // deposit was never recorded as income, so booking its return as an opex
-    // expense understated profit; the tenant record keeps
-    // terminationDepositAction: 'returned' for reference.
-    //
-    // Distinct payment types (not 'rental') so these don't count as that
-    // month's rent in the rent schedule; stream stays long_term_rental and
-    // status 'paid' so they still count as revenue.
-    if (hasDeposit && finalAction === 'withheld') {
-      upsert('payments', {
-        id:         newId('pay'),
-        propertyId: tenant.propertyId,
-        tenantId:   tenant.id,
-        amount:     tenant.deposit,
-        currency,
-        date:       termDate,
-        type:       'deposit_withheld',
-        status:     'paid',
-        source:     'manual',
-        stream:     'long_term_rental',
-        notes:      `Deposit withheld — lease termination (${tenant.name})`
-      });
-    }
-
-    // Additional payment → revenue
-    if (addPay > 0) {
-      upsert('payments', {
-        id:         newId('pay'),
-        propertyId: tenant.propertyId,
-        tenantId:   tenant.id,
-        amount:     addPay,
-        currency,
-        date:       termDate,
-        type:       'termination_fee',
-        status:     'paid',
-        source:     'manual',
-        stream:     'long_term_rental',
-        notes:      `Additional payment — lease termination (${tenant.name})${comments ? ': ' + comments : ''}`
-      });
-    }
-
     toast(`Lease terminated for ${tenant.name}`, 'success');
     closeModal();
     if (onSave) onSave();
+    setTimeout(() => openSettlementSummary(byId('tenants', tenant.id) || tenant, s, onSave), 250);
   }});
   terminateBtn.style.background = '#ef4444';
   terminateBtn.style.borderColor = '#ef4444';
@@ -709,4 +741,39 @@ function openTerminationModal(tenant, onSave) {
     footer: [button('Cancel', { onClick: closeModal }), terminateBtn],
     large: true
   });
+}
+
+// After a termination: the settlement to send the tenant (their language),
+// and — when a replacement takes over — their new lease from that date.
+function openSettlementSummary(tenant, s, onSave) {
+  const text = settlementText(tenant, s, (n, c) => formatMoney(n, c, { maxFrac: 0 }), fmtDate);
+  const body = el('div', {});
+  body.appendChild(el('div', { style: 'font-size:15px;font-weight:700;margin-bottom:8px' },
+    s.tenantOwes > 0 ? `Tenant owes ${formatMoney(s.tenantOwes, s.currency, { maxFrac: 0 })}` : `To give back: ${formatMoney(s.toGiveBack, s.currency, { maxFrac: 0 })}`));
+  const ta = textarea({ rows: 8 });
+  ta.value = text;
+  ta.readOnly = true;
+  ta.style.width = '100%';
+  body.appendChild(ta);
+  const btns = el('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;margin-top:8px' });
+  btns.appendChild(button('Copy', { variant: 'sm', onClick: async () => {
+    try { await navigator.clipboard.writeText(text); toast('Copied', 'success'); } catch { ta.select(); toast('Select the text and copy it', 'warning'); }
+  } }));
+  const ml = messageLink(tenant, text);
+  if (ml && ml.via !== 'call') {
+    btns.appendChild(button(`Send via ${{ whatsapp: 'WhatsApp', viber: 'Viber', email: 'email' }[ml.via]}`, { variant: 'sm', onClick: async () => {
+      if (ml.copyText) { try { await navigator.clipboard.writeText(text); toast('Copied — paste it in the Viber chat', 'info'); } catch { /* shown above */ } }
+      window.open(ml.href, '_blank', 'noopener');
+    } }));
+  }
+  body.appendChild(btns);
+  if (s.policy === 'replacement' && s.replacementFrom && s.period && s.replacementFrom <= s.period.to) {
+    body.appendChild(el('div', { style: 'margin-top:14px;padding:10px 12px;border-radius:6px;background:var(--info-soft);font-size:13px' },
+      el('div', { style: 'margin-bottom:6px' }, `The replacement pays from ${fmtDate(s.replacementFrom)}. Add their lease so their rent is expected from that day.`),
+      button(`Create the new tenant from ${fmtDate(s.replacementFrom)}`, { variant: 'sm primary', onClick: () => {
+        closeModal();
+        setTimeout(() => openForm(null, onSave, { propertyId: tenant.propertyId, leaseStartDate: s.replacementFrom, monthlyRent: tenant.monthlyRent, currency: tenant.currency }), 220);
+      } })));
+  }
+  openModal({ title: 'Move-out settlement', body, footer: [button('Close', { onClick: closeModal })] });
 }
