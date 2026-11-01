@@ -174,3 +174,40 @@ test('sent notes from calendar links mark the right cycle once', () => {
   localStorage.setItem('bt_elec_sent', JSON.stringify([{ p: 'h1', at: '2026-11-04', c: 'v' }]));
   assert.equal(elec.applySentMarks('2026-11-04'), 0);
 });
+
+test('a sent note for a flat not set up yet is kept until its window exists', () => {
+  load();
+  localStorage.setItem('bt_elec_sent', JSON.stringify([{ p: 'h3', at: '2026-11-02', c: 'w' }]));
+  assert.equal(elec.applySentMarks('2026-11-03'), 0);
+  assert.equal(JSON.parse(localStorage.getItem('bt_elec_sent')).length, 1);
+  data.upsert('properties', { ...data.byId('properties', 'h3'), electricity: { windowFrom: 1, windowTo: 5, startMonth: '2026-11' } });
+  data.upsert('tenants', { id: 't9', propertyId: 'h3', name: 'Cili', leaseStartDate: '2025-01-01', monthlyRent: 1, status: 'active', phone: '+36301' });
+  assert.equal(elec.applySentMarks('2026-11-03'), 1);
+  assert.equal(localStorage.getItem('bt_elec_sent'), null);
+});
+
+test('calendar: says why each flat has no reminder', () => {
+  load();
+  data.upsert('tenants', { ...data.byId('tenants', 't2'), phone: '', preferredContact: '' });
+  const cal = elec.buildCalendar('https://app.example/', '2026-11-03');
+  assert.deepEqual(cal.skipped.map(s => [s.property.id, s.reason]), [
+    ['h2', 'no phone number or email on Bela Nagy'],
+    ['h3', 'reading window not set up']
+  ]);
+  data.upsert('tenants', { ...data.byId('tenants', 't1'), electricityPaidBy: 'tenant' });
+  assert.equal(elec.buildCalendar('https://app.example/', '2026-11-03').skipped[0].reason, 'tenant pays the electricity directly');
+});
+
+test('Google Calendar link: pre-filled repeating event in Hungarian time', () => {
+  load();
+  const ev = elec.buildCalendar('https://app.example/', '2026-11-03').events.find(e => e.property.id === 'h2');
+  const u = new URL(ev.google);
+  assert.equal(u.origin + u.pathname, 'https://calendar.google.com/calendar/render');
+  const q = u.searchParams;
+  assert.equal(q.get('action'), 'TEMPLATE');
+  assert.equal(q.get('text'), 'Electricity reading: Flat B (Bela)');
+  assert.equal(q.get('dates'), '20261210T090000/20261210T091500');
+  assert.equal(q.get('recur'), 'RRULE:FREQ=MONTHLY;INTERVAL=2;BYMONTHDAY=10;UNTIL=20271231T235959');
+  assert.equal(q.get('ctz'), 'Europe/Budapest');
+  assert.match(q.get('details'), /Tap to send it on WhatsApp: https:\/\/app\.example\/#go=/);
+});

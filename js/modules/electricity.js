@@ -72,16 +72,58 @@ function openSendAll(list, rerender) {
   openModal({ title: 'Send reading requests', body, footer: [button('Close', { onClick: closeModal })], onClose: rerender });
 }
 
-function downloadCalendar(rerender) {
+// Which calendar the reminders go to: Google Calendar (default — one
+// "add" link per flat) or a downloaded .ics file (Outlook / Apple).
+const calendarApp = () => (state.db.settings?.electricity?.calendarApp === 'file' ? 'file' : 'google');
+const calendarButtonLabel = () => (calendarApp() === 'google' ? 'Add to Google Calendar' : 'Add to calendar');
+const saveCalendarHash = cal => {
+  state.db.settings.electricity = { ...(state.db.settings.electricity || {}), calendarHash: cal.hash, calendarExportedAt: todayYmd() };
+  markDirty();
+};
+
+function addToCalendar(rerender) {
   const cal = buildCalendar(appBaseUrl());
-  if (!cal.events.length) { toast('No reminders to add — set up reading windows and tenants first', 'warning'); return; }
+  if (!cal.events.length) { showSkipped(cal.skipped, 'No reminders to add yet'); return; }
+  if (calendarApp() === 'file') return downloadCalendar(cal, rerender);
+  // Google: one tap per flat opens Google Calendar's event form, pre-filled.
+  const body = el('div', {});
+  body.appendChild(el('div', { class: 'muted', style: 'font-size:13px;margin-bottom:10px' },
+    'Tap each flat: Google Calendar opens with the repeating reminder filled in — press Save. ' +
+    (state.db.settings?.electricity?.calendarHash ? 'Updating? Delete the old "Electricity reading" events first (open one → Delete → All events), so they aren\'t doubled.' : '')));
+  for (const ev of cal.events) {
+    const a = el('a', { href: ev.google, target: '_blank', rel: 'noopener', class: 'btn sm', style: 'text-decoration:none' }, 'Add');
+    a.onclick = () => { a.textContent = '✓ Opened'; };
+    body.appendChild(el('div', { style: 'display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px' },
+      el('div', { style: 'flex:1' }, el('strong', {}, ev.property.name), el('span', { class: 'muted' }, ` · ${ev.tenant.name} · ${ev.via === 'whatsapp' ? 'WhatsApp' : ev.via === 'viber' ? 'Viber' : 'Email'}`)), a));
+  }
+  if (cal.skipped.length) {
+    body.appendChild(el('div', { class: 'muted', style: 'font-size:12px;margin-top:12px' }, 'Left out:'));
+    for (const s of cal.skipped) body.appendChild(el('div', { class: 'muted', style: 'font-size:12px' }, `${s.property.name} — ${s.reason}`));
+  }
+  openModal({ title: 'Add reminders to Google Calendar', body, footer: [button('Done', { variant: 'primary', onClick: () => { saveCalendarHash(cal); closeModal(); rerender(); } })] });
+}
+
+function downloadCalendar(cal, rerender) {
   const a = el('a', { href: URL.createObjectURL(new Blob([cal.ics], { type: 'text/calendar' })), download: 'electricity-reminders.ics' });
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-  state.db.settings.electricity = { ...(state.db.settings.electricity || {}), calendarHash: cal.hash, calendarExportedAt: todayYmd() };
-  markDirty();
+  saveCalendarHash(cal);
   toast(`Calendar file with ${cal.events.length} reminder(s) downloaded — open it on your phone to add it to your calendar`, 'success', 7000);
+  if (cal.skipped.length) showSkipped(cal.skipped, `${cal.events.length} reminder(s) downloaded — these flats were left out`);
   rerender();
+}
+
+// Which flats got no reminder, and why.
+function showSkipped(skipped, title) {
+  const body = el('div', {});
+  body.appendChild(el('div', { class: 'muted', style: 'font-size:13px;margin-bottom:8px' },
+    'A flat gets a reminder once it has a reading window (set up at the bottom of this page) and a current tenant with a phone number or email.'));
+  for (const s of skipped) {
+    body.appendChild(el('div', { style: 'display:flex;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px' },
+      el('div', { style: 'font-weight:600;min-width:180px' }, s.property.name), el('div', { class: 'muted' }, s.reason)));
+  }
+  if (!skipped.length) body.appendChild(el('div', { class: 'muted' }, 'No Hungarian properties found.'));
+  openModal({ title, body, footer: [button('Close', { onClick: closeModal })] });
 }
 
 let _filter = 'all';      // all | action | done
@@ -136,9 +178,9 @@ function build() {
   if (cal.events.length && es.calendarHash !== cal.hash) {
     wrap.appendChild(el('div', { class: 'card mb-16', style: 'padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:13px;border-left:3px solid var(--info)' },
       el('span', { style: 'flex:1;min-width:220px' }, es.calendarHash
-        ? '📅 Your calendar reminders are out of date (a reading window, tenant, number or the message changed). Download the file again and re-import it.'
+        ? `📅 Your calendar reminders are out of date (a reading window, tenant, number or the message changed). ${calendarApp() === 'google' ? 'Add them to Google Calendar again.' : 'Download the file again and re-import it.'}`
         : `📅 Get a phone reminder on the day each reading window opens, with a one-tap link that opens WhatsApp / Viber with the message (${cal.events.length} flat(s)).`),
-      button(es.calendarHash ? 'Download updated calendar' : 'Add to calendar', { variant: 'sm primary', onClick: () => downloadCalendar(rerender) })));
+      button(es.calendarHash ? (calendarApp() === 'google' ? 'Update Google Calendar' : 'Download updated calendar') : calendarButtonLabel(), { variant: 'sm primary', onClick: () => addToCalendar(rerender) })));
   }
 
   // ── Filters + sender account ──
@@ -163,7 +205,7 @@ function build() {
   }
   const due = dueMessages(today);
   if (due.length) bar.appendChild(button(`Send all due (${due.length})`, { variant: 'sm primary', onClick: () => openSendAll(due, rerender) }));
-  bar.appendChild(button('Add to calendar', { variant: 'sm ghost', onClick: () => downloadCalendar(rerender) }));
+  bar.appendChild(button(calendarButtonLabel(), { variant: 'sm ghost', onClick: () => addToCalendar(rerender) }));
   bar.appendChild(button('Messages & provider', { variant: 'sm ghost', onClick: () => openMessagingSettings(rerender) }));
   wrap.appendChild(bar);
 
@@ -374,6 +416,8 @@ function openMessagingSettings(rerender) {
   body.appendChild(formRow('Reading request message', tplT, 'Placeholders: {tenant} (first name), {property}, {from}, {to} (the reading window).'));
   const provS = select([{ value: '', label: '— none —' }, ...listActive('vendors').map(v => ({ value: v.id, label: v.name }))], cur.providerVendorId);
   body.appendChild(formRow('Electricity provider (vendor on the expense)', provS));
+  const calS = select([{ value: 'google', label: 'Google Calendar' }, { value: 'file', label: 'Outlook / Apple (download a calendar file)' }], calendarApp());
+  body.appendChild(formRow('Calendar for reminders', calS));
   renderAccounts();
   openModal({ title: 'Messages & provider', body, footer: [
     button('Cancel', { onClick: closeModal }),
@@ -381,7 +425,7 @@ function openMessagingSettings(rerender) {
       const clean = accounts.map(a => ({ ...a, label: (a.label || '').trim(), contact: (a.contact || '').trim() })).filter(a => a.label || a.contact);
       state.db.settings.electricity = { ...(state.db.settings.electricity || {}),
         accounts: clean, defaultAccountId: clean.some(a => a.id === defS.value) ? defS.value : (clean[0]?.id || ''),
-        template: tplT.value.trim() || cur.template, providerVendorId: provS.value };
+        template: tplT.value.trim() || cur.template, providerVendorId: provS.value, calendarApp: calS.value };
       markDirty();
       closeModal(); toast('Saved', 'success'); rerender();
     } })
