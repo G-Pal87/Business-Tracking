@@ -2,7 +2,7 @@
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, attachSortFilter, buildMultiSelect } from '../core/ui.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, generatePaymentSchedule, getContractExpiryFlag, getTenantDisplayStatus, getPeopleOwners, getPersonName, syncPropertyStatus } from '../core/data.js';
 import { CURRENCIES, PROPERTY_STATUSES } from '../core/config.js';
-import { isHungary } from '../core/electricity.js';
+import { isHungary, MESSAGE_LANGUAGES } from '../core/electricity.js';
 import { recordRentPaymentsBulk } from './payments.js';
 import { mkTh } from './analytics-helpers.js';
 import { thisMonthYm } from '../core/dates.js';
@@ -277,6 +277,9 @@ function openForm(existing, onSave) {
   // Who pays the electricity provider: we do on the tenant's behalf (default)
   // or the tenant directly — then the flat is left out of the Electricity tracker.
   const elecPaidS = select([{ value: 'us', label: "We pay (on the tenant's behalf)" }, { value: 'tenant', label: 'Tenant pays the provider directly' }], r.electricityPaidBy === 'tenant' ? 'tenant' : 'us');
+  // Language of the messages the app prepares for this tenant (e.g. the
+  // electricity reading request).
+  const langS = select(Object.entries(MESSAGE_LANGUAGES).map(([value, label]) => ({ value, label })), r.messageLanguage === 'hu' ? 'hu' : 'en');
   const prefRow = el('div', { style: 'display:flex;gap:16px;flex-wrap:wrap;padding:6px 0' }, ...prefChks.map(o => o.row));
   const propS       = select(ltProps.map(p => ({ value: p.id, label: p.name })), r.propertyId);
   const leaseStartI = input({ type: 'date', value: r.leaseStartDate || '' });
@@ -379,6 +382,7 @@ function openForm(existing, onSave) {
   body.appendChild(formRow('Name', nameI));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Phone', phoneI), formRow('Email', emailI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('WhatsApp number', whatsappI), formRow('Viber number', viberI)));
+  body.appendChild(formRow('Message language', langS));
   body.appendChild(formRow('Preferred contact', prefRow, 'Use international format for numbers (e.g. +36 30 123 4567) so the WhatsApp / Viber / call links work.'));
   body.appendChild(formRow('Property', propS));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Lease Start', leaseStartI), formRow('Lease End', leaseEndI)));
@@ -420,6 +424,7 @@ function openForm(existing, onSave) {
       viber: viberI.value.trim(),
       preferredContact: pref,
       electricityPaidBy: elecPaidS.value,
+      messageLanguage: langS.value,
       propertyId: propS.value,
       leaseStartDate: leaseStartI.value,
       leaseEndDate: leaseEndI.value,

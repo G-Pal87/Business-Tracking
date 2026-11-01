@@ -1,7 +1,7 @@
 // One-tap message links from the electricity calendar reminders:
 //   <app>/#go=<base64url JSON {c, n, e, t, p}>
 // c = channel ('w' WhatsApp, 'v' Viber, 'e' email), n = phone digits,
-// e = email, t = message text, p = property id.
+// e = email, s = email subject, t = message text, p = property id.
 // Runs before the app loads: notes "message sent for property p today" in
 // this browser (the app applies it to the reading cycle next time it opens
 // here), then hands over to WhatsApp / Viber / the mail app. Only these three
@@ -23,7 +23,7 @@
   if (d && d.c === 'w' && digits) target = 'https://wa.me/' + digits + '?text=' + encodeURIComponent(text);
   else if (d && d.c === 'v') target = 'viber://forward?text=' + encodeURIComponent(text);
   else if (d && d.c === 'e' && /^[^\s@<>"]+@[^\s@<>"]+$/.test(String(d.e || ''))) {
-    target = 'mailto:' + encodeURIComponent(d.e).replace(/%40/g, '@') + '?subject=' + encodeURIComponent('Electricity meter reading') + '&body=' + encodeURIComponent(text);
+    target = 'mailto:' + encodeURIComponent(d.e).replace(/%40/g, '@') + '?subject=' + encodeURIComponent(String(d.s || 'Electricity meter reading').slice(0, 120)) + '&body=' + encodeURIComponent(text);
   }
   if (!target) return; // malformed: just open the app
   if (d.p && /^[\w-]{1,64}$/.test(d.p)) {

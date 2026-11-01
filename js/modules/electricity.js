@@ -10,7 +10,7 @@ import { todayYmd, addDaysYmd } from '../core/dates.js';
 import {
   electricityProperties, elecConfig, cyclesFor, electricityRows, electricityActions, DEFAULT_ELEC_CONFIG,
   markReading, undoReading, markInvoicePaid, undoInvoice, markMessaged, messagingSettings, fillTemplate, messageLink, MESSAGE_LEAD_DAYS,
-  buildCalendar, applySentMarks
+  buildCalendar, applySentMarks, messageFor, MESSAGE_LANGUAGES, langOf
 } from '../core/electricity.js';
 
 export default {
@@ -31,7 +31,7 @@ const appBaseUrl = () => `${window.location.origin}${window.location.pathname}`;
 
 // Open the tenant's chat / email with the reading request and record it.
 async function sendTo(c) {
-  const text = fillTemplate(messagingSettings().template, c, fmtDate);
+  const text = messageFor(c);
   const ml = messageLink(c.tenant, text);
   if (!ml) return false;
   if (ml.copyText) {
@@ -60,10 +60,10 @@ function openSendAll(list, rerender) {
       return;
     }
     const c = list[i];
-    const ml = messageLink(c.tenant, fillTemplate(messagingSettings().template, c, fmtDate));
+    const ml = messageLink(c.tenant, messageFor(c));
     body.appendChild(el('div', { class: 'muted', style: 'font-size:12px;margin-bottom:6px' }, `${i + 1} of ${list.length}`));
     body.appendChild(el('div', { style: 'font-size:15px;font-weight:600' }, `${c.tenant.name} — ${c.property.name}`));
-    body.appendChild(el('div', { class: 'muted', style: 'font-size:12px;margin:2px 0 10px' }, `via ${VIA_LABEL[ml.via]} · window ${fmtDate(c.windowFrom)} – ${fmtDate(c.windowTo)}`));
+    body.appendChild(el('div', { class: 'muted', style: 'font-size:12px;margin:2px 0 10px' }, `via ${VIA_LABEL[ml.via]} · ${MESSAGE_LANGUAGES[langOf(c.tenant)]} · window ${fmtDate(c.windowFrom)} – ${fmtDate(c.windowTo)}`));
     body.appendChild(el('div', { style: 'display:flex;gap:8px' },
       button(`Open ${VIA_LABEL[ml.via]} & mark sent`, { variant: 'primary', onClick: async () => { await sendTo(c); i++; draw(); } }),
       button('Skip', { variant: 'ghost', onClick: () => { i++; draw(); } })));
@@ -94,7 +94,7 @@ function addToCalendar(rerender) {
     const a = el('a', { href: ev.google, target: '_blank', rel: 'noopener', class: 'btn sm', style: 'text-decoration:none' }, 'Add');
     a.onclick = () => { a.textContent = '✓ Opened'; };
     body.appendChild(el('div', { style: 'display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px' },
-      el('div', { style: 'flex:1' }, el('strong', {}, ev.property.name), el('span', { class: 'muted' }, ` · ${ev.tenant.name} · ${ev.via === 'whatsapp' ? 'WhatsApp' : ev.via === 'viber' ? 'Viber' : 'Email'}`)), a));
+      el('div', { style: 'flex:1' }, el('strong', {}, ev.property.name), el('span', { class: 'muted' }, ` · ${ev.tenant.name} · ${ev.via === 'whatsapp' ? 'WhatsApp' : ev.via === 'viber' ? 'Viber' : 'Email'} · ${MESSAGE_LANGUAGES[langOf(ev.tenant)]}`)), a));
   }
   if (cal.skipped.length) {
     body.appendChild(el('div', { class: 'muted', style: 'font-size:12px;margin-top:12px' }, 'Left out:'));
@@ -289,7 +289,7 @@ function renderRow(c, today, rerender) {
   const m = el('td', {});
   if (rec.messagedAt) m.appendChild(el('div', { class: 'muted', style: 'font-size:12px' }, `Sent ${fmtDate(rec.messagedAt)} via ${VIA_LABEL[rec.messagedVia] || rec.messagedVia}${rec.messagedFrom === 'calendar' ? ' (calendar link)' : ''}`));
   if (c.messageable) {
-    const text = fillTemplate(messagingSettings().template, c, fmtDate);
+    const text = messageFor(c);
     const ml = messageLink(c.tenant, text);
     if (!ml) m.appendChild(el('span', { class: 'muted', style: 'font-size:12px' }, 'No phone/email on the tenant'));
     else {
@@ -411,9 +411,15 @@ function openMessagingSettings(rerender) {
   body.appendChild(accHost);
   body.appendChild(button('+ Add account', { variant: 'sm ghost', onClick: () => { accounts.push({ id: newId('acc'), label: '', channel: 'whatsapp', contact: '' }); renderAccounts(); } }));
   body.appendChild(formRow('Default account', defS));
-  const tplT = textarea({ rows: 3 });
-  tplT.value = cur.template;
-  body.appendChild(formRow('Reading request message', tplT, 'Placeholders: {tenant} (first name), {property}, {from}, {to} (the reading window).'));
+  // One message per language; each tenant's form says which one they get.
+  const tplTs = {};
+  for (const [lang, label] of Object.entries(MESSAGE_LANGUAGES)) {
+    tplTs[lang] = textarea({ rows: 3 });
+    tplTs[lang].value = cur.templates[lang];
+    body.appendChild(formRow(`Reading request message — ${label}`, tplTs[lang], lang === 'en'
+      ? 'Placeholders: {tenant} (first name), {property}, {from}, {to} (the reading window). Each tenant gets the language set in their tenant form.'
+      : 'Ugyanazok a helyőrzők: {tenant}, {property}, {from}, {to}.'));
+  }
   const provS = select([{ value: '', label: '— none —' }, ...listActive('vendors').map(v => ({ value: v.id, label: v.name }))], cur.providerVendorId);
   body.appendChild(formRow('Electricity provider (vendor on the expense)', provS));
   const calS = select([{ value: 'google', label: 'Google Calendar' }, { value: 'file', label: 'Outlook / Apple (download a calendar file)' }], calendarApp());
@@ -425,7 +431,7 @@ function openMessagingSettings(rerender) {
       const clean = accounts.map(a => ({ ...a, label: (a.label || '').trim(), contact: (a.contact || '').trim() })).filter(a => a.label || a.contact);
       state.db.settings.electricity = { ...(state.db.settings.electricity || {}),
         accounts: clean, defaultAccountId: clean.some(a => a.id === defS.value) ? defS.value : (clean[0]?.id || ''),
-        template: tplT.value.trim() || cur.template, providerVendorId: provS.value, calendarApp: calS.value };
+        templates: Object.fromEntries(Object.keys(MESSAGE_LANGUAGES).map(l => [l, tplTs[l].value.trim() || cur.templates[l]])), providerVendorId: provS.value, calendarApp: calS.value };
       markDirty();
       closeModal(); toast('Saved', 'success'); rerender();
     } })

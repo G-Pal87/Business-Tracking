@@ -17,6 +17,15 @@ import { listActive, byId, upsert, softDelete, newId, currentLeases } from './da
 import { todayYmd, addDaysYmd, addMonthsYmd, daysInMonth } from './dates.js';
 
 export const DEFAULT_ELEC_CONFIG = { active: true, windowFrom: 1, windowTo: 5, everyMonths: 1, invoiceDelayDays: 10, startMonth: '' };
+// Reading-request message per language; each tenant picks one
+// (tenant.messageLanguage, default English).
+export const MESSAGE_LANGUAGES = { en: 'English', hu: 'Magyar' };
+export const DEFAULT_TEMPLATES = {
+  en: 'Hi {tenant}, could you please send me a photo of the electricity meter at {property} between {from} and {to}? Thank you!',
+  hu: 'Kedves {tenant}! Kérem, küldjön egy fotót a villanyóra állásáról ({property}) {from} és {to} között. Köszönöm!'
+};
+const EMAIL_SUBJECT = { en: 'Electricity meter reading', hu: 'Villanyóra-állás' };
+export const langOf = t => (t?.messageLanguage === 'hu' ? 'hu' : 'en');
 export const DEFAULT_READING_TEMPLATE =
   'Hi {tenant}, could you please send me a photo of the electricity meter at {property} between {from} and {to}? Thank you!';
 // How many days before the window opens the "message tenant" step shows.
@@ -174,7 +183,26 @@ export function markMessaged(c, { via, accountId }) {
 // ── Messages to tenants ───────────────────────────────────────────────────────
 export function messagingSettings() {
   const s = state.db.settings?.electricity || {};
-  return { accounts: s.accounts || [], defaultAccountId: s.defaultAccountId || '', template: s.template || DEFAULT_READING_TEMPLATE, providerVendorId: s.providerVendorId || '' };
+  // `template` was the single (English) text before languages were added.
+  const templates = { en: s.templates?.en || s.template || DEFAULT_TEMPLATES.en, hu: s.templates?.hu || DEFAULT_TEMPLATES.hu };
+  return { accounts: s.accounts || [], defaultAccountId: s.defaultAccountId || '', templates, template: templates.en, providerVendorId: s.providerVendorId || '' };
+}
+
+// Dates in the message, in the tenant's language: a real date in the app
+// ("Nov 1, 2026" / "november 1."), a day of the month in the repeating
+// calendar reminder ("the 1st" / "1.").
+const HU_MONTHS = ['január', 'február', 'március', 'április', 'május', 'június', 'július', 'augusztus', 'szeptember', 'október', 'november', 'december'];
+const EN_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function messageDate(ymd, lang, calendar) {
+  const d = Number(ymd.slice(8, 10)), m = Number(ymd.slice(5, 7)) - 1;
+  if (calendar) return lang === 'hu' ? `${d}.` : `the ${ordinal(d)}`;
+  return lang === 'hu' ? `${HU_MONTHS[m]} ${d}.` : `${EN_MONTHS[m]} ${d}, ${ymd.slice(0, 4)}`;
+}
+
+// The reading request for a cycle, in its tenant's language.
+export function messageFor(c, { calendar = false } = {}) {
+  const lang = langOf(c.tenant);
+  return fillTemplate(messagingSettings().templates[lang], c, d => messageDate(d, lang, calendar));
 }
 
 export function fillTemplate(tpl, c, fmt = d => d) {
@@ -195,7 +223,7 @@ export function messageLink(t, text) {
     whatsapp: wa && { via: 'whatsapp', href: `https://wa.me/${wa}?text=${encodeURIComponent(text)}` },
     // Viber can't pre-fill a chat with a given number: the text is copied and the chat opened.
     viber: vb && { via: 'viber', href: `viber://chat?number=%2B${vb}`, copyText: text },
-    email: t.email && { via: 'email', href: `mailto:${encodeURIComponent(t.email).replace(/%40/g, '@')}?subject=${encodeURIComponent('Electricity meter reading')}&body=${encodeURIComponent(text)}` },
+    email: t.email && { via: 'email', href: `mailto:${encodeURIComponent(t.email).replace(/%40/g, '@')}?subject=${encodeURIComponent(EMAIL_SUBJECT[langOf(t)])}&body=${encodeURIComponent(text)}` },
     call: digits(t.phone) && { via: 'call', href: `tel:+${digits(t.phone)}` }
   };
   const pref = t.preferredContact;
@@ -223,7 +251,7 @@ export function goLink(baseUrl, t, text, propertyId) {
   if (ml?.via === 'call') ml = messageLink({ ...t, preferredContact: '' }, text); // a call can't carry the message
   if (!ml || ml.via === 'call') return null;
   const n = ml.via === 'whatsapp' ? digits(t.whatsapp || t.phone) : ml.via === 'viber' ? digits(t.viber || t.phone) : '';
-  const payload = { c: ml.via[0], t: text, p: propertyId, ...(n ? { n } : {}), ...(ml.via === 'email' ? { e: t.email } : {}) };
+  const payload = { c: ml.via[0], t: text, p: propertyId, ...(n ? { n } : {}), ...(ml.via === 'email' ? { e: t.email, s: EMAIL_SUBJECT[langOf(t)] } : {}) };
   return { via: ml.via, url: `${baseUrl}#go=${b64url(JSON.stringify(payload))}` };
 }
 
@@ -248,7 +276,6 @@ const icsDate = ymd => ymd.replace(/-/g, '');
 // hash covers everything but the creation stamp, so the app can tell when a
 // downloaded file is stale; `skipped` says why a flat has no reminder.
 export function buildCalendar(baseUrl, today = todayYmd()) {
-  const tpl = messagingSettings().template;
   const events = [], body = [], skipped = [];
   for (const p of electricityProperties()) {
     const cfg = elecConfig(p);
@@ -260,7 +287,7 @@ export function buildCalendar(baseUrl, today = todayYmd()) {
     if (c.excluded) { skipped.push({ property: p, reason: 'tenant pays the electricity directly' }); continue; }
     if (!c.tenant) { skipped.push({ property: p, reason: 'no current tenant' }); continue; }
     const t = c.tenant;
-    const text = fillTemplate(tpl, c, d => `the ${ordinal(Number(d.slice(8, 10)))}`);
+    const text = messageFor(c, { calendar: true });
     const link = goLink(baseUrl, t, text, p.id);
     if (!link) { skipped.push({ property: p, reason: `no phone number or email on ${t.name || 'the tenant'}` }); continue; }
     const every = Math.min(Math.max(1, Math.floor(Number(cfg.everyMonths)) || 1), 12);

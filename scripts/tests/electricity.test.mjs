@@ -1,7 +1,7 @@
 import './_env.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-const { setDb } = await import('../../js/core/state.js');
+const { setDb, state } = await import('../../js/core/state.js');
 const data = await import('../../js/core/data.js');
 const elec = await import('../../js/core/electricity.js');
 
@@ -210,4 +210,28 @@ test('Google Calendar link: pre-filled repeating event in Hungarian time', () =>
   assert.equal(q.get('recur'), 'RRULE:FREQ=MONTHLY;INTERVAL=2;BYMONTHDAY=10;UNTIL=20271231T235959');
   assert.equal(q.get('ctz'), 'Europe/Budapest');
   assert.match(q.get('details'), /Tap to send it on WhatsApp: https:\/\/app\.example\/#go=/);
+});
+
+test('messages follow the tenant language (English default, Hungarian), in the app and in the calendar', () => {
+  load();
+  const cyc = () => elec.cyclesFor(data.byId('properties', 'h1'), '2026-11-03').find(c => c.period === '2026-11');
+  assert.equal(elec.messageFor(cyc()), 'Hi Anna, could you please send me a photo of the electricity meter at Flat A between Nov 1, 2026 and Nov 5, 2026? Thank you!');
+  data.upsert('tenants', { ...data.byId('tenants', 't1'), messageLanguage: 'hu' });
+  assert.equal(elec.messageFor(cyc()), 'Kedves Anna! Kérem, küldjön egy fotót a villanyóra állásáról (Flat A) november 1. és november 5. között. Köszönöm!');
+  assert.match(elec.messageFor(cyc(), { calendar: true }), /\(Flat A\) 1\. és 5\. között/);
+  const ics = elec.buildCalendar('https://app.example/', '2026-11-03').ics.replace(/\r\n /g, '');
+  const urls = [...ics.matchAll(/URL:(\S+)/g)].map(m => decodeGo(m[1]));
+  assert.match(urls.find(u => u.p === 'h1').t, /^Kedves Anna!/);
+  assert.match(urls.find(u => u.p === 'h2').t, /^Hi Bela,/);
+  // edited templates per language; the old single template still counts as English
+  data.upsert('tenants', { ...data.byId('tenants', 't2'), messageLanguage: 'en', email: 'b@example.test', preferredContact: 'email' });
+  state.db.settings.electricity = { template: 'Old EN {tenant}', templates: { hu: 'HU {tenant} {from}' } };
+  assert.equal(elec.messageFor(cyc()), 'HU Anna november 1.');
+  const c2 = elec.cyclesFor(data.byId('properties', 'h2'), '2026-11-03').at(-1);
+  assert.equal(elec.messageFor(c2), 'Old EN Bela');
+  assert.match(elec.messageLink(c2.tenant, 'x').href, /subject=Electricity%20meter%20reading/);
+  data.upsert('tenants', { ...data.byId('tenants', 't2'), messageLanguage: 'hu' });
+  assert.match(elec.messageLink(data.byId('tenants', 't2'), 'x').href, /subject=Villany%C3%B3ra-%C3%A1ll%C3%A1s/);
+  const l = elec.goLink('https://app.example/', data.byId('tenants', 't2'), 'x', 'h2');
+  assert.equal(decodeGo(l.url).s, 'Villanyóra-állás');
 });
