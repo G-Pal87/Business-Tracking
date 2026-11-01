@@ -101,12 +101,12 @@ function build() {
       { label: 'Name',         tip: "Tenant's full name." },
       { label: 'Property',     tip: 'The long-term rental property this tenant is leasing.' },
       { label: 'Owner',        tip: 'Which partner owns the property this tenant is leasing.' },
-      { label: 'Email',        tip: "Tenant's contact email address." },
-      { label: 'Phone',        tip: "Tenant's contact phone number." },
+      { label: 'Contact',      tip: 'Reach the tenant in one click — ★ marks their preferred way of contact.' },
       { label: 'Lease Start',  tip: "Date the tenant's lease began." },
       { label: 'Lease End',    tip: "Date the tenant's lease is scheduled to end, or \"Open-ended\" if no end date is set." },
       { label: 'Monthly Rent', right: true, tip: "The tenant's contracted monthly rent amount." },
       { label: 'Deposit',      right: true, tip: 'Security deposit amount held for this tenant.' },
+      { label: 'Payment Day',  right: true, tip: 'Day of the month the rent is due (a day past the month\'s end falls on its last day).' },
       { label: 'Status',       tip: "Whether the tenant's lease is Active, Past, or Prospective." },
       { label: '' }
     ];
@@ -123,12 +123,12 @@ function build() {
       tr.appendChild(el('td', { style: 'font-weight:500' }, r.name));
       tr.appendChild(el('td', {}, prop?.name || '—'));
       tr.appendChild(el('td', { class: 'muted' }, prop?.owner ? getPersonName(prop.owner) : '—'));
-      tr.appendChild(el('td', { class: 'muted' }, r.email || '—'));
-      tr.appendChild(el('td', { class: 'muted' }, r.phone || '—'));
+      tr.appendChild(el('td', {}, contactCell(r)));
       tr.appendChild(el('td', {}, r.leaseStartDate ? fmtDate(r.leaseStartDate) : '—'));
       tr.appendChild(el('td', {}, r.leaseEndDate ? fmtDate(r.leaseEndDate) : 'Open-ended'));
       tr.appendChild(el('td', { class: 'right num' }, r.monthlyRent ? formatMoney(r.monthlyRent, r.currency || 'EUR', { maxFrac: 0 }) : '—'));
       tr.appendChild(el('td', { class: 'right num muted' }, r.deposit ? formatMoney(r.deposit, r.currency || 'EUR', { maxFrac: 0 }) : '—'));
+      tr.appendChild(el('td', { class: 'right num' }, ordinalDay(r.paymentDayOfMonth)));
       const statusCell = el('td', {}, el('span', { class: `badge ${sm.css}` }, sm.label));
       const expiryFlag = getContractExpiryFlag(r);
       if (expiryFlag) {
@@ -164,6 +164,48 @@ function build() {
   renderTable();
   return wrap;
 }
+
+// Ways to reach a tenant. WhatsApp/Viber use their own number when set, else
+// the phone number (international format, e.g. +36 30 123 4567).
+const CONTACT_METHODS = { whatsapp: 'WhatsApp', viber: 'Viber', call: 'Call', email: 'Email' };
+const intlDigits = n => (n || '').replace(/[^\d+]/g, '').replace(/^00/, '+').replace(/\+/g, '');
+function contactLinks(t) {
+  const out = [];
+  const wa = t.whatsapp || t.phone, vb = t.viber || t.phone;
+  if (intlDigits(wa)) out.push({ key: 'whatsapp', href: `https://wa.me/${intlDigits(wa)}`, value: wa });
+  if (intlDigits(vb)) out.push({ key: 'viber', href: `viber://chat?number=%2B${intlDigits(vb)}`, value: vb });
+  if (intlDigits(t.phone)) out.push({ key: 'call', href: `tel:+${intlDigits(t.phone)}`, value: t.phone });
+  if (t.email) out.push({ key: 'email', href: `mailto:${encodeURIComponent(t.email).replace(/%40/g, '@')}`, value: t.email });
+  return out;
+}
+function contactCell(t) {
+  const links = contactLinks(t);
+  if (!links.length) return el('span', { class: 'muted' }, '—');
+  const pref = t.preferredContact;
+  links.sort((a, b) => (b.key === pref) - (a.key === pref));
+  const wrap = el('div', { style: 'display:flex;flex-direction:column;gap:2px' });
+  const chips = el('div', { style: 'display:flex;gap:4px;flex-wrap:wrap' });
+  for (const l of links) {
+    const isPref = l.key === pref;
+    const a = el('a', {
+      href: l.href, title: `${CONTACT_METHODS[l.key]}: ${l.value}`,
+      ...(l.key === 'whatsapp' ? { target: '_blank', rel: 'noopener' } : {}),
+      class: `badge${isPref ? ' info' : ''}`,
+      style: `text-decoration:none;cursor:pointer;${isPref ? 'font-weight:700' : ''}`
+    }, `${isPref ? '★ ' : ''}${CONTACT_METHODS[l.key]}`);
+    a.onclick = e => e.stopPropagation();
+    chips.appendChild(a);
+  }
+  wrap.appendChild(chips);
+  // The numbers/email as text too, so the table search finds them.
+  wrap.appendChild(el('div', { class: 'muted', style: 'font-size:11px' }, [t.phone, t.email].filter(Boolean).join(' · ')));
+  return wrap;
+}
+const ordinalDay = d => {
+  const n = Math.min(Math.max(Math.floor(Number(d)) || 1, 1), 31);
+  const suf = n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th';
+  return `${n}${suf}`;
+};
 
 // A renovation/vacant period left open-ended (no endDate) means "still
 // ongoing" on the property lifecycle timeline. Once a tenant's lease starts,
@@ -214,6 +256,19 @@ function openForm(existing, onSave) {
   const nameI       = input({ value: r.name, placeholder: 'Full name' });
   const phoneI      = input({ value: r.phone || '', placeholder: '+1 234 567 890' });
   const emailI      = input({ type: 'email', value: r.email || '', placeholder: 'tenant@email.com' });
+  const whatsappI   = input({ value: r.whatsapp || '', placeholder: 'Same as phone' });
+  const viberI      = input({ value: r.viber || '', placeholder: 'Same as phone' });
+  // Preferred way of contact: checkboxes that behave as a single choice
+  // (ticking one unticks the others; none ticked = no preference).
+  const prefChks = Object.entries(CONTACT_METHODS).map(([key, label]) => {
+    const c = el('input', { type: 'checkbox' });
+    c.checked = r.preferredContact === key;
+    c.dataset.method = key;
+    c.id = `tenPref_${key}_${r.id}`;
+    c.addEventListener('change', () => { if (c.checked) prefChks.forEach(o => { if (o.chk !== c) o.chk.checked = false; }); });
+    return { key, chk: c, row: el('label', { for: c.id, style: 'display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer' }, c, label) };
+  });
+  const prefRow = el('div', { style: 'display:flex;gap:16px;flex-wrap:wrap;padding:6px 0' }, ...prefChks.map(o => o.row));
   const propS       = select(ltProps.map(p => ({ value: p.id, label: p.name })), r.propertyId);
   const leaseStartI = input({ type: 'date', value: r.leaseStartDate || '' });
   const leaseEndI   = input({ type: 'date', value: r.leaseEndDate || '' });
@@ -282,6 +337,8 @@ function openForm(existing, onSave) {
 
   body.appendChild(formRow('Name', nameI));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Phone', phoneI), formRow('Email', emailI)));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('WhatsApp number', whatsappI), formRow('Viber number', viberI)));
+  body.appendChild(formRow('Preferred contact', prefRow, 'Use international format for numbers (e.g. +36 30 123 4567) so the WhatsApp / Viber / call links work.'));
   body.appendChild(formRow('Property', propS));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Lease Start', leaseStartI), formRow('Lease End', leaseEndI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Monthly Rent', rentI), formRow('Currency', currencyS)));
@@ -295,6 +352,9 @@ function openForm(existing, onSave) {
   const save = button('Save', { variant: 'primary', onClick: async () => {
     if (!nameI.value.trim()) { toast('Name is required', 'danger'); return; }
     if (!propS.value) { toast('Select a property', 'danger'); return; }
+    const pref = prefChks.find(o => o.chk.checked)?.key || '';
+    const prefMissing = { whatsapp: !(whatsappI.value.trim() || phoneI.value.trim()), viber: !(viberI.value.trim() || phoneI.value.trim()), call: !phoneI.value.trim(), email: !emailI.value.trim() }[pref];
+    if (pref && prefMissing) { toast(`Preferred contact is ${CONTACT_METHODS[pref]} — add ${pref === 'email' ? 'an email address' : 'a phone number'} first`, 'danger'); return; }
     if (Number(rentI.value) <= 0) { toast('Monthly rent must be greater than zero', 'danger'); return; }
     if (Number(depositI.value) < 0) { toast('Deposit cannot be negative', 'danger'); return; }
     if (leaseStartI.value && leaseEndI.value && leaseEndI.value < leaseStartI.value) {
@@ -306,6 +366,9 @@ function openForm(existing, onSave) {
       name: nameI.value.trim(),
       phone: phoneI.value.trim(),
       email: emailI.value.trim(),
+      whatsapp: whatsappI.value.trim(),
+      viber: viberI.value.trim(),
+      preferredContact: pref,
       propertyId: propS.value,
       leaseStartDate: leaseStartI.value,
       leaseEndDate: leaseEndI.value,
