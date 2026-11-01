@@ -1,7 +1,7 @@
 // Expenses module
 import { state, runBatch } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, buildMultiSelect } from '../core/ui.js';
-import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, resolveExpenseFields, totalRemaining, fifoDeduct, restoreInventoryStock, findVendorRateByPeriod, getPeopleOwners, getPersonName, isDeductibleExpense } from '../core/data.js';
+import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, resolveExpenseFields, totalRemaining, fifoDeduct, restoreInventoryStock, findVendorRateByPeriod, getPeopleOwners, getPersonName, isDeductibleExpense, expenseDeleteWarning } from '../core/data.js';
 import * as charts from '../core/charts.js';
 import { CURRENCIES, EXPENSE_CATEGORIES, EXPENSE_CATEGORY_GROUPS, ACCOUNTING_TYPES, COST_CATEGORIES, RECURRENCE_TYPES, STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
@@ -155,7 +155,10 @@ function build() {
   const deleteSelBtn = button('', { variant: 'danger', onClick: async () => {
     const count = selected.size;
     if (!count) return;
-    const ok = await confirmDialog(`Delete ${count} expense(s)? This cannot be undone.`, { danger: true, okLabel: `Delete ${count}` });
+    const linked = [...selected].map(id => expenseDeleteWarning(byId('expenses', id))).filter(Boolean);
+    const ok = await confirmDialog(`Delete ${count} expense(s)? This cannot be undone.` +
+      (linked.length ? `\n\n⚠ ${linked.length} of them ${linked.length === 1 ? 'is' : 'are'} linked:\n\n${linked.join('\n\n')}` : ''),
+      { danger: true, okLabel: `Delete ${count}` });
     if (!ok) return;
     runBatch(() => {
       for (const id of [...selected]) {
@@ -459,7 +462,8 @@ function build() {
       }
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openForm(r) }));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
-        const ok = await confirmDialog('Delete expense?', { danger: true, okLabel: 'Delete' });
+        const warn = expenseDeleteWarning(r);
+        const ok = await confirmDialog(warn ? `Delete expense?\n\n⚠ ${warn}` : 'Delete expense?', { danger: true, okLabel: warn ? 'Delete anyway' : 'Delete' });
         if (ok) { restoreInventoryStock(r); softDelete('expenses', r.id); _expFieldCache = new Map(); toast('Deleted', 'success'); renderTable(); }
       }}));
       tr.appendChild(actions);

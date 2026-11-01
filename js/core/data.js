@@ -279,7 +279,34 @@ export function softDelete(collection, id) {
       upsert('payments', rest);
     }
   }
+  // An electricity invoice marked paid booked this expense: without it the
+  // invoice is unpaid again in the Electricity tracker.
+  if (collection === 'expenses' && item.electricityCycleId) {
+    const c = byId('electricityCycles', item.electricityCycleId);
+    if (c && !c.deletedAt && c.expenseId === item.id) {
+      const { paidAt, invoiceAmount, invoiceCurrency, invoiceNo, expenseId, ...rest } = c;
+      upsert('electricityCycles', rest);
+    }
+  }
   return true;
+}
+
+// What else deleting this expense changes, for the delete confirmation:
+// a paid electricity invoice goes back to unpaid; rent a vendor collected
+// loses its vendor link. '' when the expense stands alone.
+export function expenseDeleteWarning(e) {
+  if (!e) return '';
+  const notes = [];
+  const c = e.electricityCycleId ? byId('electricityCycles', e.electricityCycleId) : null;
+  if (c && !c.deletedAt && c.expenseId === e.id && c.paidAt) {
+    const p = byId('properties', c.propertyId);
+    notes.push(`This expense is the payment of the electricity invoice for ${p?.name || 'a property'} (${c.period}), marked paid on ${c.paidAt}. Deleting it marks that invoice as unpaid again in Electricity.`);
+  }
+  const pay = e.linkedPaymentId ? byId('payments', e.linkedPaymentId) : null;
+  if (pay && !pay.deletedAt && pay.linkedExpenseId === e.id) {
+    notes.push('This expense records rent a vendor collected in cash. The rent payment stays; it just loses the "collected by" link.');
+  }
+  return notes.join('\n\n');
 }
 
 // ── Rent collected by a vendor ───────────────────────────────────────────────

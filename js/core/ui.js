@@ -265,7 +265,7 @@ export function confirmDialog(message, { title = 'Confirm', okLabel = 'OK', dang
     const cancelBtn = el('button', { class: 'btn' }, 'Cancel');
     const { close } = openModal({
       title,
-      body: el('div', {}, message),
+      body: el('div', { style: 'white-space:pre-line' }, message),
       footer: [cancelBtn, okBtn],
       onClose: () => settle(false)
     });

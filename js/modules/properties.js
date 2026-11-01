@@ -5,7 +5,7 @@ import {
   upsert, softDelete, listActive, listActivePayments, byId, newId, formatEUR, formatMoney, toEUR,
   propertyRevenueEUR, propertyExpensesEUR, renovationCapexEUR, propertyROI, applyFilters, isCapEx,
   getPeopleOwners, getPersonName, getTenantDisplayStatus, restoreInventoryStock, removeReservationExpenses, buildReservationExpenseRefMap,
-  propertyValuations, propertyValueMetrics, propertyValueAt
+  propertyValuations, propertyValueMetrics, propertyValueAt, expenseDeleteWarning
 } from '../core/data.js';
 import { PROPERTY_TYPES, PROPERTY_STATUSES, CURRENCIES, OWNERS, VENDOR_ROLES, PROPERTY_CHANNELS, EXPENSE_CATEGORIES, VALUATION_SOURCES } from '../core/config.js';
 import { openExpenseForm } from './expenses.js';
@@ -563,7 +563,8 @@ export function openDetail(id, preStats) {
         setTimeout(() => openExpenseForm(e.id, { onSave: () => openDetail(id) }), 220);
       }}));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
-        const ok = await confirmDialog('Delete this expense?', { danger: true, okLabel: 'Delete' });
+        const warn = expenseDeleteWarning(e);
+        const ok = await confirmDialog(warn ? `Delete this expense?\n\n⚠ ${warn}` : 'Delete this expense?', { danger: true, okLabel: warn ? 'Delete anyway' : 'Delete' });
         if (!ok) return;
         restoreInventoryStock(e);
         softDelete('expenses', e.id);

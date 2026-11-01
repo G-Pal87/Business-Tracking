@@ -302,3 +302,19 @@ test('invoice reminder carries the provider portal link (latest vendor used for 
   data.upsert('vendors', { ...data.byId('vendors', 'v2'), website: 'https://www.eon.hu/new' });
   assert.notEqual(elec.buildCalendar('https://app.example/', '2026-11-03').hashes.h1, cal.hashes.h1);
 });
+
+test('deleting the expense of a paid invoice warns, and puts the invoice back to unpaid', () => {
+  load();
+  const cyc = () => elec.cyclesFor(data.byId('properties', 'h1'), '2026-11-20').find(c => c.period === '2026-11');
+  elec.markReading(cyc(), { date: '2026-11-03', kwh: 5 });
+  elec.markInvoicePaid(cyc(), { date: '2026-11-14', amount: 100, invoiceNo: 'X1' });
+  const e = data.byId('expenses', cyc().record.expenseId);
+  assert.match(data.expenseDeleteWarning(e), /electricity invoice for Flat A \(2026-11\), marked paid on 2026-11-14\. Deleting it marks that invoice as unpaid again/);
+  assert.equal(data.expenseDeleteWarning({ id: 'x', amount: 1 }), '');
+  data.softDelete('expenses', e.id);
+  const c = cyc();
+  assert.equal(c.invoice, 'due');                      // unpaid again
+  assert.equal(c.reading, 'done');                     // the reading stays
+  assert.ok(!c.record.paidAt && !c.record.expenseId && !c.record.invoiceNo);
+  assert.equal(c.record.kwh, 5);
+});
