@@ -297,7 +297,7 @@ export function buildCalendar(baseUrl, today = todayYmd()) {
     const end = [t.leaseEndDate, t.terminationDate].filter(Boolean).sort()[0];
     const first = (t.name || '').split(' ')[0] || 'tenant';
     const how = link.via === 'whatsapp' ? `Tap to send it on WhatsApp: ${link.url}`
-      : link.via === 'viber' ? `Tap to open Viber with the message, then pick ${first}: ${link.url}`
+      : link.via === 'viber' ? `Tap, then "Copy message & open Viber chat" — paste and send to ${first}: ${link.url}`
       : `Tap to email it: ${link.url}`;
     const title = `Electricity reading: ${p.name} (${first})`;
     const details = `Ask ${first} for the meter reading (window day ${cfg.windowFrom}–${cfg.windowTo}).\n\n${how}\n\nMessage:\n${text}`;
