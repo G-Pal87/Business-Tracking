@@ -30,6 +30,8 @@ export const DEFAULT_READING_TEMPLATE =
   'Hi {tenant}, could you please send me a photo of the electricity meter at {property} between {from} and {to}? Thank you!';
 // How many days before the window opens the "message tenant" step shows.
 export const MESSAGE_LEAD_DAYS = 3;
+// The invoice-payment reminder fires this many days before the rent payment day.
+export const INVOICE_LEAD_DAYS = 3;
 
 export const isHungary = p => /^(hungary|magyarország|magyarorszag|hu)$/i.test(String(p?.country || '').trim());
 
@@ -317,7 +319,7 @@ export function buildCalendar(baseUrl, today = todayYmd(), { propertyIds = null 
     const until = end ? `;UNTIL=${icsDate(end)}T235959` : '';
     const body = [];
     const add = (kind, start, day, title, details, url, extra) => {
-      const rrule = `RRULE:FREQ=MONTHLY;INTERVAL=${every};${byMonthDay(day)}${until}`;
+      const rrule = `RRULE:FREQ=MONTHLY;INTERVAL=${every};${typeof day === 'string' ? day : byMonthDay(day)}${until}`;
       const dt = `${icsDate(start)}T090000`;
       body.push('BEGIN:VEVENT', `UID:elec-${kind === 'reading' ? '' : 'invoice-'}${p.id}@business-tracking`, `DTSTART:${dt}`, 'DURATION:PT15M', rrule,
         `SUMMARY:${icsEscape(title)}`, `DESCRIPTION:${icsEscape(details)}`, `URL:${url}`,
@@ -348,12 +350,31 @@ export function buildCalendar(baseUrl, today = todayYmd(), { propertyIds = null 
           `Ask ${first} for the meter reading (${win}).\n\n${how}\n\nMessage:\n${text}`, link.url, { tenant: t, via: link.via });
       }
     }
-    // Invoice check & pay
-    const due = addDaysYmd(c.windowTo, Math.max(0, Number(cfg.invoiceDelayDays) || 0));
+    // Invoice check & pay: INVOICE_LEAD_DAYS before the tenant's rent payment
+    // day (the first one after the reading window closes), repeating with the
+    // cycle; with no tenant, the window end + the invoice delay.
+    let due, rule, when;
+    const payDay = t ? Math.min(Math.max(Math.floor(Number(t.paymentDayOfMonth)) || 1, 1), 31) : 0;
+    if (payDay) {
+      // The first date must fall on the repeat rule's day: day (payDay − 3) of
+      // the month, or for rent due on the 1st–3rd that many days back into the
+      // month before.
+      const dueIn = ym => (payDay > INVOICE_LEAD_DAYS ? dayIn(ym, payDay - INVOICE_LEAD_DAYS) : addDaysYmd(dayIn(ym, payDay), -INVOICE_LEAD_DAYS));
+      due = dueIn(c.windowTo.slice(0, 7));
+      if (due < c.windowTo) due = dueIn(addMonthsYm(c.windowTo.slice(0, 7), 1));
+      // Rent due on the 1st–3rd → the reminder falls at the end of the month before
+      // (BYMONTHDAY=-1 is the last day).
+      rule = payDay > INVOICE_LEAD_DAYS ? Number(payDay - INVOICE_LEAD_DAYS) : `BYMONTHDAY=${payDay - INVOICE_LEAD_DAYS - 1}`;
+      when = `${INVOICE_LEAD_DAYS} days before ${(t.name || '').split(' ')[0] || 'the tenant'}'s rent payment day (the ${ordinal(payDay)})`;
+    } else {
+      due = addDaysYmd(c.windowTo, Math.max(0, Number(cfg.invoiceDelayDays) || 0));
+      rule = Number(due.slice(8, 10));
+      when = `about ${cfg.invoiceDelayDays} days after the reading`;
+    }
     const prov = providerFor(p);
     const site = /^https?:\/\//i.test(prov?.website || '') ? prov.website : '';
-    add('invoice', due, Number(due.slice(8, 10)), `Pay electricity invoice: ${p.name}`,
-      `The ${prov ? `${prov.name} ` : 'provider\'s '}invoice for ${p.name} should be in (about ${cfg.invoiceDelayDays} days after the reading).` +
+    add('invoice', due, rule, `Pay electricity invoice: ${p.name}`,
+      `Reminder ${when}: the ${prov ? `${prov.name} ` : 'provider\'s '}invoice for ${p.name} should be in.` +
       (site ? `\n\nCheck and pay it on ${prov.name}: ${site}` : '') +
       `\n\nThen mark it paid in the app (it's booked as an Electricity expense): ${appUrl}`, site || appUrl, { provider: prov || null });
     hashes[p.id] = strHash(body.join('\n'));

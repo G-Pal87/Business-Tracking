@@ -132,9 +132,10 @@ test('calendar: one repeating event per tracked flat, with a one-tap link and th
   // h1 prefers Viber, h2 WhatsApp; the message uses day ordinals
   const urls = [...ics.matchAll(/URL:(\S+)/g)].map(m => m[1]).filter(u => u.includes('#go='));
   const viber = decodeGo(urls[0]), wa = decodeGo(urls[1]);
-  // invoice reminders: window end + delay (5 Nov + 10 days; 12 Dec + 7 days), linking to the app
-  assert.match(ics, /UID:elec-invoice-h1@business-tracking\r\nDTSTART:20261115T090000\r\nDURATION:PT15M\r\nRRULE:FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=15;UNTIL=20271231T235959/);
-  assert.match(ics, /UID:elec-invoice-h2@business-tracking\r\nDTSTART:20261219T090000\r\nDURATION:PT15M\r\nRRULE:FREQ=MONTHLY;INTERVAL=2;BYMONTHDAY=19;/);
+  // invoice reminders: 3 days before the tenant's rent payment day, after the window closes
+  // (no Payment Day set → the 1st: 3 days before the 1st = 3rd-last day of the month before)
+  assert.match(ics, /UID:elec-invoice-h1@business-tracking\r\nDTSTART:20261128T090000\r\nDURATION:PT15M\r\nRRULE:FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=-3;UNTIL=20271231T235959/);
+  assert.match(ics, /UID:elec-invoice-h2@business-tracking\r\nDTSTART:20261229T090000\r\nDURATION:PT15M\r\nRRULE:FREQ=MONTHLY;INTERVAL=2;BYMONTHDAY=-3;/);
   assert.match(ics, /SUMMARY:Pay electricity invoice: Flat A/);
   assert.match(ics, /URL:https:\/\/app\.example\/#electricity/);
   assert.deepEqual(Object.keys(cal.hashes), ['h1', 'h2']);
@@ -250,7 +251,7 @@ test('calendar for one flat only; per-flat hashes change independently', () => {
   assert.deepEqual(one.events.map(e => `${e.kind}:${e.property.id}`), ['reading:h2', 'invoice:h2']);
   const all = elec.buildCalendar('https://app.example/', '2026-11-03');
   assert.equal(one.hashes.h2, all.hashes.h2);
-  data.upsert('properties', { ...data.byId('properties', 'h1'), electricity: { ...data.byId('properties', 'h1').electricity, invoiceDelayDays: 12 } });
+  data.upsert('tenants', { ...data.byId('tenants', 't1'), paymentDayOfMonth: 20 });
   const after = elec.buildCalendar('https://app.example/', '2026-11-03');
   assert.notEqual(after.hashes.h1, all.hashes.h1);
   assert.equal(after.hashes.h2, all.hashes.h2);
@@ -328,4 +329,25 @@ test('every set-up flat gets both reminders, even with no tenant (read the meter
   const ics = cal.ics.replace(/\r\n /g, '');
   assert.match(ics, /SUMMARY:Electricity reading: Flat C \(no tenant\)\r\nDESCRIPTION:No tenant at the moment: read the meter yourself/);
   assert.match(ics, /UID:elec-h3@business-tracking/);
+});
+
+test('invoice reminder: 3 days before the rent payment day; window end + delay without a tenant', () => {
+  load();
+  const inv = () => elec.buildCalendar('https://app.example/', '2026-11-03').ics.replace(/\r\n /g, '').split('BEGIN:VEVENT').find(b => /UID:elec-invoice-h1@/.test(b));
+  data.upsert('tenants', { ...data.byId('tenants', 't1'), paymentDayOfMonth: 13 });
+  assert.match(inv(), /DTSTART:20261110T090000/);                        // window ends 5 Nov → rent 13 Nov → 10 Nov
+  assert.match(inv(), /BYMONTHDAY=10;/);
+  assert.match(inv(), /Reminder 3 days before Anna's rent payment day \(the 13th\)/);
+  data.upsert('tenants', { ...data.byId('tenants', 't1'), paymentDayOfMonth: 7 });
+  assert.match(inv(), /DTSTART:20261204T090000/);                        // 4 Nov is before the window closes → next month
+  data.upsert('tenants', { ...data.byId('tenants', 't1'), paymentDayOfMonth: 3 });
+  assert.match(inv(), /DTSTART:20261130T090000/); assert.match(inv(), /BYMONTHDAY=-1;/); // last day of the month before
+  data.upsert('tenants', { ...data.byId('tenants', 't1'), paymentDayOfMonth: 2 });
+  assert.match(inv(), /BYMONTHDAY=-2;/);
+  data.upsert('tenants', { ...data.byId('tenants', 't1'), paymentDayOfMonth: 31 });
+  assert.match(inv(), /DTSTART:20261128T090000/); assert.match(inv(), /BYMONTHDAY=28;/); // the 28th every month (31 − 3)
+  // no tenant → window end + invoice delay (5 Nov + 10)
+  data.softDelete('tenants', 't1');
+  assert.match(inv(), /DTSTART:20261115T090000/);
+  assert.match(inv(), /about 10 days after the reading/);
 });
