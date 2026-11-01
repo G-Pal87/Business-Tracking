@@ -324,24 +324,32 @@ export function buildCalendar(baseUrl, today = todayYmd(), { propertyIds = null 
         'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape(title)}`, 'TRIGGER:PT0M', 'END:VALARM', 'END:VEVENT');
       events.push({ kind, property: p, ...extra, google: googleCalendarLink({ title, details, start: dt, end: `${icsDate(start)}T091500`, rrule }) });
     };
-    // Reading request
-    if (!t) skipped.push({ property: p, reason: 'no current tenant — no reading reminder' });
-    else {
+    // Reading request — always: with the one-tap message link when there's a
+    // tenant to ask, else a plain reminder to read / chase the meter.
+    const appUrl = `${baseUrl}#electricity`;
+    const win = `window day ${cfg.windowFrom}–${cfg.windowTo}`;
+    if (!t) {
+      skipped.push({ property: p, reason: 'no current tenant — reading reminder without a message link' });
+      add('reading', c.windowFrom, Number(cfg.windowFrom), `Electricity reading: ${p.name} (no tenant)`,
+        `No tenant at the moment: read the meter yourself and submit it in the provider's system (${win}), then mark it submitted in the app: ${appUrl}`, appUrl, {});
+    } else {
       const text = messageFor(c, { calendar: true });
       const link = goLink(baseUrl, t, text, p.id);
-      if (!link) skipped.push({ property: p, reason: `no phone number or email on ${t.name || 'the tenant'} — no reading reminder` });
-      else {
-        const first = (t.name || '').split(' ')[0] || 'tenant';
+      const first = (t.name || '').split(' ')[0] || 'tenant';
+      if (!link) {
+        skipped.push({ property: p, reason: `no phone number or email on ${t.name || 'the tenant'} — reading reminder without a message link` });
+        add('reading', c.windowFrom, Number(cfg.windowFrom), `Electricity reading: ${p.name} (${first})`,
+          `Ask ${first} for the meter reading (${win}). Add their phone or email in the tenant form to get a one-tap message link here.\n\nMessage:\n${text}\n\nThen mark it submitted in the app: ${appUrl}`, appUrl, { tenant: t });
+      } else {
         const how = link.via === 'whatsapp' ? `Tap to send it on WhatsApp: ${link.url}`
           : link.via === 'viber' ? `Tap, then "Copy message & open Viber chat" — paste and send to ${first}: ${link.url}`
           : `Tap to email it: ${link.url}`;
         add('reading', c.windowFrom, Number(cfg.windowFrom), `Electricity reading: ${p.name} (${first})`,
-          `Ask ${first} for the meter reading (window day ${cfg.windowFrom}–${cfg.windowTo}).\n\n${how}\n\nMessage:\n${text}`, link.url, { tenant: t, via: link.via });
+          `Ask ${first} for the meter reading (${win}).\n\n${how}\n\nMessage:\n${text}`, link.url, { tenant: t, via: link.via });
       }
     }
     // Invoice check & pay
     const due = addDaysYmd(c.windowTo, Math.max(0, Number(cfg.invoiceDelayDays) || 0));
-    const appUrl = `${baseUrl}#electricity`;
     const prov = providerFor(p);
     const site = /^https?:\/\//i.test(prov?.website || '') ? prov.website : '';
     add('invoice', due, Number(due.slice(8, 10)), `Pay electricity invoice: ${p.name}`,

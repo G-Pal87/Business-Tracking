@@ -105,13 +105,14 @@ function addToCalendar(rerender, propertyIds = null, title = null) {
     const a = el('a', { href: ev.google, target: '_blank', rel: 'noopener', class: 'btn sm', style: 'text-decoration:none' }, 'Add');
     a.onclick = () => { a.textContent = '✓ Opened'; };
     const what = ev.kind === 'reading'
-      ? `Reading request · ${ev.tenant.name} · ${ev.via === 'whatsapp' ? 'WhatsApp' : ev.via === 'viber' ? 'Viber' : 'Email'} · ${MESSAGE_LANGUAGES[langOf(ev.tenant)]}`
+      ? (ev.via ? `Reading request · ${ev.tenant.name} · ${ev.via === 'whatsapp' ? 'WhatsApp' : ev.via === 'viber' ? 'Viber' : 'Email'} · ${MESSAGE_LANGUAGES[langOf(ev.tenant)]}`
+        : `Reading reminder${ev.tenant ? ` · ${ev.tenant.name}` : ' · no tenant'} (no message link)`)
       : `Invoice check & pay${ev.provider ? ` · ${ev.provider.name}${ev.provider.website ? ' (with website link)' : ' — add its website under Vendors to get the link'}` : ''}`;
     body.appendChild(el('div', { style: 'display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px' },
       el('div', { style: 'flex:1' }, el('strong', {}, ev.property.name), el('span', { class: 'muted' }, ` · ${what}`)), a));
   }
   if (cal.skipped.length) {
-    body.appendChild(el('div', { class: 'muted', style: 'font-size:12px;margin-top:12px' }, 'Left out:'));
+    body.appendChild(el('div', { class: 'muted', style: 'font-size:12px;margin-top:12px' }, 'Notes:'));
     for (const s of cal.skipped) body.appendChild(el('div', { class: 'muted', style: 'font-size:12px' }, `${s.property.name} — ${s.reason}`));
   }
   openModal({ title: title || 'Add reminders to Google Calendar', body, footer: [

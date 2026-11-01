@@ -153,7 +153,8 @@ test('calendar: skips flats whose tenant pays, with no tenant, or no way to mess
   data.upsert('tenants', { ...data.byId('tenants', 't1'), electricityPaidBy: 'tenant' });
   data.upsert('tenants', { ...data.byId('tenants', 't2'), phone: '', preferredContact: '' });
   const evs = elec.buildCalendar('https://app.example/', '2026-11-03').events;
-  assert.deepEqual(evs.map(e => `${e.kind}:${e.property.id}`), ['invoice:h2']); // h1: tenant pays; h2: no way to message, invoice still reminded
+  assert.deepEqual(evs.map(e => `${e.kind}:${e.property.id}`), ['reading:h2', 'invoice:h2']); // h1: tenant pays; h2: both reminders, no message link
+  assert.equal(evs[0].via, undefined);
   load();
   data.upsert('properties', { ...data.byId('properties', 'h2'), electricity: { windowFrom: 31, windowTo: 31, everyMonths: 1, startMonth: '2026-11' } });
   const ics = elec.buildCalendar('https://app.example/', '2026-11-03').ics.replace(/\r\n /g, '');
@@ -198,7 +199,7 @@ test('calendar: says why each flat has no reminder', () => {
   data.upsert('tenants', { ...data.byId('tenants', 't2'), phone: '', preferredContact: '' });
   const cal = elec.buildCalendar('https://app.example/', '2026-11-03');
   assert.deepEqual(cal.skipped.map(s => [s.property.id, s.reason]), [
-    ['h2', 'no phone number or email on Bela Nagy — no reading reminder'],
+    ['h2', 'no phone number or email on Bela Nagy — reading reminder without a message link'],
     ['h3', 'reading window not set up']
   ]);
   data.upsert('tenants', { ...data.byId('tenants', 't1'), electricityPaidBy: 'tenant' });
@@ -317,4 +318,14 @@ test('deleting the expense of a paid invoice warns, and puts the invoice back to
   assert.equal(c.reading, 'done');                     // the reading stays
   assert.ok(!c.record.paidAt && !c.record.expenseId && !c.record.invoiceNo);
   assert.equal(c.record.kwh, 5);
+});
+
+test('every set-up flat gets both reminders, even with no tenant (read the meter yourself)', () => {
+  load();
+  data.upsert('properties', { ...data.byId('properties', 'h3'), electricity: { windowFrom: 1, windowTo: 5, startMonth: '2026-11', invoiceDelayDays: 10 } });
+  const cal = elec.buildCalendar('https://app.example/', '2026-11-03');
+  assert.deepEqual(cal.events.map(e => `${e.kind}:${e.property.id}`), ['reading:h1', 'invoice:h1', 'reading:h2', 'invoice:h2', 'reading:h3', 'invoice:h3']);
+  const ics = cal.ics.replace(/\r\n /g, '');
+  assert.match(ics, /SUMMARY:Electricity reading: Flat C \(no tenant\)\r\nDESCRIPTION:No tenant at the moment: read the meter yourself/);
+  assert.match(ics, /UID:elec-h3@business-tracking/);
 });
