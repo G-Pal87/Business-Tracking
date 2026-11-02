@@ -21,11 +21,12 @@ export const CALSYNC = {
   event: 'calendar-sync',
   secretName: 'CALENDAR_SYNC_KEY',
   workflowFile: 'sync-calendars.yml',
-  // The workflow rewrites calendars.json at least this often even when nothing
-  // changed, so "last checked" stays meaningful; the app flags a property as
-  // stale past STALE_HOURS (the workflow runs every 2 hours).
-  heartbeatHours: 12,
-  staleHours: 14
+  // The workflow (every 30 minutes) rewrites calendars.json at least this
+  // often even when nothing changed, so "last checked" stays meaningful; the
+  // app flags a property as stale past staleHours (heartbeat + slack for
+  // GitHub's late scheduled starts).
+  heartbeatHours: 3,
+  staleHours: 6
 };
 
 const subtle = () => globalThis.crypto.subtle;

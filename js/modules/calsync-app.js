@@ -110,7 +110,7 @@ export async function refreshNow(onUpdate) {
   if (!calSyncSettings().secretKey) { openSetup(onUpdate); return; }
   try { await pushCalendarSources({ force: true }); } catch (e) { toast(`Could not share the calendar links with GitHub: ${e.message}`, 'danger', 8000); return; }
   const ok = await dispatchRepoEvent(CALSYNC.event);
-  if (!ok) { toast('GitHub refused to start the calendar sync (check the token in Settings → GitHub). It still runs on its own every 2 hours.', 'danger', 10000); return; }
+  if (!ok) { toast('GitHub refused to start the calendar sync (check the token in Settings → GitHub). It still runs on its own every 30 minutes.', 'danger', 10000); return; }
   toast('Asked GitHub to fetch the Airbnb calendars now — usually done within a minute or two.', 'info', 7000);
   pullSyncedCalendars().then(() => onUpdate?.(), () => {});
   const startedAt = Date.now();
@@ -189,7 +189,7 @@ export function renderSyncBanner(container, onUpdate) {
   }
   // Set up but nothing synced yet (whatever the last read said).
   if (!props.some(p => calendarOf(p.id)?.syncedAt || calendarOf(p.id)?.syncError)) {
-    container.appendChild(card('#f59e0b', el('span', { style: 'flex:1;min-width:240px' }, '⏳ Calendar sync is set up — waiting for its first run on GitHub (it runs every 2 hours). If it never arrives, check that the CALENDAR_SYNC_KEY secret is set.'),
+    container.appendChild(card('#f59e0b', el('span', { style: 'flex:1;min-width:240px' }, '⏳ Calendar sync is set up — waiting for its first run on GitHub (it runs every 30 minutes). If it never arrives, check that the CALENDAR_SYNC_KEY secret is set.'),
       button('Run it now', { variant: 'sm', onClick: () => refreshNow(onUpdate) }),
       button('Show the key', { variant: 'sm ghost', onClick: () => openSetup(onUpdate) })));
     return;
@@ -213,7 +213,7 @@ export function syncLine(propertyId, onUpdate) {
   if (s.state === 'never') wrap.appendChild(el('span', { class: 'muted' }, 'Not synced from Airbnb yet.'));
   else if (s.state === 'error') wrap.appendChild(el('span', { style: 'color:var(--danger,#ef4444)' }, `Airbnb sync failed: ${s.error}${s.syncedAt ? ` · last good sync ${ago(s.syncedAt)}` : ''}`));
   else if (s.state === 'stale') wrap.appendChild(el('span', { style: 'color:var(--warning,#d97706)' }, `Not synced from Airbnb since ${ago(s.syncedAt)} — check the "Sync Airbnb calendars" run on GitHub.`));
-  else wrap.appendChild(el('span', { class: 'muted' }, `Synced from Airbnb ${ago(s.syncedAt)} (GitHub, every 2 h).`));
+  else wrap.appendChild(el('span', { class: 'muted' }, `Synced from Airbnb ${ago(s.syncedAt)} (GitHub, every 30 min).`));
   wrap.appendChild(refresh);
   return wrap;
 }
@@ -227,7 +227,7 @@ export function openSetup(onUpdate) {
   const secretsUrl = owner && repo ? `https://github.com/${owner}/${repo}/settings/secrets/actions/new` : '';
   const body = el('div', { style: 'font-size:13px;line-height:1.5' });
   body.appendChild(el('div', { style: 'margin-bottom:10px' },
-    'GitHub fetches your Airbnb calendars every 2 hours (browsers can\'t), keeps them encrypted next to your data, and closes newly booked nights on the website — even when nobody has the app open. It needs one secret:'));
+    'GitHub fetches your Airbnb calendars every 30 minutes (browsers can\'t), keeps them encrypted next to your data, and closes newly booked nights on the website — even when nobody has the app open. It needs one secret:'));
   const keyBox = el('input', { class: 'input', readonly: true, value: key, style: 'font-family:monospace;font-size:12px;width:100%' });
   keyBox.onclick = () => keyBox.select();
   body.appendChild(el('ol', { style: 'padding-left:18px;margin:0 0 10px' },

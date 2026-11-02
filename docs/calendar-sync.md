@@ -2,7 +2,7 @@
 
 Browsers can't read Airbnb calendar links: Airbnb sends no CORS headers, and the
 app doesn't send the links (which contain an access token) to public proxies.
-So a scheduled GitHub workflow fetches them server-side, every 2 hours, for every
+So a scheduled GitHub workflow fetches them server-side, every 30 minutes, for every
 short-term property — whether or not anyone has the app open.
 
 ## How it works
@@ -10,7 +10,7 @@ short-term property — whether or not anyone has the app open.
 ```
 app ──(encrypted calendar links)──▶ data branch: <data dir>/ical-sources.json
                                             │
-             .github/workflows/sync-calendars.yml (every 2 h, or "Refresh")
+             .github/workflows/sync-calendars.yml (every 30 min, or "Refresh")
              scripts/calendar-sync.mjs: fetches each Airbnb calendar directly
                                             │
 app ◀──(encrypted calendars)────── data branch: <data dir>/calendars.json
@@ -29,7 +29,10 @@ app ◀──(encrypted calendars)────── data branch: <data dir>/cal
   from the app's pricing when it publishes.
 - A cut-off or empty response never wipes stored bookings (`mergeBlocksChecked`).
 - `calendars.json` is rewritten when bookings or errors change, and at least
-  every 12 hours otherwise, so "last checked" stays meaningful.
+  every 3 hours otherwise, so "last checked" stays meaningful.
+- It runs in its own concurrency group: GitHub keeps one pending run per group
+  and cancels the older pending one, so sharing backup/squash's group could
+  cancel a queued backup. Free on a public repository (GitHub-hosted runners).
 
 ## Set up (once)
 
@@ -51,7 +54,7 @@ Rates and in **Needs attention → Data to check**:
 | Waiting for the first run | The key exists but no run has finished; check the secret is set. |
 | Key doesn't match | The `CALENDAR_SYNC_KEY` secret differs from the app's key — copy it again. |
 | Sync failed: … | Airbnb refused or returned no calendar (e.g. an expired link — export a new one in Airbnb). |
-| Not synced since … | No successful fetch for 14+ hours — check the "Sync Airbnb calendars" runs under GitHub → Actions. |
+| Not synced since … | No successful check for 6+ hours — check the "Sync Airbnb calendars" runs under GitHub → Actions. |
 
 A property that can't be fetched also fails the workflow run, so GitHub emails
 the repository owner.
