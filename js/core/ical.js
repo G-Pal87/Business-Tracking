@@ -276,5 +276,5 @@ export async function fetchICal(url) {
       // Not a calendar (error page etc.) — try the next proxy.
     } catch (e) { /* try the next proxy */ }
   }
-  throw new Error('Failed to fetch iCal — direct request and all proxy fallbacks failed');
+  throw new Error('Airbnb blocked the direct request and every public proxy failed — set up your own calendar proxy (Settings → STR / Airbnb, docs/ical-proxy.md)');
 }

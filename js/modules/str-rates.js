@@ -22,6 +22,8 @@ const _icalRefreshing = new Set();
 // Last automatic attempt per property (in memory). A failed fetch leaves the
 // record's updatedAt stale, so without this every rerender re-fetched.
 const _icalLastAttempt = new Map();
+// Why the last calendar refresh of a property failed ({ msg, at }), shown under its calendar.
+const _icalLastError = new Map();
 const ICAL_RETRY_MS = 10 * 60 * 1000;
 
 export default {
@@ -1513,6 +1515,11 @@ function renderCalendar(card, { histMap, suggest, blocked, blockInfo, year, mont
     if (!refreshing) refreshLnk.onclick = () => autoRefreshICal(_propId, onAutoRefresh, { force: true });
     infoWrap.appendChild(refreshLnk);
     body.appendChild(infoWrap);
+    const lastErr = _icalLastError.get(_propId);
+    if (lastErr && !refreshing) {
+      body.appendChild(el('div', { style: 'margin-top:4px;font-size:11px;color:var(--danger,#ef4444)' },
+        `Last refresh failed (${new Date(lastErr.at).toLocaleTimeString()}): ${lastErr.msg}. Upcoming Airbnb bookings may be missing here and on the website.`));
+    }
   } else if (refreshing) {
     body.appendChild(el('div', { style: 'margin-top:8px;font-size:11px;color:var(--text-muted)' },
       'Fetching Airbnb calendar…'));
@@ -1817,6 +1824,7 @@ async function autoRefreshICal(propertyId, onDone, { force = false } = {}) {
   _icalLastAttempt.set(propertyId, Date.now());
 
   _icalRefreshing.add(propertyId);
+  let failed = false;
   try {
     const text   = await fetchICal(url);
     const events = parseICal(text);
@@ -1846,9 +1854,22 @@ async function autoRefreshICal(propertyId, onDone, { force = false } = {}) {
       ? { ...existing, url, blocks, importedAt: todayStr() }
       : { id: newId('stc'), propertyId, url, blocks, importedAt: todayStr() };
     upsert('strCalendars', rec);
+    _icalLastError.delete(propertyId);
     onDone?.();
-  } catch { /* silent — leave existing record intact */ }
-  finally { _icalRefreshing.delete(propertyId); }
+  } catch (err) {
+    // Leave the stored calendar intact, but don't fail silently: remember why
+    // (shown under the calendar) and say so when the refresh was clicked.
+    failed = true;
+    const msg = err?.message || 'the calendar could not be fetched';
+    _icalLastError.set(propertyId, { msg, at: Date.now() });
+    console.warn('[ical] refresh failed:', msg);
+    if (force) toast(`Airbnb calendar refresh failed: ${msg}`, 'danger', 10000);
+  } finally {
+    _icalRefreshing.delete(propertyId);
+    // Redraw after a click or a failure, so "refreshing…" never stays on
+    // screen and the failure shows (a failed automatic retry waits ICAL_RETRY_MS).
+    if (force || failed) onDone?.();
+  }
 }
 
 
