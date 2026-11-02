@@ -9,6 +9,7 @@ import { publishSnapshotBranch, fetchBranchFileText, dispatchRepoEvent } from '.
 import { AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
 import { openPaymentForm } from './payments.js';
 import { todayYmd, addDaysYmd, addMonthsYmd } from '../core/dates.js';
+import { calendarSyncTick, renderSyncBanner, syncLine, refreshNow, calSyncSettings } from './calsync-app.js';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const WEEKDAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
@@ -1269,6 +1270,8 @@ function build() {
   const kpiRow     = el('div', { style: 'display:grid;grid-template-columns:repeat(7,1fr);gap:12px;margin-bottom:16px' });
   const calCard    = el('div', { class: 'card' });
   const analysisEl = el('div', {});
+  const syncBanner = el('div', {});
+  wrap.appendChild(syncBanner);
   wrap.appendChild(gapBanner);
   wrap.appendChild(kpiRow);
   wrap.appendChild(calCard);
@@ -1287,9 +1290,10 @@ function build() {
     const blocked   = blockedDateSet(_propId);
     const blockInfo = classifyBlockedDates(_propId);
 
-    // Auto-refresh iCal whenever URL is known but record is missing or stale (>4 h).
-    // Silently re-fetches and calls rerender() on success so blocks update automatically.
-    autoRefreshICal(_propId, rerender);
+    // With an own calendar proxy this browser also re-fetches every property's
+    // calendar when stale (>4 h); otherwise the GitHub calendar sync does it.
+    if (hasOwnProxy()) for (const p of stProps) autoRefreshICal(p.id, rerender);
+    renderSyncBanner(syncBanner, rerender);
 
     // Plain loop — Math.min(...rates) spreads every historic night onto the
     // call stack. Math.min/max per step keeps the exact same semantics.
@@ -1306,8 +1310,15 @@ function build() {
   }
 
   rerender();
+  // Opening the page brings every property's calendar up to date from the
+  // GitHub sync (one read covers all), at most every 2 minutes.
+  if (Date.now() - _lastSyncTick > 2 * 60e3) {
+    _lastSyncTick = Date.now();
+    calendarSyncTick().then(() => { if (wrap.isConnected) rerender(); }, () => {});
+  }
   return wrap;
 }
+let _lastSyncTick = 0;
 
 function shiftMonth(anchor, delta) {
   let [y, m] = anchor.split('-').map(Number);
@@ -1507,22 +1518,30 @@ function renderCalendar(card, { histMap, suggest, blocked, blockInfo, year, mont
 
   const calInfo    = calendarFor(_propId);
   const refreshing = _icalRefreshing.has(_propId);
-  if (calInfo?.importedAt) {
+  const calUrl     = byId('properties', _propId)?.airbnbCalUrl || calInfo?.url || '';
+  // Refresh: the GitHub calendar sync for every property (and, with an own
+  // calendar proxy, this browser fetches too).
+  const refreshAll = () => {
+    if (hasOwnProxy()) autoRefreshICal(_propId, onAutoRefresh, { force: true });
+    if (calSyncSettings().secretKey || !hasOwnProxy()) refreshNow(onAutoRefresh);
+  };
+  if (calUrl) {
     const infoWrap = el('div', { style: 'margin-top:8px;font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:8px;flex-wrap:wrap' });
-    infoWrap.appendChild(el('span', {}, `Calendar imported ${fmtDate(calInfo.importedAt)} · ${(calInfo.blocks || []).length} reserved period(s).`));
+    infoWrap.appendChild(el('span', {}, calInfo?.importedAt
+      ? `Calendar imported ${fmtDate(calInfo.importedAt)} · ${(calInfo.blocks || []).length} reserved period(s).`
+      : 'Airbnb calendar not imported yet.'));
     const refreshLnk = el('span', { style: `color:var(--accent,#6366f1);cursor:${refreshing ? 'default' : 'pointer'};text-decoration:underline` },
       refreshing ? 'refreshing…' : 'Refresh');
-    if (!refreshing) refreshLnk.onclick = () => autoRefreshICal(_propId, onAutoRefresh, { force: true });
+    if (!refreshing) refreshLnk.onclick = refreshAll;
     infoWrap.appendChild(refreshLnk);
     body.appendChild(infoWrap);
+    const line = syncLine(_propId);
+    if (line) body.appendChild(line);
     const lastErr = _icalLastError.get(_propId);
     if (lastErr && !refreshing) {
       body.appendChild(el('div', { style: 'margin-top:4px;font-size:11px;color:var(--danger,#ef4444)' },
-        `Last refresh failed (${new Date(lastErr.at).toLocaleTimeString()}): ${lastErr.msg}. Upcoming Airbnb bookings may be missing here and on the website.`));
+        `Last refresh through your calendar proxy failed (${new Date(lastErr.at).toLocaleTimeString()}): ${lastErr.msg}.`));
     }
-  } else if (refreshing) {
-    body.appendChild(el('div', { style: 'margin-top:8px;font-size:11px;color:var(--text-muted)' },
-      'Fetching Airbnb calendar…'));
   } else {
     body.appendChild(el('div', {
       style: 'margin-top:10px;padding:8px 12px;border-radius:6px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);font-size:12px;display:flex;align-items:center;gap:8px'
@@ -1812,11 +1831,13 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
 // Silently re-fetches iCal whenever the URL is known but the strCalendars record
 // is missing or older than 4 hours. Called on every rerender so the blocks are
 // always current and the record self-heals after any sync overwrite.
+const hasOwnProxy = () => !!state.db.settings?.airbnb?.icalProxyUrl;
+
 async function autoRefreshICal(propertyId, onDone, { force = false } = {}) {
   if (_icalRefreshing.has(propertyId)) return;
   const prop     = byId('properties', propertyId);
   const existing = calendarFor(propertyId);
-  const url      = existing?.url || prop?.airbnbCalUrl || '';
+  const url      = prop?.airbnbCalUrl || existing?.url || '';
   if (!url) return;
   const freshMs  = 4 * 60 * 60 * 1000; // 4-hour cache window
   if (!force && existing && (Date.now() - (existing.updatedAt || 0)) < freshMs) return;

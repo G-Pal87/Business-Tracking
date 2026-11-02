@@ -1,10 +1,8 @@
-# Private calendar proxy
+# Private calendar proxy (optional)
 
-Browsers can't fetch Airbnb calendar links directly, because Airbnb sends no CORS headers. Each link also contains an access token (`?s=…`): anyone who has the link can read the calendar for good.
+Airbnb calendars are fetched by the **GitHub calendar sync** (see [calendar-sync.md](calendar-sync.md)) — no proxy is needed. Browsers can't fetch Airbnb calendar links directly (Airbnb sends no CORS headers), and each link contains an access token (`?s=…`), so the app never sends them to public CORS proxies.
 
-Without a proxy of your own, the app falls back to public CORS proxies (corsproxy.io, allorigins, cors.eu.org). Those services receive the full link and could log it or change the calendar they return.
-
-A free Cloudflare Worker fixes both problems. It takes about five minutes to set up.
+If you also want this browser to fetch calendars itself (e.g. instantly when you open STR Daily Rates), you can run your own free Cloudflare Worker. It takes about five minutes to set up.
 
 ## 1. Create the Worker
 
@@ -52,7 +50,6 @@ The Worker never logs or stores the link. It only accepts requests from your app
 
 1. Copy the Worker's address, for example `https://calendar-proxy.<you>.workers.dev`.
 2. In the app, open **Settings → STR / Airbnb** and paste it into **Calendar proxy**.
-3. Turn off **Allow public CORS proxies**.
 4. Save, then import a calendar on one property to check that it works.
 
 ## 3. Replace the old links

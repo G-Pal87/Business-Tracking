@@ -1,0 +1,76 @@
+name: Sync Airbnb calendars
+
+# Fetches every short-term property's Airbnb calendar server-side (browsers
+# can't: Airbnb sends no CORS headers) and shares it with the app through an
+# encrypted file on the data branch; also closes newly booked nights in the
+# public rates feed and asks the Short-Term-Rentals site to rebuild, so the
+# website stays right while nobody has the app open. See docs/calendar-sync.md.
+#
+# Needs the CALENDAR_SYNC_KEY secret (shown in the app: STR Daily Rates →
+# "Set up automatic calendar sync"). Without it the job does nothing.
+# A property that can't be fetched fails the run (GitHub emails the owner)
+# and is flagged in the app.
+on:
+  schedule:
+    - cron: '17 */2 * * *'
+  # The app's "Refresh" asks for a run now.
+  repository_dispatch:
+    types: [calendar-sync]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Writes the data branch (like backup.yml / squash-data.yml) and may publish
+# the rates feed (publish-rates-feed.sh pushes with a lease, so it can't
+# overwrite a newer feed the app published meanwhile).
+concurrency:
+  group: data-branch-writers
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      - name: Find the data branch
+        id: loc
+        env:
+          REPO: ${{ github.repository }}
+        run: python3 .github/scripts/data-location.py data/github-config.json --repo "$REPO" >> "$GITHUB_OUTPUT"
+
+      - name: Sync calendars
+        id: sync
+        env:
+          CALENDAR_SYNC_KEY: ${{ secrets.CALENDAR_SYNC_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          DATA_BRANCH: ${{ steps.loc.outputs.branch }}
+          DB_PATH: ${{ steps.loc.outputs.path }}
+        run: node scripts/calendar-sync.mjs
+
+      # Runs even when a calendar failed (the step above exits 1 then), so the
+      # properties that did sync still reach the website.
+      - name: Publish closed nights to the rates feed
+        if: always() && steps.sync.outputs.feed_changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          bash .github/scripts/publish-rates-feed.sh
+
+      - name: Ask the Short-Term-Rentals site to rebuild
+        if: always() && steps.sync.outputs.feed_changed == 'true'
+        env:
+          STR_DEPLOY_TOKEN: ${{ secrets.STR_DEPLOY_TOKEN }}
+        run: |
+          if [ -z "$STR_DEPLOY_TOKEN" ]; then echo "STR_DEPLOY_TOKEN not set — the site picks the feed up on its own poll."; exit 0; fi
+          curl -sS --fail-with-body -X POST https://api.github.com/repos/G-Pal87/Short-Term-Rentals/dispatches \
+            -H "Authorization: token $STR_DEPLOY_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Content-Type: application/json" \
+            -d '{"event_type":"rates-updated"}'

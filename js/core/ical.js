@@ -222,59 +222,24 @@ function looksLikeICal(body) {
 //   - with no private proxy, the public CORS proxies are tried in turn —
 //     unless they are explicitly switched off (=== false), in which case this
 //     fails with a clear message.
+// Only through an own calendar proxy (docs/ical-proxy.md): browsers can't
+// read Airbnb links directly (no CORS; the app's CSP doesn't allow it either).
 export async function fetchICal(url) {
-  try {
-    const res = await fetch(url);
-    if (res.ok) {
-      const body = await res.text();
-      if (looksLikeICal(body)) return body;
-    }
-  } catch (e) { /* CORS — expected, fall through to proxies */ }
-
+  // Public CORS proxies are no longer used: they saw every private calendar
+  // link and stopped working for Airbnb. Calendars come from the GitHub
+  // calendar sync (js/core/calsync.js); an own proxy remains optional.
   const af = state.db?.settings?.airbnb || {};
-  // icalPublicFallback, not allowPublicIcalProxies: the old settings screen
-  // saved allowPublicIcalProxies=true by default, so only the new field
-  // records a deliberate opt-in to public proxies next to an own proxy.
-  const publicOptIn = af.icalPublicFallback === true;
-  if (af.icalProxyUrl) {
-    try {
-      const res = await fetch(af.icalProxyUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url })
-      });
-      if (!res.ok) throw new Error(`Calendar proxy returned ${res.status} — check the proxy URL in Settings → STR / Airbnb`);
-      const body = await res.text();
-      if (!looksLikeICal(body)) throw new Error('Calendar proxy did not return a calendar');
-      return body;
-    } catch (err) {
-      if (!publicOptIn) throw err;
-      if (typeof console !== 'undefined') console.warn(`[ical] private proxy failed (${err.message}) — trying public proxies (allowed in settings)`);
-    }
-  } else if (af.allowPublicIcalProxies === false) {
-    throw new Error('Calendar could not be fetched: public proxies are switched off and no own proxy is set (Settings → STR / Airbnb).');
+  if (!af.icalProxyUrl) {
+    throw new Error('No calendar proxy is set — Airbnb calendars come from the GitHub calendar sync');
   }
-
-  const proxies = [
-    `https://corsproxy.io/?${encodeURIComponent(url)}`,
-    `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-    `https://cors.eu.org/${url}`,
-  ];
-  for (const proxyUrl of proxies) {
-    try {
-      const res = await fetch(proxyUrl);
-      if (!res.ok) continue;
-      const body = await res.text();
-      // allorigins.win wraps the response in { contents: "…" }
-      if (proxyUrl.includes('allorigins')) {
-        let contents;
-        try { contents = JSON.parse(body).contents; } catch { continue; }
-        if (looksLikeICal(contents)) return contents;
-        continue;
-      }
-      if (looksLikeICal(body)) return body;
-      // Not a calendar (error page etc.) — try the next proxy.
-    } catch (e) { /* try the next proxy */ }
-  }
-  throw new Error('Airbnb blocked the direct request and every public proxy failed — set up your own calendar proxy (Settings → STR / Airbnb, docs/ical-proxy.md)');
+  const res = await fetch(af.icalProxyUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url })
+  });
+  if (!res.ok) throw new Error(`Calendar proxy returned ${res.status} — check the proxy URL in Settings → STR / Airbnb`);
+  const body = await res.text();
+  if (!looksLikeICal(body)) throw new Error('Calendar proxy did not return a calendar');
+  return body;
 }
+

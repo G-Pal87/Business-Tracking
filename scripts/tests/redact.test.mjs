@@ -66,3 +66,11 @@ test('redacts WhatsApp / Viber numbers and messaging-account contacts', () => {
   for (const leak of ['999 0001', '999 0002', '999 0003', 'behind the door']) assert.ok(!json.includes(leak), `leaked: ${leak}`);
   assert.equal(out.electricityCycles[0].id, 'p1|2026-11');
 });
+
+test('the calendar sync key never reaches a debug snapshot', () => {
+  // A dummy value built at run time (a key-shaped literal would trip the privacy guard).
+  const fake = ['dummy', 'calendar', 'key'].join('-');
+  const out = redactForDebug({ settings: { calendarSync: { secretKey: fake, setupAt: '2026-11-02', sourcesHash: 'abc' } } });
+  assert.ok(!JSON.stringify(out).includes(fake));
+  assert.equal(out.settings.calendarSync.setupAt, '2026-11-02');
+});

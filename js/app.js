@@ -357,6 +357,8 @@ async function boot() {
   // run before sign-in, loading str-rates + payments against an empty db.)
   scheduleStrGapBadge();
   scheduleElecBadge();
+  scheduleCalendarSync();
+  setInterval(scheduleCalendarSync, 30 * 60e3);
   // Warm the remaining views' code at idle so later navigation stays instant —
   // but only once the initial GitHub sync has finished (and at least 5s after
   // the first render), so it never competes with the sync or the first screen.
@@ -717,6 +719,7 @@ async function boot() {
       scheduleStrGapBadge();
       scheduleElecBadge();
     }
+    if (evt === 'data-loaded') scheduleCalendarSync();
     if (evt === 'dirty') {
       github.saveLocalCache(state.db);
       if (state.github.token && state.github.owner && state.github.repo) {
@@ -1097,6 +1100,22 @@ function scheduleElecBadge() {
   };
   if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(run, { timeout: 2000 });
   else setTimeout(run, 500);
+}
+
+// Airbnb calendars come from the GitHub calendar sync (modules/calsync-app.js):
+// share changed calendar links and read the latest result at start-up, after
+// each sync from GitHub and every 30 minutes — at most every 10 minutes, a few
+// seconds after the trigger so the initial sync settles first.
+let _calSyncAt = 0, _calSyncTimer = null;
+function scheduleCalendarSync() {
+  if (_calSyncTimer || Date.now() - _calSyncAt < 10 * 60e3) return;
+  _calSyncTimer = setTimeout(() => {
+    _calSyncTimer = null;
+    _calSyncAt = Date.now();
+    import(moduleUrl('calsync-app.js'))
+      .then(m => m.calendarSyncTick())
+      .catch(err => console.warn('Calendar sync:', err));
+  }, 5000);
 }
 
 function initMobileNav() {

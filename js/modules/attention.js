@@ -9,6 +9,7 @@ import { PROPERTY_STATUSES } from '../core/config.js';
 import { navigate } from '../core/router.js';
 import { todayYmd, diffDaysYmd, addDaysYmd } from '../core/dates.js';
 import { electricityActions } from '../core/electricity.js';
+import { calendarSyncProblems } from './calsync-app.js';
 
 const LEASE_WARN_DAYS = 90;
 const STR_IDLE_DAYS = 60;
@@ -84,6 +85,11 @@ export function getAttentionItems(props, weight = () => 1, day = todayYmd()) {
   const ea = electricityActions(day);
   for (const c of ea.readings) if (ids.has(c.property.id)) out.electricity.push({ prop: c.property, kind: 'reading', c });
   for (const c of ea.invoices) if (ids.has(c.property.id)) out.electricity.push({ prop: c.property, kind: 'invoice', c });
+  // Airbnb calendars that aren't syncing (or the sync isn't set up).
+  for (const x of calendarSyncProblems()) {
+    if (x.prop && !ids.has(x.prop.id)) continue;
+    out.checks.push({ prop: x.prop || { id: '', name: 'Airbnb calendars' }, kind: 'calsync', text: x.text });
+  }
   out.overdue.sort((a, b) => b.eur - a.eur);
   out.empty.sort((a, b) => (b.days || 0) - (a.days || 0));
   out.idle.sort((a, b) => (b.days || 0) - (a.days || 0));
@@ -145,7 +151,7 @@ export function buildAttentionCard(props, { weight = () => 1, onChange = null } 
       syncPropertyStatus(c.prop.id);
       toast(`${c.prop.name} is now ${PROPERTY_STATUSES[c.to]?.label || c.to}`, 'success');
       if (onChange) onChange();
-    } }) : null)));
+    } }) : null, c.kind === 'calsync' ? () => navigate('str-rates') : null)));
   if (fixable.length > 1) {
     body.appendChild(el('div', {}, button(`Fix all ${fixable.length} statuses`, { variant: 'sm primary', onClick: () => {
       for (const c of fixable) syncPropertyStatus(c.prop.id);

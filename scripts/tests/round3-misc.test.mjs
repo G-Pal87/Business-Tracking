@@ -23,58 +23,38 @@ function airbnbSettings(airbnb) {
   setDb({ ...structuredClone(state.db), settings: { ...(state.db.settings || {}), airbnb } });
 }
 
-test('iCal: private proxy configured → public proxies never see the link', async () => {
+test('iCal: own proxy configured → only the proxy sees the link (no direct request, no public proxies)', async () => {
   airbnbSettings({ icalProxyUrl: 'https://own.workers.dev/' });
-  await withFetch(url => url === FEED ? Promise.reject(new TypeError('CORS')) : resp(502, 'bad gateway'), async calls => {
+  await withFetch(() => resp(502, 'bad gateway'), async calls => {
     await assert.rejects(fetchICal(FEED), /Calendar proxy returned 502/);
-    assert.deepEqual(calls, [FEED, 'https://own.workers.dev/']);
+    assert.deepEqual(calls, ['https://own.workers.dev/']);
   });
 });
 
-test('iCal: private proxy + explicit opt-in → public proxies are a fallback', async () => {
-  airbnbSettings({ icalProxyUrl: 'https://own.workers.dev/', icalPublicFallback: true });
-  await withFetch(url => {
-    if (url === FEED) return Promise.reject(new TypeError('CORS'));
-    if (url.startsWith('https://own.workers.dev')) return resp(500, 'err');
-    if (url.startsWith('https://corsproxy.io/')) return resp(200, ICAL);
-    return resp(404, '');
-  }, async calls => {
-    assert.equal(await fetchICal(FEED), ICAL);
-    assert.equal(calls[2].startsWith('https://corsproxy.io/'), true);
-  });
-});
-
-test('iCal: an old-screen default (allowPublicIcalProxies: true) next to a private proxy does NOT enable public proxies', async () => {
-  airbnbSettings({ icalProxyUrl: 'https://own.workers.dev/', allowPublicIcalProxies: true });
-  await withFetch(url => {
-    if (url === FEED) return Promise.reject(new TypeError('CORS'));
-    if (url.startsWith('https://own.workers.dev')) return resp(500, 'err');
-    return resp(200, ICAL);
-  }, async calls => {
+test('iCal: old public-proxy settings no longer send the link anywhere else', async () => {
+  airbnbSettings({ icalProxyUrl: 'https://own.workers.dev/', icalPublicFallback: true, allowPublicIcalProxies: true });
+  await withFetch(url => url.startsWith('https://own.workers.dev') ? resp(500, 'err') : resp(200, ICAL), async calls => {
     await assert.rejects(fetchICal(FEED));
-    assert.equal(calls.some(u => /corsproxy|allorigins|cors\.eu\.org/.test(u)), false);
+    assert.equal(calls.some(u => /corsproxy|allorigins|cors\.eu\.org|airbnb/.test(u)), false);
   });
 });
 
-test('iCal: private proxy success is used directly', async () => {
-  airbnbSettings({ icalProxyUrl: 'https://own.workers.dev/', allowPublicIcalProxies: true });
-  await withFetch(url => url === FEED ? Promise.reject(new TypeError('CORS')) : resp(200, ICAL), async calls => {
+test('iCal: own proxy success is used directly', async () => {
+  airbnbSettings({ icalProxyUrl: 'https://own.workers.dev/' });
+  await withFetch(() => resp(200, ICAL), async calls => {
     assert.equal(await fetchICal(FEED), ICAL);
-    assert.equal(calls.length, 2);
+    assert.equal(calls.length, 1);
   });
 });
 
-test('iCal: no private proxy → public proxies (unless explicitly switched off)', async () => {
-  airbnbSettings({});
-  await withFetch(url => url.startsWith('https://corsproxy.io/') ? resp(200, ICAL) : Promise.reject(new TypeError('x')), async calls => {
-    assert.equal(await fetchICal(FEED), ICAL);
-    assert.equal(calls.length, 2);
-  });
-  airbnbSettings({ allowPublicIcalProxies: false });
-  await withFetch(() => Promise.reject(new TypeError('x')), async calls => {
-    await assert.rejects(fetchICal(FEED), /public proxies are switched off/);
-    assert.deepEqual(calls, [FEED]);
-  });
+test('iCal: no own proxy → no request at all (the GitHub calendar sync fetches calendars)', async () => {
+  for (const airbnb of [{}, { allowPublicIcalProxies: true }]) {
+    airbnbSettings(airbnb);
+    await withFetch(() => resp(200, ICAL), async calls => {
+      await assert.rejects(fetchICal(FEED), /GitHub calendar sync/);
+      assert.deepEqual(calls, []);
+    });
+  }
 });
 
 test('memoView: tab switches reuse; data edits, dep changes and Set mutations recompute', () => {

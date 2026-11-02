@@ -1495,47 +1495,12 @@ function buildStrSettingsCard() {
       'Hide all prices on the website (every property)'),
     'Overrides each property\'s own "Website prices" setting. Guests see "Price on request" and ask for a quote on WhatsApp. Takes effect a few minutes after saving, once the website rebuilds.'));
 
-  // Airbnb calendar links contain an access token, and browsers can't fetch
-  // them directly (no CORS). A private proxy (see docs/ical-proxy.md) keeps
-  // them away from third parties. Matches ical.js fetchICal:
-  //   - own proxy set: public proxies are used only if explicitly allowed
-  //     (icalPublicFallback === true — a field only this screen writes, so a
-  //     default saved by the old screen doesn't count), as a fallback;
-  //   - no own proxy: public proxies are used unless switched off (=== false).
-  // The checkbox therefore defaults to unchecked once an own proxy is set.
+  // Airbnb calendars are fetched by the GitHub calendar sync (STR Daily Rates
+  // → "Set up calendar sync"). An own proxy (docs/ical-proxy.md) is optional:
+  // with one, this browser also fetches them. Public proxies are never used.
   const proxyI = input({ value: af.icalProxyUrl || '', placeholder: 'https://calendar-proxy.<you>.workers.dev' });
-  const publicChk = el('input', { type: 'checkbox' });
-  const hasOwnProxy = () => proxyI.value.trim() !== '';
-  publicChk.checked = af.icalProxyUrl ? af.icalPublicFallback === true : af.allowPublicIcalProxies !== false;
-  let publicTouched = false;
-  const publicLabelText = el('span', {});
-  const publicWarn = el('div', {
-    style: 'display:none;background:var(--warning-light,#fff8e1);border-left:3px solid var(--warning,#f0ad4e);padding:8px 12px;margin:4px 0 8px;font-size:12px;border-radius:4px'
-  },
-    'No own calendar proxy is set, so Airbnb calendar links — which contain an access token — are sent to public CORS proxies (corsproxy.io, allorigins, cors.eu.org). Set up your own free proxy: ',
-    el('a', { href: 'docs/ical-proxy.md', target: '_blank', rel: 'noopener' }, 'docs/ical-proxy.md'),
-    '.');
-  const syncPublicUi = () => {
-    const own = hasOwnProxy();
-    publicLabelText.textContent = own
-      ? 'If my own proxy fails, fall back to public CORS proxies (not recommended)'
-      : 'Use public CORS proxies (no own proxy is set)';
-    publicWarn.style.display = !own && publicChk.checked ? '' : 'none';
-  };
-  proxyI.addEventListener('input', () => {
-    // Typing an own proxy into an empty field: default to sending links
-    // only there, unless the checkbox was changed by hand.
-    if (!publicTouched) publicChk.checked = hasOwnProxy() ? (!!af.icalProxyUrl && af.icalPublicFallback === true) : af.allowPublicIcalProxies !== false;
-    syncPublicUi();
-  });
-  publicChk.addEventListener('change', () => { publicTouched = true; syncPublicUi(); });
-  syncPublicUi();
-  body.appendChild(formRow('Calendar proxy (recommended)', proxyI,
-    'Your own proxy for fetching Airbnb calendars (a free Cloudflare Worker — see docs/ical-proxy.md). When set, calendar links are sent only there unless the fallback below is ticked.'));
-  body.appendChild(publicWarn);
-  body.appendChild(formRow('Public calendar proxies',
-    el('label', { style: 'display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer' }, publicChk, publicLabelText),
-    'Public proxies (corsproxy.io, allorigins, cors.eu.org) see every calendar link sent through them, and each link contains an access token to that calendar. Once your own proxy works, leave this unticked and re-export the calendar links in Airbnb.'));
+  body.appendChild(formRow('Calendar proxy (optional)', proxyI,
+    'Not needed: Airbnb calendars are fetched by the GitHub calendar sync (STR Daily Rates). If you also run your own proxy (a free Cloudflare Worker — docs/ical-proxy.md), this browser fetches through it too. Public proxies are never used.'));
 
   const save = button('Save', { variant: 'primary', onClick: () => {
     const fee = parseFloat(feeI.value);
@@ -1561,10 +1526,8 @@ function buildStrSettingsCard() {
       globalDiscountPct: globalDiscI.value === '' ? 0 : globalDisc,
       availabilityWindowMonths: windowI.value === '' ? 9 : windowMonths,
       icalProxyUrl:           proxyUrl,
-      // With an own proxy the checkbox is the fallback opt-in; without one it
-      // is the old "use public proxies" switch.
-      icalPublicFallback:     proxyUrl ? publicChk.checked : false,
-      allowPublicIcalProxies: proxyUrl ? (af.allowPublicIcalProxies !== false) : publicChk.checked
+      icalPublicFallback:     false,
+      allowPublicIcalProxies: false
     };
     markDirty();
     toast('Saved', 'success');
