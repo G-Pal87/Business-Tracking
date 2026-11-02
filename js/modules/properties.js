@@ -1088,6 +1088,26 @@ function openForm(existing) {
   // ── Personal-LT tenant rent row ─────────────────────────────────────────────
   const ltRow   = el('div', { class: 'form-row horizontal' }, formRow('Monthly Rent', rentI), formRow('Payment Due Day (1–28)', payDayI));
   const icalRow = formRow('Airbnb iCal URL', icalI);
+  // Only Airbnb's calendar EXPORT link can be synced (…/calendar/ical/<number>.ics?…);
+  // a listing or calendar page link is refused by Airbnb.
+  const icalHint = el('div', { style: 'font-size:11px;color:var(--warning,#d97706);margin-top:4px;display:none' });
+  const checkIcal = () => {
+    const v = icalI.value.trim();
+    let bad = '';
+    if (v) {
+      try {
+        const u = new URL(v);
+        if (u.protocol !== 'https:') bad = 'The link must start with https://';
+        else if (/airbnb\./i.test(u.hostname) && !/^\/calendar\/ical\/\d+\.ics$/.test(u.pathname)) bad = 'This isn\'t an Airbnb calendar export link. In Airbnb: the listing → Availability → Export calendar, and copy that link (…/calendar/ical/<number>.ics?…).';
+        else if (/airbnb\./i.test(u.hostname) && ![...u.searchParams.keys()].some(k => k === 's' || k === 't')) bad = 'The link is missing its access code (the part after "?") — copy it again in full.';
+      } catch { bad = 'This isn\'t a valid web address — copy the link again in full.'; }
+    }
+    icalHint.textContent = bad;
+    icalHint.style.display = bad ? '' : 'none';
+  };
+  icalI.addEventListener('input', checkIcal);
+  icalRow.appendChild(icalHint);
+  checkIcal();
   // Public website pricing (Short-Term-Rentals site, via the daily-rate feed).
   // Off = the published feed carries no amounts for this property and the
   // website shows "Price on request" everywhere instead of prices.

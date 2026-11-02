@@ -13,6 +13,7 @@ const files = new Map();             // `${ref}:${path}` → { text, sha }
 let shaN = 0;
 const put = (ref, p, obj) => files.set(`${ref}:${p}`, { text: JSON.stringify(obj), sha: `sha${++shaN}` });
 const writes = [];
+let conflicts = 0;
 const airbnb = new Map();            // url → { status, body } | 'throw'
 const ICS = evs => ['BEGIN:VCALENDAR', ...evs.flatMap(([u, s, e]) => ['BEGIN:VEVENT', `UID:${u}`, `DTSTART;VALUE=DATE:${s.replace(/-/g, '')}`, `DTEND;VALUE=DATE:${e.replace(/-/g, '')}`, 'SUMMARY:Reserved', 'END:VEVENT']), 'END:VCALENDAR'].join('\r\n');
 globalThis.fetch = async (url, opts = {}) => {
@@ -26,13 +27,15 @@ globalThis.fetch = async (url, opts = {}) => {
       return f ? res(200, JSON.stringify({ sha: f.sha, content: Buffer.from(f.text).toString('base64') })) : res(404, '{}');
     }
     const body = JSON.parse(opts.body);
+    if (conflicts > 0) { conflicts--; return res(409, 'is at abc but expected def'); }   // an app save raced us
     const cur = files.get(`${body.branch}:${p}`);
     if ((cur?.sha || undefined) !== body.sha) return res(409, 'sha mismatch');
     writes.push({ path: p, branch: body.branch });
     files.set(`${body.branch}:${p}`, { text: Buffer.from(body.content, 'base64').toString('utf8'), sha: `sha${++shaN}` });
     return res(200, '{}');
   }
-  const a = airbnb.get(url);
+  let a = airbnb.get(url);
+  if (typeof a === 'function') a = a(opts.headers?.['User-Agent'] || '');
   if (!a || a === 'throw') throw new TypeError('fetch failed');
   return res(a.status, a.body);
 };
@@ -103,6 +106,46 @@ test('a calendar that fails is flagged (exit 1), keeps its last bookings; the ot
   airbnb.set(U1, 'throw');
   assert.equal(await main(), 1);
   assert.match((await readCal()).calendars.p1.error, /could not reach Airbnb/);
+});
+
+test('the app error says what Airbnb answered and what link is stored; the public log does not', async () => {
+  airbnb.set(U1, { status: 400, body: '<html><body><h1>Bad Request</h1><p>Invalid token abcdefghijklmnopqrstuvwxyz0123</p></body></html>' });
+  const logged = [], realLog = console.log;
+  console.log = (...a) => { logged.push(a.join(' ')); };
+  try { assert.equal(await main(), 1); } finally { console.log = realLog; }
+  const err = (await readCal()).calendars.p1.error;
+  assert.match(err, /HTTP 400 \("Bad Request Invalid token …"\)/);           // token-like strings removed
+  assert.match(err, /www\.airbnb\.test\/calendar\/ical\/<1-digit listing>\.ics, parameters: s/);
+  assert.ok(!err.includes('s=x'));                                           // never the token itself
+  const errLine = logged.find(l => l.startsWith('::error'));
+  assert.match(errLine, /p1 \(Airbnb returned HTTP 400\)/);
+  assert.ok(!/Bad Request|airbnb\.test|ical|parameters/.test(errLine));
+});
+
+test('retries with a browser user agent when Airbnb refuses the first one', async () => {
+  airbnb.set(U1, ua => (/Chrome/.test(ua) ? { status: 200, body: ICS([['booking-uid-b1@airbnb', day(3), day(5)], ['booking-uid-b9@airbnb', day(8), day(9)]]) } : { status: 400, body: 'Bad Request' }));
+  airbnb.set(U2, { status: 200, body: ICS([['n1', day(1), day(2)]]) });
+  assert.equal(await main(), 0);
+  const cal = await readCal();
+  assert.equal(cal.calendars.p1.error, null);
+  assert.deepEqual(cal.calendars.p1.blocks.map(b => b.uid).sort(), ['booking-uid-b1@airbnb', 'booking-uid-b9@airbnb']);
+});
+
+test('a write that races an app save (409) is retried with the new sha', async () => {
+  airbnb.set(U2, { status: 200, body: ICS([['n1', day(1), day(2)], ['n2', day(10), day(12)]]) });
+  conflicts = 2;
+  assert.equal(await main(), 0);
+  assert.equal(conflicts, 0);
+  assert.deepEqual((await readCal()).calendars.p2.blocks.map(b => b.uid), ['n1', 'n2']);
+});
+
+test('linkShape describes a link without its secret parts', async () => {
+  const { linkShape } = await import('../../scripts/calendar-sync.mjs');
+  assert.equal(linkShape('https://www.airbnb.co.uk/calendar/ical/1234567890123456789.ics?s=secret123&locale=en'),
+    'www.airbnb.co.uk/calendar/ical/<19-digit listing>.ics, parameters: s, locale');
+  assert.match(linkShape('https://www.airbnb.co.uk/rooms/1234567890?check_in=x'), /^www\.airbnb\.co\.uk\/rooms\/<number> — this is not an Airbnb calendar EXPORT link/);
+  assert.equal(linkShape('nonsense'), 'not a valid web address');
+  assert.ok(!linkShape('https://www.airbnb.co.uk/calendar/ical/1.ics?s=secret123').includes('secret123'));
 });
 
 test('wrong key in the secret → clear error (exit 1), nothing written', async () => {

@@ -108,7 +108,7 @@ export async function calendarSyncTick() {
 // "Refresh": ask GitHub for a run now, then watch for the result.
 export async function refreshNow(onUpdate) {
   if (!calSyncSettings().secretKey) { openSetup(onUpdate); return; }
-  try { await pushCalendarSources({ force: true }); } catch (e) { toast(`Could not share the calendar links with GitHub: ${e.message}`, 'danger', 8000); return; }
+  try { await pushCalendarSources(); } catch (e) { toast(`Could not share the calendar links with GitHub: ${e.message}`, 'danger', 8000); return; }
   const ok = await dispatchRepoEvent(CALSYNC.event);
   if (!ok) { toast('GitHub refused to start the calendar sync (check the token in Settings → GitHub). It still runs on its own every 30 minutes.', 'danger', 10000); return; }
   toast('Asked GitHub to fetch the Airbnb calendars now — usually done within a minute or two.', 'info', 7000);
