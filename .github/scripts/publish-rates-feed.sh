@@ -7,7 +7,7 @@
 # The replace is a force-push, but with a lease: it only succeeds if the branch
 # still points at the commit this script looked at. If the app (or another run)
 # published in between, the push is refused instead of silently overwriting the
-# newer feed. Workflows that call this share the `rates-feed` concurrency group.
+# newer feed. Its caller (sync-calendars.yml) runs one job at a time.
 set -euo pipefail
 
 FEED_DIR="exports/daily-rates"
