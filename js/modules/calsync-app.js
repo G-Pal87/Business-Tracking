@@ -121,7 +121,12 @@ export async function refreshNow(onUpdate) {
     const done = r.state === 'ok' && r.checkedAt && r.checkedAt !== before && Date.parse(r.checkedAt) > startedAt - 60e3;
     if (done || Date.now() - startedAt > 4 * 60e3) {
       clearInterval(_refreshPoll);
-      if (done) toast('Airbnb calendars updated', 'success');
+      if (done) {
+        // Say exactly which properties didn't sync, and why.
+        const failed = calendarSyncProblems().filter(x => x.kind === 'error');
+        if (failed.length) toast(`Airbnb calendars updated, but ${failed.length} didn't sync — ${failed.map(x => `${x.prop.name}: ${x.text.replace(/^Airbnb calendar sync failed: /, '')}`).join(' · ')}`, 'danger', 15000);
+        else toast('All Airbnb calendars updated', 'success');
+      }
       else toast('GitHub hasn\'t finished the calendar sync yet — check the "Sync Airbnb calendars" run under GitHub → Actions.', 'warning', 10000);
       onUpdate?.();
     }
@@ -192,7 +197,7 @@ export function renderSyncBanner(container, onUpdate) {
   const problems = calendarSyncProblems();
   if (problems.length) {
     container.appendChild(card(problems.some(x => x.kind === 'error') ? '#ef4444' : '#f59e0b',
-      el('div', { style: 'flex:1;min-width:240px' }, el('div', { style: 'font-weight:600' }, '⚠ Some Airbnb calendars aren\'t up to date'),
+      el('div', { style: 'flex:1;min-width:240px' }, el('div', { style: 'font-weight:600' }, `⚠ Not synced from Airbnb: ${problems.map(x => x.prop?.name).filter(Boolean).join(', ')}`),
         ...problems.map(x => el('div', { class: 'muted', style: 'font-size:12px' }, `${x.prop?.name || ''}: ${x.text}`))),
       button('Refresh now', { variant: 'sm', onClick: () => refreshNow(onUpdate) })));
   }

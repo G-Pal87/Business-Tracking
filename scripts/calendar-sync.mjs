@@ -131,7 +131,13 @@ export async function main() {
   output('feed_changed', closedTotal > 0 ? 'true' : 'false');
   if (closedTotal === 0 && fs.existsSync(feedDir)) fs.rmSync(feedDir, { recursive: true, force: true }); // nothing to publish
 
-  if (failures) { console.error(`${failures} calendar(s) could not be synced — see above. The app shows this under STR Daily Rates too.`); return 1; }
+  if (failures) {
+    // The repository (and so this log) is public: app ids and reasons only —
+    // the app names the properties (STR Daily Rates, Needs attention).
+    const failed = Object.entries(next).filter(([, c]) => c.error).map(([id, c]) => `${id} (${c.error})`);
+    console.log(`::error title=${failures} of ${Object.keys(next).length} Airbnb calendars not synced::${failed.join('; ')} — open STR Daily Rates in the app to see which properties these are.`);
+    return 1;
+  }
   return 0;
 }
 

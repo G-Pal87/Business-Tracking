@@ -90,7 +90,12 @@ test('nothing changed → no rewrite (heartbeat not due), feed untouched', async
 test('a calendar that fails is flagged (exit 1), keeps its last bookings; the others still sync', async () => {
   airbnb.set(U1, { status: 410, body: 'Gone' });
   airbnb.set(U2, { status: 200, body: ICS([['n1', day(1), day(2)]]) });
-  assert.equal(await main(), 1);
+  const logged = [], realLog = console.log;
+  console.log = (...a) => { logged.push(a.join(' ')); };
+  try { assert.equal(await main(), 1); } finally { console.log = realLog; }
+  const errLine = logged.find(l => l.startsWith('::error'));
+  assert.match(errLine, /^::error title=1 of 2 Airbnb calendars not synced::p1 \(Airbnb returned HTTP 410/);
+  assert.ok(!/airbnb\.test|ical/.test(errLine));            // the public log never shows a calendar link
   const cal = await readCal();
   assert.match(cal.calendars.p1.error, /HTTP 410/);
   assert.deepEqual(cal.calendars.p1.blocks.map(b => b.uid), ['booking-uid-b1@airbnb']);
