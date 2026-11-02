@@ -132,7 +132,7 @@ export const SERVICE_UNITS = {
   hour:    'hour(s)',
   month:   'month(s)',
   project: 'project',
-  cost:    'cost (expense passed on)'
+  expense: 'expense(s)'
 };
 
 export const INVOICE_STATUSES = {
