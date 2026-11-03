@@ -119,7 +119,8 @@ Prices hidden (`showPrices: false`) — availability only:
 | `originalAmount` | Open nights only: nightly rate **before** any promotional discount. |
 | `discountPct`    | Open nights only: effective discount % (per-month override, else the global discount; always present, `0` when none). |
 | `amount`         | Open nights only: nightly rate **after** discount = `originalAmount × (1 − discountPct%)`. |
-| `airbnbCheckout` | Open nights only: guest-facing nightly price incl. guest fee + tax, from the pre-discount rate. |
+| `airbnbCheckout` | Open nights only: what an Airbnb guest pays per night, from the pre-discount rate — the Airbnb price for that payout (host fee taken from it) + tax; under the old split fee model also the guest fee. See [airbnb-fees.md](airbnb-fees.md). |
+| `guestFeePct` (top level) | Mark-up from `originalAmount` to `airbnbCheckout`, net of tax: `airbnbCheckout = originalAmount × (1 + (guestFeePct + taxPct)/100)`. Under the host-only fee it reflects Airbnb's host fee (e.g. 22.5% at 18.4%), not a guest fee. |
 | `currency`       | Currency of all amounts. |
 | `basis`          | `confirmed target` or `suggested`. |
 

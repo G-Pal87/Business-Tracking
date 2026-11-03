@@ -3,6 +3,7 @@ import { state, runBatch } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, attachSortFilter, attachDataTable, buildMultiSelect } from '../core/ui.js';
 import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, getForecastEntries, upsertForecastEntry, applyReservationExpenseRules, removeReservationExpenses, deletePayment, setVendorCollection, vendorUsualCategory, buildGeneratedExpenseIndex, buildGeneratedExpenseCategoryIndex, buildReservationExpenseRefMap, formatRuleConflictWarning, getPeopleOwners, getPersonName, getContractExpiryFlag, dataStamp, sameDataStamp } from '../core/data.js';
 import { CURRENCIES, PAYMENT_STATUSES, STREAMS, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, EXPENSE_CATEGORIES } from '../core/config.js';
+import { bookingFeeModel } from '../core/airbnb-fees.js';
 import { mkTh, mkExplainButton } from './analytics-helpers.js';
 import { navigate } from '../core/router.js';
 import { todayYmd, localYmd, diffDaysYmd } from '../core/dates.js';
@@ -354,8 +355,9 @@ function buildAllPayments(wrap) {
     // up the host gross earnings by the configured guest service fee + tax.
     const guestBase = r.airbnbGrossEarnings != null ? r.airbnbGrossEarnings : r.amount;
     const nightsVal = isReservation && r.airbnbNights ? r.airbnbNights : null;
+    // Booked under the host-only fee (13 Oct 2026 on) → no guest fee on top.
     const guestTotal = isReservation && guestBase != null
-      ? Math.round(guestBase * (1 + (feePct + taxPct) / 100) * 100) / 100
+      ? Math.round(guestBase * (1 + ((bookingFeeModel(r) === 'host_only' ? 0 : feePct) + taxPct) / 100) * 100) / 100
       : null;
     const guestPerNight = guestTotal != null && nightsVal ? guestTotal / nightsVal : null;
     // The estimated service-fee + tax markup the guest pays on top of the host's gross.

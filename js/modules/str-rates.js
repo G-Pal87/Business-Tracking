@@ -6,7 +6,8 @@ import { el, openModal, closeModal, toast, select, input, textarea, button, form
 import { listActive, listActivePayments, byId, upsert, softDelete, newId, formatMoney, isReservationNight, derivedCache, memoGet, paymentsOfProperty } from '../core/data.js';
 import { fetchICal, parseICal, mergeBlocksChecked, isOwnerBlockSummary } from '../core/ical.js';
 import { publishSnapshotBranch, fetchBranchFileText, dispatchRepoEvent } from '../core/github.js';
-import { AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
+import { AIRBNB_CLEANING_FEE } from '../core/config.js';
+import { feeSettings, bookingFeeModel, bookingFeeRate, payoutPerNight, airbnbPriceFor, airbnbCheckoutFor, feedGuestFeePct, FEE_MODEL_LABEL } from '../core/airbnb-fees.js';
 import { openPaymentForm } from './payments.js';
 import { todayYmd, addDaysYmd, addMonthsYmd } from '../core/dates.js';
 import { calendarSyncTick, renderSyncBanner, syncLine, refreshNow, calSyncSettings } from './calsync-app.js';
@@ -178,13 +179,19 @@ function buildHistoricNightMap(propertyId) {
   // whichever happened to load later from storage.
   bookings.sort((a, b) => (a.source === 'airbnb' ? 1 : 0) - (b.source === 'airbnb' ? 1 : 0));
 
+  const fs = feeSettings(state.db.settings?.airbnb);
   for (const p of bookings) {
     const ci = p._ci, co = p._co;
     const nights = Math.max(0, Math.round((parseYMD(co) - parseYMD(ci)) / 86400000)) || p.airbnbNights;
-    // Recompute straight from amount/cleaningFee rather than trusting cached
-    // avgNightExclCleaning/avgNightlyRate — falls back to those cached fields
-    // only when amount itself is missing.
-    const rate = nights > 0 && p.amount != null ? (p.amount - (p.airbnbCleaningFee || 0)) / nights : avgNightOf(p);
+    // What the booking PAID OUT per night, excl. cleaning — comparable across
+    // Airbnb's old (split) and new (host-only) fee models, since you raise
+    // the price to keep the payout (js/core/airbnb-fees.js). The cleaning
+    // taken off is what reached you after Airbnb's fee on it. Recomputed from
+    // amount/cleaningFee; the cached avgNightExclCleaning/avgNightlyRate only
+    // when amount itself is missing.
+    const rate = nights > 0 && p.amount != null ? payoutPerNight(p, nights, fs) : avgNightOf(p);
+    const feeModel = bookingFeeModel(p);
+    const feeRate = bookingFeeRate(p, fs);
     if (rate == null || rate <= 0) continue;
     const adr  = nights > 0 && p.amount != null ? p.amount / nights : (adrNightOf(p) || rate);
     const guest = p.guestName || (p.notes || '').split(' · ')[0] || '';
@@ -197,6 +204,8 @@ function buildHistoricNightMap(propertyId) {
         nights,
         amount: p.amount ?? null,
         cleaningFee: p.airbnbCleaningFee ?? null,
+        feeModel, feeRate,
+        bookingDate: p.airbnbBookingDate || '',
         checkIn: ci, checkOut: co
       });
     }
@@ -223,7 +232,8 @@ function buildSuggester(histMap) {
     const entry = {
       date, rate: info.rate, adr: info.adr || info.rate,
       checkIn: info.checkIn || '', checkOut: info.checkOut || '',
-      code: info.code || '', label: info.label || ''
+      code: info.code || '', label: info.label || '',
+      feeModel: info.feeModel || null, bookingDate: info.bookingDate || ''
     };
     (byYearMonth.get(ym) || byYearMonth.set(ym, []).get(ym)).push(entry);
     (byMonthDay.get(md)  || byMonthDay.set(md,  []).get(md)).push(entry);
@@ -980,7 +990,8 @@ export function sitePricesVisible(prop) {
 //     to show "Price on request" instead of any price.
 // Each night carries the NIGHTLY price only:
 //   amount          — published/direct booking rate (after any promo discount)
-//   airbnbCheckout  — full price if booked on Airbnb (originalAmount × guestMult)
+//   airbnbCheckout  — full price if booked on Airbnb (airbnbCheckoutFor: the
+//                     Airbnb price for that payout + tax; + guest fee if split)
 //   originalAmount  — target ADR before promo discount (only present when discountPct > 0)
 //   discountPct     — promo discount applied (only present when > 0)
 // The cleaning fee is charged ONCE PER BOOKING — see feed-level `cleaningFee` /
@@ -992,13 +1003,13 @@ function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
   const suggest = buildSuggester(histMap);
   const blocked = blockedDateSet(propertyId);
 
-  // Guest service fee + tax used to gross the net rate up to the full guest price.
+  // Rates here are payout targets; the Airbnb checkout price adds Airbnb's
+  // fee model on top (host fee taken from the price, + tax; + the guest fee
+  // under the old split model) — js/core/airbnb-fees.js.
   const af         = state.db.settings?.airbnb || {};
-  const feePct     = af.guestFeePct     != null ? af.guestFeePct     : AIRBNB_GUEST_FEE_PCT;
-  const taxPct     = af.taxPct          != null ? af.taxPct          : AIRBNB_TAX_PCT;
+  const fs         = feeSettings(af);
   const cleanFee   = af.cleaningFee     != null ? af.cleaningFee     : AIRBNB_CLEANING_FEE;
   const globalDisc = af.globalDiscountPct || 0;
-  const guestMult  = 1 + (feePct + taxPct) / 100;
 
   const showPrices = sitePricesVisible(prop);
   const rates = [];
@@ -1037,7 +1048,7 @@ function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
       entry.originalAmount = rawAmt;
       entry.discountPct    = discPct;
       entry.amount         = discPct > 0 ? Math.round(rawAmt * (1 - discPct / 100)) : rawAmt;
-      entry.airbnbCheckout = Math.round(rawAmt * guestMult);
+      entry.airbnbCheckout = Math.round(airbnbCheckoutFor(rawAmt, fs));
       rates.push(entry);
     }
     date = addDays(date, 1);
@@ -1054,8 +1065,10 @@ function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
     rates
   };
   if (showPrices) {
-    feed.guestFeePct = feePct;
-    feed.taxPct = taxPct;
+    // Mark-up from a nightly rate to its Airbnb checkout price (net of tax),
+    // so airbnbCheckout = originalAmount × (1 + (guestFeePct + taxPct)/100).
+    feed.guestFeePct = feedGuestFeePct(fs);
+    feed.taxPct = fs.taxPct;
     feed.cleaningFee = Math.round(cleanFee);        // flat cleaning fee, charged once per booking
     feed.cleaningGuestTotal = Math.round(cleanFee); // flat fee the guest pays for cleaning (no fee/tax added)
   }
@@ -1366,15 +1379,13 @@ function renderKpis(row, { histMap, suggest, blocked, year, month1, ccy, propert
   // Published (pushed) rate = confirmed target after effective promo discount
   // (monthly override if set, else global).
   const af        = state.db.settings?.airbnb || {};
-  const feePct    = af.guestFeePct     != null ? af.guestFeePct     : AIRBNB_GUEST_FEE_PCT;
-  const taxPct    = af.taxPct          != null ? af.taxPct          : AIRBNB_TAX_PCT;
+  const fs        = feeSettings(af);
   const kpiGlobal = af.globalDiscountPct || 0;
-  const guestMult = 1 + (feePct + taxPct) / 100;
   let published = null, saving = null, savingPct = null, effDisc = 0;
   if (confirmed) {
     effDisc   = confirmed.discountPct != null ? confirmed.discountPct : kpiGlobal;
     published = Math.round(confirmed.targetADR * (1 - effDisc / 100));
-    const full = Math.round(confirmed.targetADR * guestMult);
+    const full = Math.round(airbnbCheckoutFor(confirmed.targetADR, fs));
     saving     = full - published;
     savingPct  = Math.round((saving / full) * 100);
   }
@@ -1386,7 +1397,12 @@ function renderKpis(row, { histMap, suggest, blocked, year, month1, ccy, propert
 
   row.appendChild(card('ADR', avgADR != null ? formatMoney(avgADR, ccy, { maxFrac: 0 }) : '—', `incl. cleaning · ${MONTHS[month1 - 1]}, all years`));
   row.appendChild(card('Net Nightly Rate', avgNet != null ? formatMoney(avgNet, ccy, { maxFrac: 0 }) : '—', `excl. cleaning · ${netRates.length} night(s)`));
-  row.appendChild(card('Confirmed Target', confirmed ? formatMoney(confirmed.targetADR, ccy, { maxFrac: 0 }) : '—', confirmed ? `set ${fmtDate(confirmed.confirmedAt)}` : 'not set', confirmed ? 'success' : ''));
+  row.appendChild(card('Confirmed Target', confirmed ? formatMoney(confirmed.targetADR, ccy, { maxFrac: 0 }) : '—', confirmed ? `payout/night · set ${fmtDate(confirmed.confirmedAt)}` : 'not set', confirmed ? 'success' : ''));
+  // The price to type into Airbnb for that payout (or for the average
+  // suggestion when no target is set), at the current host fee.
+  const airbnbBase = confirmed ? confirmed.targetADR : avgSugg;
+  row.appendChild(card('Set in Airbnb', airbnbBase != null ? formatMoney(Math.round(airbnbPriceFor(airbnbBase, fs)), ccy, { maxFrac: 0 }) : '—',
+    airbnbBase != null ? `nightly price · ${fs.hostOnly ? `${fs.hostFeePct}% host fee` : 'old split fee'}${confirmed ? '' : ' · from suggestions'}` : 'no target or suggestion'));
   row.appendChild(card('Published Rate', published != null ? formatMoney(published, ccy, { maxFrac: 0 }) : '—', pubSub, confirmed ? 'success' : ''));
   row.appendChild(card('Guest Saving', saving != null ? formatMoney(saving, ccy, { maxFrac: 0 }) : '—', savingPct != null ? `${savingPct}% off Airbnb checkout` : 'no target', saving != null ? 'success' : ''));
   row.appendChild(card('Booked Nights', String(booked), `of ${dim} · ${occ}% occupancy`, occ >= 70 ? 'success' : ''));
@@ -1616,6 +1632,8 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
     if (hist.label) body.appendChild(row('Guest', hist.label));
     if (hist.code)  body.appendChild(row('Confirmation', hist.code));
     if (hist.checkIn) body.appendChild(row('Stay', `${fmtDate(hist.checkIn)} – ${fmtDate(hist.checkOut)} (${hist.nights} night${hist.nights !== 1 ? 's' : ''})`));
+    if (hist.bookingDate) body.appendChild(row('Booked on', fmtDate(hist.bookingDate)));
+    if (hist.feeModel) body.appendChild(row('Airbnb fee', `${FEE_MODEL_LABEL[hist.feeModel]} · ${(hist.feeRate * 100).toFixed(1)}%`));
 
     body.appendChild(section('Nightly Rate Breakdown'));
     body.appendChild(row('ADR (incl. cleaning amortised)', fmt(hist.adr, hist.currency)));
@@ -1633,7 +1651,9 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
       body.appendChild(section('Formulas'));
       body.appendChild(row('ADR', `${fmt(hist.amount, hist.currency)} ÷ ${hist.nights} nights = ${fmt(hist.adr, hist.currency)}`));
       if (hist.cleaningFee != null) {
-        body.appendChild(row('Net rate', `(${fmt(hist.amount, hist.currency)} − ${fmt(hist.cleaningFee, hist.currency)}) ÷ ${hist.nights} = ${fmt(hist.rate, hist.currency)}`));
+        // Only the cleaning that reached you (after Airbnb's fee on it) is taken off.
+        const cleanNet = hist.cleaningFee * (1 - (hist.feeRate || 0));
+        body.appendChild(row('Net rate', `(${fmt(hist.amount, hist.currency)} − ${fmt(cleanNet, hist.currency)} cleaning after fee) ÷ ${hist.nights} = ${fmt(hist.rate, hist.currency)}`));
       }
     }
   } else {
@@ -1767,6 +1787,12 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
       body.appendChild(section('Suggested Rates'));
       body.appendChild(row('ADR (incl. cleaning amortised)', fmt(s.adr)));
       body.appendChild(row('Net nightly rate (excl. cleaning)', fmt(s.rate)));
+      {
+        // Suggestions are payouts per night, learnt from old- and new-fee
+        // bookings alike; this is the price that pays that out today.
+        const fs = feeSettings(state.db.settings?.airbnb);
+        body.appendChild(row(`Set in Airbnb (${fs.hostOnly ? `${fs.hostFeePct}% host fee` : 'old split fee'})`, fmt(Math.round(airbnbPriceFor(s.rate, fs)))));
+      }
       const cleanEst = s.adr - s.rate;
       if (cleanEst > 0.01) body.appendChild(row('Est. cleaning per night', fmt(cleanEst), true));
 
@@ -1778,6 +1804,7 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
           if (!bkMap.has(key)) bkMap.set(key, {
             checkIn: src.checkIn, checkOut: src.checkOut,
             code: src.code, label: src.label,
+            feeModel: src.feeModel, bookingDate: src.bookingDate,
             rateSum: 0, adrSum: 0, n: 0
           });
           const b = bkMap.get(key); b.rateSum += src.rate; b.adrSum += src.adr; b.n++;
@@ -1794,7 +1821,8 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
             el('span', { style: 'font-weight:600' }, guest),
             el('span', { style: 'color:var(--text-muted)' }, `${b.n} night${b.n !== 1 ? 's' : ''}`)
           ));
-          bkRow.appendChild(el('div', { style: 'color:var(--text-muted);font-size:11px;margin-top:1px' }, dateRange));
+          const bookedInfo = [b.bookingDate ? `booked ${fmtDate(b.bookingDate)}` : '', b.feeModel ? FEE_MODEL_LABEL[b.feeModel] : ''].filter(Boolean).join(' · ');
+          bkRow.appendChild(el('div', { style: 'color:var(--text-muted);font-size:11px;margin-top:1px' }, bookedInfo ? `${dateRange} · ${bookedInfo}` : dateRange));
           bkRow.appendChild(el('div', { style: 'display:flex;gap:12px;margin-top:3px' },
             el('span', {}, `ADR ${fmt(avgAdr)}`),
             el('span', { style: 'color:var(--text-muted)' }, `Net ${fmt(avgNet)}`),
@@ -2183,13 +2211,11 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
 
   const discArrow2 = el('div', { style: 'font-size:18px;color:var(--text-muted);padding-bottom:6px;line-height:1' }, '→');
 
-  const af = state.db.settings?.airbnb || {};
-  const feePct  = af.guestFeePct != null ? af.guestFeePct : AIRBNB_GUEST_FEE_PCT;
-  const taxPct  = af.taxPct      != null ? af.taxPct      : AIRBNB_TAX_PCT;
-  const guestMult = 1 + (feePct + taxPct) / 100;
+  const fs = feeSettings(state.db.settings?.airbnb);
 
   const guestPriceWrap = el('div', {});
-  guestPriceWrap.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px' }, `Airbnb checkout price (incl. ${feePct + taxPct}% fees)`));
+  guestPriceWrap.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px' },
+    fs.hostOnly ? `Set in Airbnb (${fs.hostFeePct}% host fee${fs.taxPct ? ` + ${fs.taxPct}% tax` : ''})` : `Airbnb checkout price (incl. ${fs.guestFeePct + fs.taxPct}% fees)`));
   const guestPriceEl = el('div', { style: 'font-size:14px;font-weight:700;color:#6366f1;padding-bottom:6px;min-width:70px' }, '');
 
   const guestSavingWrap = el('div', {});
@@ -2203,7 +2229,7 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
     const disc     = isGlobal ? _globalDisc : (parseFloat(discInp.value) || 0);
     if (base > 0) {
       const net        = Math.round(base * (1 - disc / 100));
-      const fullGuest  = Math.round(base * guestMult);
+      const fullGuest  = Math.round(airbnbCheckoutFor(base, fs));
       const saving     = fullGuest - net;
       const savingPct  = Math.round((saving / fullGuest) * 100);
       discNetEl.textContent    = fmt(net);
@@ -2313,7 +2339,7 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
       const statusGlobal = state.db.settings?.airbnb?.globalDiscountPct || 0;
       const statusEffDisc = confirmed.discountPct != null ? confirmed.discountPct : statusGlobal;
       const published  = Math.round(confirmed.targetADR * (1 - statusEffDisc / 100));
-      const fullGuest  = Math.round(confirmed.targetADR * guestMult);
+      const fullGuest  = Math.round(airbnbCheckoutFor(confirmed.targetADR, fs));
       const saving     = fullGuest - published;
       const savingPct  = Math.round((saving / fullGuest) * 100);
       if (statusEffDisc > 0) {
@@ -2323,7 +2349,7 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
       } else {
         statusEl.appendChild(el('span', {}, ' · '));
       }
-      statusEl.appendChild(el('span', { style: 'color:#6366f1;font-weight:600' }, `Airbnb checkout ${fmt(fullGuest)}`));
+      statusEl.appendChild(el('span', { style: 'color:#6366f1;font-weight:600' }, fs.hostOnly ? `set in Airbnb ${fmt(Math.round(airbnbPriceFor(confirmed.targetADR, fs)))} · Airbnb checkout ${fmt(fullGuest)}` : `Airbnb checkout ${fmt(fullGuest)}`));
       statusEl.appendChild(el('span', { style: 'color:#10b981;font-weight:600' }, ` · guest saves ${fmt(saving)} (${savingPct}% off Airbnb)`));
     }
     wrap.appendChild(statusEl);
