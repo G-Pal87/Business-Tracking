@@ -56,8 +56,10 @@ Rates and in **Needs attention → Data to check**:
 | Sync failed: … | Airbnb refused or returned no calendar (e.g. an expired link — export a new one in Airbnb). |
 | Not synced since … | No successful check for 6+ hours — check the "Sync Airbnb calendars" runs under GitHub → Actions. |
 
-A property that can't be fetched also fails the workflow run, so GitHub emails
-the repository owner.
+A property that newly can't be fetched also fails the workflow run, so GitHub
+emails the repository owner once. While it keeps failing, later runs pass with
+a yellow warning ("already failing") instead of emailing every 30 minutes; the
+app keeps flagging it until it syncs again.
 
 **Refresh** (STR Daily Rates) asks GitHub for a run now (a `calendar-sync`
 repository dispatch) and shows the result when it lands.

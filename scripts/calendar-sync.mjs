@@ -9,8 +9,9 @@
 //   4. closes newly booked nights in the public rates feed (written to
 //      exports/daily-rates/ for publish-rates-feed.sh) and says so on
 //      $GITHUB_OUTPUT (feed_changed=true);
-//   5. exits 1 when a property couldn't be fetched, so the run shows red and
-//      GitHub notifies the owner (the app also flags it).
+//   5. exits 1 when a property newly fails, so the run shows red and GitHub
+//      notifies the owner once; one already failing is only a warning (the
+//      app flags both).
 //
 // Env: CALENDAR_SYNC_KEY, GITHUB_TOKEN, GITHUB_REPOSITORY, DATA_BRANCH,
 // DB_PATH, FEED_DIR (local output, default exports/daily-rates), GITHUB_OUTPUT (optional),
@@ -116,6 +117,7 @@ export async function main() {
   const next = {};
   const publicErrors = {};
   let failures = 0;
+  const newlyFailed = new Set();
   for (const s of sources) {
     if (!s?.propertyId || !/^https:\/\//i.test(s.url || '')) continue;
     const before = prev.calendars?.[s.propertyId];
@@ -141,7 +143,7 @@ export async function main() {
       publicError = `could not reach Airbnb (${e.name === 'TimeoutError' ? 'timed out' : e.message})`;
       entry = { blocks: before?.blocks || [], fetchedAt: before?.fetchedAt || null, attemptAt: nowIso, error: publicError };
     }
-    if (entry.error) failures++;
+    if (entry.error) { failures++; if (!before?.error) newlyFailed.add(s.propertyId); }
     next[s.propertyId] = entry;
     if (entry.error) publicErrors[s.propertyId] = publicError || 'failed';
     log(`${s.propertyId}: ${entry.error ? `FAILED — ${publicErrors[s.propertyId]}` : `${entry.blocks.length} block(s)`}`);
@@ -180,9 +182,13 @@ export async function main() {
   if (failures) {
     // The repository (and so this log) is public: app ids and reasons only —
     // the app names the properties (STR Daily Rates, Needs attention).
-    const failed = Object.entries(publicErrors).map(([id, e]) => `${id} (${e})`);
-    console.log(`::error title=${failures} of ${Object.keys(next).length} Airbnb calendars not synced::${failed.join('; ')} — open STR Daily Rates in the app to see which properties these are.`);
-    return 1;
+    // Only a property that newly fails fails the run (GitHub emails the owner
+    // once); one that was already failing is a warning, so a known problem
+    // doesn't send an email every 30 minutes. The app flags it either way.
+    const failed = Object.entries(publicErrors).map(([id, e]) => `${id} (${e}${newlyFailed.has(id) ? '' : ', already failing'})`);
+    const kind = newlyFailed.size ? 'error' : 'warning';
+    console.log(`::${kind} title=${failures} of ${Object.keys(next).length} Airbnb calendars not synced::${failed.join('; ')} — open STR Daily Rates in the app to see which properties these are.`);
+    if (newlyFailed.size) return 1;
   }
   return 0;
 }

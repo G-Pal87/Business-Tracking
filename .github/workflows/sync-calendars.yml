@@ -8,8 +8,9 @@ name: Sync Airbnb calendars
 #
 # Needs the CALENDAR_SYNC_KEY secret (shown in the app: STR Daily Rates →
 # "Set up automatic calendar sync"). Without it the job does nothing.
-# A property that can't be fetched fails the run (GitHub emails the owner)
-# and is flagged in the app.
+# A property that newly can't be fetched fails the run (GitHub emails the
+# owner once); while it keeps failing, later runs only warn. The app flags it
+# the whole time.
 on:
   schedule:
     # Every 30 minutes, off the busy top of the hour. Free on a public
