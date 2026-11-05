@@ -7,7 +7,7 @@ import { listActive, listActivePayments, byId, upsert, softDelete, newId, format
 import { fetchICal, parseICal, mergeBlocksChecked, isOwnerBlockSummary } from '../core/ical.js';
 import { publishSnapshotBranch, fetchBranchFileText, dispatchRepoEvent } from '../core/github.js';
 import { AIRBNB_CLEANING_FEE } from '../core/config.js';
-import { feeSettings, bookingFeeModel, bookingFeeRate, payoutPerNight, airbnbPriceFor, airbnbCheckoutFor, feedGuestFeePct, FEE_MODEL_LABEL } from '../core/airbnb-fees.js';
+import { feeSettings, bookingFeeModel, bookingFeeRate, airbnbRatePerNight, payoutPerNight, payoutForRate, airbnbCheckoutFor, feedGuestFeePct, targetBase, weekendFactor, isWeekendNight, leadDays, isLastMinute, growthFactor, LAST_MINUTE_DAYS, LAST_MINUTE_WEIGHT, FEE_MODEL_LABEL } from '../core/airbnb-fees.js';
 import { openPaymentForm } from './payments.js';
 import { todayYmd, addDaysYmd, addMonthsYmd } from '../core/dates.js';
 import { calendarSyncTick, renderSyncBanner, syncLine, refreshNow, calSyncSettings } from './calsync-app.js';
@@ -183,21 +183,32 @@ function buildHistoricNightMap(propertyId) {
   for (const p of bookings) {
     const ci = p._ci, co = p._co;
     const nights = Math.max(0, Math.round((parseYMD(co) - parseYMD(ci)) / 86400000)) || p.airbnbNights;
-    // What the booking PAID OUT per night, excl. cleaning — comparable across
-    // Airbnb's old (split) and new (host-only) fee models, since you raise
-    // the price to keep the payout (js/core/airbnb-fees.js). The cleaning
-    // taken off is what reached you after Airbnb's fee on it. Recomputed from
-    // amount/cleaningFee; the cached avgNightExclCleaning/avgNightlyRate only
-    // when amount itself is missing.
-    const rate = nights > 0 && p.amount != null ? payoutPerNight(p, nights, fs) : avgNightOf(p);
+    // The booking's AIRBNB DAILY RATE in today's host-only terms, excl.
+    // cleaning (js/core/airbnb-fees.js): old split-fee bookings × (1 + guest
+    // fee) — what their guests paid per night — new host-only ones as they
+    // are, so both blend on one scale. Recomputed from the import's figures;
+    // the cached avgNightExclCleaning/avgNightlyRate only when amount itself
+    // is missing.
+    const rate = nights > 0 && p.amount != null ? airbnbRatePerNight(p, nights, fs) : avgNightOf(p);
     const feeModel = bookingFeeModel(p);
     const feeRate = bookingFeeRate(p, fs);
     if (rate == null || rate <= 0) continue;
-    const adr  = nights > 0 && p.amount != null ? p.amount / nights : (adrNightOf(p) || rate);
+    const cleaningPerNight = nights > 0 ? (Number(p.airbnbCleaningFee) || 0) / nights : 0;
+    const adr  = nights > 0 && p.amount != null ? rate + cleaningPerNight : (adrNightOf(p) || rate);
+    const payout = payoutPerNight(p, nights, fs);
+    const gross = feeModel ? (Number(p.airbnbGrossEarnings) > 0 ? Number(p.airbnbGrossEarnings) : p.amount / (1 - feeRate)) : (p.amount ?? null);
+    // Recommendations learn from Airbnb bookings only (a direct booking's
+    // price is the discounted website price, which would pull the rate
+    // down), and count last-minute ones — often priced down to fill the
+    // night — at reduced weight.
+    const lead = leadDays(p.airbnbBookingDate, ci);
+    const learnW = feeModel ? (isLastMinute(lead) ? LAST_MINUTE_WEIGHT : 1) : 0;
     const guest = p.guestName || (p.notes || '').split(' · ')[0] || '';
     for (const cur of nightsOf(ci, co)) {
       map.set(cur, {
-        rate, adr,
+        rate, adr, payout, gross, learnW, lead,
+        // weekday-equivalent rate: weekend nights back to the weekday level
+        base: rate / weekendFactor(cur, fs),
         currency: p.currency || 'EUR',
         label: guest,
         code: p.confirmationCode || '',
@@ -227,10 +238,16 @@ function buildSuggester(histMap) {
   const byYearMonth = new Map();
   const byMonthDay  = new Map();
   const all = [];
+  const fs = feeSettings(state.db.settings?.airbnb);
   for (const [date, info] of histMap) {
+    if (!(info.learnW > 0)) continue;           // direct bookings aren't learnt from
     const ym = date.slice(0, 7), md = date.slice(5);
+    const wf = weekendFactor(date, fs);
     const entry = {
       date, rate: info.rate, adr: info.adr || info.rate,
+      // weekday-equivalent values the blend averages (weekend uplift re-applied per target night)
+      base: info.base ?? info.rate / wf, adrBase: (info.adr || info.rate) / wf,
+      w: info.learnW, lead: info.lead,
       checkIn: info.checkIn || '', checkOut: info.checkOut || '',
       code: info.code || '', label: info.label || '',
       feeModel: info.feeModel || null, bookingDate: info.bookingDate || ''
@@ -239,8 +256,10 @@ function buildSuggester(histMap) {
     (byMonthDay.get(md)  || byMonthDay.set(md,  []).get(md)).push(entry);
     all.push(entry);
   }
-  const avg    = arr => arr.reduce((s, r) => s + r.rate, 0) / arr.length;
-  const avgADR = arr => arr.reduce((s, r) => s + r.adr,  0) / arr.length;
+  // Weighted by each night's learning weight (last-minute nights count less).
+  const cnt    = arr => arr.reduce((s, r) => s + r.w, 0);
+  const avg    = arr => arr.reduce((s, r) => s + r.base * r.w, 0) / cnt(arr);
+  const avgADR = arr => arr.reduce((s, r) => s + r.adrBase * r.w, 0) / cnt(arr);
 
   // Per-night weight for data that is `yearsAgo` years old.
   function yrWeight(yearsAgo) {
@@ -336,7 +355,7 @@ function buildSuggester(histMap) {
 
     // ── Decide which pools to use ──────────────────────────────────────────
     const pools = [];
-    const currentEffN = ymArr.length * CURRENT_YEAR_WEIGHT;
+    const currentEffN = cnt(ymArr) * CURRENT_YEAR_WEIGHT;
 
     if (ymArr.length && currentEffN >= STANDALONE_THRESHOLD) {
       // Strong current-year signal — use alone, no prior blend needed.
@@ -366,16 +385,23 @@ function buildSuggester(histMap) {
     if (!pools.length) return null;
 
     // ── Weighted blend ─────────────────────────────────────────────────────
+    // Pool rates are weekday-equivalent; older years are brought forward by
+    // the yearly growth %, and the target night's weekend uplift is applied
+    // to the blend.
     let totalW = 0, rateSum = 0, adrSum = 0;
     for (const pool of pools) {
       const pa  = poolAvg(pool.entries);
-      pool.rate = pa.rate;
-      pool.adr  = pa.adr;
-      const w   = pool.entries.length * pool.weight;
+      const g   = growthFactor(pool.yearsAgo || 0, fs);
+      pool.rate = pa.rate * g;
+      pool.adr  = pa.adr * g;
+      pool.n    = cnt(pool.entries);
+      const w   = pool.n * pool.weight;
       rateSum  += pool.rate * w; adrSum += pool.adr * w; totalW += w;
     }
-    const blendedRate = rateSum / totalW;
-    const blendedADR  = adrSum  / totalW;
+    const wfDate      = weekendFactor(date, fs);
+    const weekdayRate = rateSum / totalW;
+    const blendedRate = weekdayRate * wfDate;
+    const blendedADR  = (adrSum / totalW) * wfDate;
     const effectiveN  = Math.round(totalW);
     const confidence  = effectiveN >= 15 ? 'high' : effectiveN >= 5 ? 'medium' : 'low';
 
@@ -404,7 +430,8 @@ function buildSuggester(histMap) {
     const confidenceNote = buildConfidenceNote(pools, effectiveN, confidence, moName, yr, dayStr, priorDayYears, currentEffN);
 
     return {
-      rate: blendedRate, adr: blendedADR,
+      rate: blendedRate, adr: blendedADR, weekdayRate,
+      weekendUpliftPct: wfDate > 1 ? fs.weekendUpliftPct : 0, growthPct: fs.growthPct,
       basis, confidence, effectiveN, confidenceNote, why,
       pools, sources: pools.flatMap(p => p.entries),
       fallbackReason, currentYearContext
@@ -602,19 +629,50 @@ function renderYearComparisonTable(data, month1, ccy) {
 // `amount` in the rates feed, same basis as booked/suggested nights, while
 // the feed carries the cleaning fee separately (once per booking) — a target
 // with cleaning amortised in double-counted it.
-function computeRecommendedADR(propertyId, month1, histMap = historicNightMap(propertyId)) {
+function computeRecommendedADR(propertyId, month1, histMap = historicNightMap(propertyId), year = null) {
+  // Weekday Airbnb daily rate (weekend nights brought back to the weekday
+  // level), Airbnb bookings only, last-minute nights at reduced weight, older
+  // years brought forward by the yearly growth %. Weekends get the uplift on
+  // top wherever the rate is applied.
+  const fs = feeSettings(state.db.settings?.airbnb);
   const mo = String(month1).padStart(2, '0');
   let sum = 0, n = 0;
   for (const [d, info] of histMap) {
-    if (d.slice(5, 7) === mo && info.rate > 0) { sum += info.rate; n++; }
+    if (d.slice(5, 7) !== mo || !(info.base > 0) || !(info.learnW > 0)) continue;
+    const g = year ? growthFactor(year - Number(d.slice(0, 4)), fs) : 1;
+    sum += info.base * g * info.learnW; n += info.learnW;
   }
   return n > 0 ? Math.round(sum / n) : null;
 }
 
+// How much lower last-minute Airbnb bookings (booked < LAST_MINUTE_DAYS days
+// ahead) went than ones booked earlier for the same month — paired by
+// year-month so the season doesn't skew it. pct > 0 = cheaper.
+function lastMinuteDrop(histMap) {
+  const byYm = new Map();
+  for (const [d, info] of histMap) {
+    if (!(info.learnW > 0) || info.lead == null) continue;
+    const ym = d.slice(0, 7);
+    if (!byYm.has(ym)) byYm.set(ym, { lm: 0, lmN: 0, adv: 0, advN: 0 });
+    const b = byYm.get(ym);
+    if (isLastMinute(info.lead)) { b.lm += info.base; b.lmN++; } else { b.adv += info.base; b.advN++; }
+  }
+  let ratioSum = 0, nights = 0;
+  for (const b of byYm.values()) {
+    if (!b.lmN || !b.advN) continue;
+    ratioSum += (b.lm / b.lmN) / (b.adv / b.advN) * b.lmN; nights += b.lmN;
+  }
+  return nights ? { pct: Math.round((1 - ratioSum / nights) * 100), nights } : null;
+}
+
 function getConfirmedTarget(propertyId, month) {
-  return (state.db.strRateTargets || []).find(t =>
+  const t = (state.db.strRateTargets || []).find(t =>
     t.propertyId === propertyId && t.month === month && !t.deletedAt
   ) || null;
+  // On the Airbnb-rate scale (targets confirmed before the fee change were
+  // payouts — targetBase converts them without rewriting them). It's the
+  // WEEKDAY rate: weekend nights get the uplift (weekendFactor).
+  return t ? { ...t, targetADR: Math.round(targetBase(t, feeSettings(state.db.settings?.airbnb))), basis: 'airbnb_rate' } : null;
 }
 
 // ── iCal blocks (external reserved/blocked days) ─────────────────────────────
@@ -990,13 +1048,14 @@ export function sitePricesVisible(prop) {
 //     to show "Price on request" instead of any price.
 // Each night carries the NIGHTLY price only:
 //   amount          — published/direct booking rate (after any promo discount)
-//   airbnbCheckout  — full price if booked on Airbnb (airbnbCheckoutFor: the
-//                     Airbnb price for that payout + tax; + guest fee if split)
-//   originalAmount  — target ADR before promo discount (only present when discountPct > 0)
+//   airbnbCheckout  — what an Airbnb guest pays: the Airbnb daily rate (+ tax;
+//                     + guest fee under the old split model)
+//   originalAmount  — the Airbnb daily rate (target or suggestion, weekend uplift
+//                     included) before the promo discount
 //   discountPct     — promo discount applied (only present when > 0)
 // The cleaning fee is charged ONCE PER BOOKING — see feed-level `cleaningFee` /
 // `cleaningGuestTotal`, which the consumer adds once per stay.
-function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
+export function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
   const prop    = byId('properties', propertyId);
   const ccy     = prop?.currency || 'EUR';
   const histMap = historicNightMap(propertyId);
@@ -1027,7 +1086,7 @@ function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
     if (status === 'open' && showPrices) {
       const mo = date.slice(0, 7);
       const target = targetFor(mo);
-      if (target) { amount = target.targetADR; basis = 'confirmed target'; }
+      if (target) { amount = target.targetADR * weekendFactor(date, fs); basis = 'confirmed target'; }
       else { const s = suggest(date); if (s) { amount = s.rate; basis = 'suggested'; } }
     }
     if (amount == null) {
@@ -1347,9 +1406,9 @@ function renderKpis(row, { histMap, suggest, blocked, year, month1, ccy, propert
   const mo = String(month1).padStart(2, '0');
   const dim = daysInMonth(year, month1);
 
-  // Net nightly rate (excl. cleaning) + ADR (incl. cleaning) for this month, all years.
+  // Airbnb daily rate (excl. cleaning, today's fee terms) + ADR (incl. cleaning) for this month, all years.
   const monthEntries = [...histMap].filter(([d]) => d.slice(5, 7) === mo);
-  const netRates = monthEntries.map(([, v]) => v.rate);
+  const netRates = monthEntries.filter(([, v]) => v.feeModel).map(([, v]) => v.rate);   // Airbnb bookings only
   const adrRates = monthEntries.map(([, v]) => v.adr);
   const avgNet = netRates.length ? netRates.reduce((s, r) => s + r, 0) / netRates.length : null;
   const avgADR = adrRates.length ? adrRates.reduce((s, r) => s + r, 0) / adrRates.length : null;
@@ -1396,13 +1455,16 @@ function renderKpis(row, { histMap, suggest, blocked, year, month1, ccy, propert
     : 'no target';
 
   row.appendChild(card('ADR', avgADR != null ? formatMoney(avgADR, ccy, { maxFrac: 0 }) : '—', `incl. cleaning · ${MONTHS[month1 - 1]}, all years`));
-  row.appendChild(card('Net Nightly Rate', avgNet != null ? formatMoney(avgNet, ccy, { maxFrac: 0 }) : '—', `excl. cleaning · ${netRates.length} night(s)`));
-  row.appendChild(card('Confirmed Target', confirmed ? formatMoney(confirmed.targetADR, ccy, { maxFrac: 0 }) : '—', confirmed ? `payout/night · set ${fmtDate(confirmed.confirmedAt)}` : 'not set', confirmed ? 'success' : ''));
-  // The price to type into Airbnb for that payout (or for the average
-  // suggestion when no target is set), at the current host fee.
-  const airbnbBase = confirmed ? confirmed.targetADR : avgSugg;
-  row.appendChild(card('Set in Airbnb', airbnbBase != null ? formatMoney(Math.round(airbnbPriceFor(airbnbBase, fs)), ccy, { maxFrac: 0 }) : '—',
-    airbnbBase != null ? `nightly price · ${fs.hostOnly ? `${fs.hostFeePct}% host fee` : 'old split fee'}${confirmed ? '' : ' · from suggestions'}` : 'no target or suggestion'));
+  row.appendChild(card('Airbnb Daily Rate', avgNet != null ? formatMoney(avgNet, ccy, { maxFrac: 0 }) : '—', `excl. cleaning · Airbnb bookings, today's fee terms · ${netRates.length} night(s)`));
+  row.appendChild(card('Confirmed Target', confirmed ? formatMoney(confirmed.targetADR, ccy, { maxFrac: 0 }) : '—', confirmed ? `weekday Airbnb rate${fs.weekendUpliftPct ? ` · Fri/Sat +${fs.weekendUpliftPct}%` : ''} · set ${fmtDate(confirmed.confirmedAt)}` : 'not set', confirmed ? 'success' : ''));
+  // What you'd receive per night at that Airbnb rate (target, else the
+  // month's average suggestion), after Airbnb's current host fee.
+  const rateBase = confirmed ? confirmed.targetADR : avgSugg;
+  row.appendChild(card('You Receive', rateBase != null ? formatMoney(Math.round(payoutForRate(rateBase, fs)), ccy, { maxFrac: 0 }) : '—',
+    rateBase != null ? `per night after Airbnb's ${fs.hostOnly ? fs.hostFeePct : fs.splitHostFeePct}% fee${confirmed ? '' : ' · from suggestions'}` : 'no target or suggestion'));
+  const lm = lastMinuteDrop(histMap);
+  row.appendChild(card('Last-Minute Bookings', lm ? `${lm.pct > 0 ? '−' : '+'}${Math.abs(lm.pct)}%` : '—',
+    lm ? `booked < ${LAST_MINUTE_DAYS} days ahead vs earlier, same months · ${lm.nights} night(s), counted at ${LAST_MINUTE_WEIGHT}×` : `none booked < ${LAST_MINUTE_DAYS} days ahead`));
   row.appendChild(card('Published Rate', published != null ? formatMoney(published, ccy, { maxFrac: 0 }) : '—', pubSub, confirmed ? 'success' : ''));
   row.appendChild(card('Guest Saving', saving != null ? formatMoney(saving, ccy, { maxFrac: 0 }) : '—', savingPct != null ? `${savingPct}% off Airbnb checkout` : 'no target', saving != null ? 'success' : ''));
   row.appendChild(card('Booked Nights', String(booked), `of ${dim} · ${occ}% occupancy`, occ >= 70 ? 'success' : ''));
@@ -1411,6 +1473,7 @@ function renderKpis(row, { histMap, suggest, blocked, year, month1, ccy, propert
 
 // ── Calendar grid ───────────────────────────────────────────────────────────
 function renderCalendar(card, { histMap, suggest, blocked, blockInfo, year, month1, ccy, minR, maxR, propertyId, onAutoRefresh }) {
+  const fs = feeSettings(state.db.settings?.airbnb);
   card.innerHTML = '';
   const mo  = String(month1).padStart(2, '0');
   const dim = daysInMonth(year, month1);
@@ -1453,14 +1516,14 @@ function renderCalendar(card, { histMap, suggest, blocked, blockInfo, year, mont
       // state used, now specifically meaning "needs your attention".
       bg = 'rgba(239,68,68,0.15)';
       border = '1px solid rgba(239,68,68,0.55)';
-      const rateVal = target ? target.targetADR : suggest(date)?.rate;
+      const rateVal = target ? target.targetADR * weekendFactor(date, fs) : suggest(date)?.rate;
       rateEl = el('div', { style: 'font-size:12px;font-style:italic;color:var(--text-muted)' }, rateVal != null ? formatMoney(rateVal, ccy, { maxFrac: 0 }) : '—');
       badge = 'gap';
     } else if (info?.type === 'reserved' && info.annotation) {
       // Reserved, no payment, but you've already told us why — accounted for.
       bg = 'rgba(139,92,246,0.14)';
       border = '1px solid rgba(139,92,246,0.5)';
-      const rateVal = target ? target.targetADR : suggest(date)?.rate;
+      const rateVal = target ? target.targetADR * weekendFactor(date, fs) : suggest(date)?.rate;
       rateEl = el('div', { style: 'font-size:12px;font-style:italic;color:var(--text-muted)' }, rateVal != null ? formatMoney(rateVal, ccy, { maxFrac: 0 }) : '—');
       badge = 'noted';
     } else if (info?.type === 'owner' && !info.annotation) {
@@ -1468,7 +1531,7 @@ function renderCalendar(card, { histMap, suggest, blocked, blockInfo, year, mont
       // off-platform booking, so it's flagged (amber, softer than a reserved gap).
       bg = 'rgba(245,158,11,0.14)';
       border = '1px solid rgba(245,158,11,0.55)';
-      const rateVal = target ? target.targetADR : suggest(date)?.rate;
+      const rateVal = target ? target.targetADR * weekendFactor(date, fs) : suggest(date)?.rate;
       rateEl = el('div', { style: 'font-size:12px;font-style:italic;color:var(--text-muted)' }, rateVal != null ? formatMoney(rateVal, ccy, { maxFrac: 0 }) : '—');
       badge = 'why?';
     } else if (info?.type === 'owner' || isBlocked) {
@@ -1477,7 +1540,7 @@ function renderCalendar(card, { histMap, suggest, blocked, blockInfo, year, mont
       // can't type but blockedDateSet still counts as unavailable.
       bg = 'rgba(100,116,139,0.12)';
       border = '1px solid rgba(100,116,139,0.4)';
-      const rateVal = target ? target.targetADR : suggest(date)?.rate;
+      const rateVal = target ? target.targetADR * weekendFactor(date, fs) : suggest(date)?.rate;
       rateEl = el('div', { style: 'font-size:12px;font-style:italic;color:var(--text-muted)' }, rateVal != null ? formatMoney(rateVal, ccy, { maxFrac: 0 }) : '—');
       badge = info?.type === 'window' ? 'window' : 'closed';
     } else if (date < tStr) {
@@ -1489,7 +1552,7 @@ function renderCalendar(card, { histMap, suggest, blocked, blockInfo, year, mont
       badge = 'empty';
     } else if (target) {
       // Confirmed target overrides the suggestion — show it as the published rate.
-      rateEl = el('div', { style: 'font-size:13px;font-weight:700;color:var(--text)' }, formatMoney(target.targetADR, ccy, { maxFrac: 0 }));
+      rateEl = el('div', { style: 'font-size:13px;font-weight:700;color:var(--text)' }, formatMoney(target.targetADR * weekendFactor(date, fs), ccy, { maxFrac: 0 }));
       badge = 'target';
     } else {
       const s = suggest(date);
@@ -1527,7 +1590,7 @@ function renderCalendar(card, { histMap, suggest, blocked, blockInfo, year, mont
   legend.appendChild(chip('rgba(100,116,139,0.20)', 'Closed — reason noted'));
   legend.appendChild(chip('rgba(100,116,139,0.20)', 'not open = beyond your Airbnb availability window'));
   legend.appendChild(chip('rgba(100,116,139,0.06)', 'Past, not booked (empty)'));
-  if (target) legend.appendChild(chip('#6366f1', `target = confirmed ${formatMoney(target.targetADR, ccy, { maxFrac: 0 })} (published rate)`));
+  if (target) legend.appendChild(chip('#6366f1', `target = confirmed ${formatMoney(target.targetADR, ccy, { maxFrac: 0 })}${fs.weekendUpliftPct ? ` (Fri/Sat +${fs.weekendUpliftPct}%)` : ''}`));
   legend.appendChild(chip('transparent', 'Open · sugg = high confidence · ~ = medium · ? = low'));
   body.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:6px' }, 'Click a night that isn\'t booked to set or change its status.'));
   body.appendChild(legend);
@@ -1636,24 +1699,26 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
     if (hist.feeModel) body.appendChild(row('Airbnb fee', `${FEE_MODEL_LABEL[hist.feeModel]} · ${(hist.feeRate * 100).toFixed(1)}%`));
 
     body.appendChild(section('Nightly Rate Breakdown'));
-    body.appendChild(row('ADR (incl. cleaning amortised)', fmt(hist.adr, hist.currency)));
-    body.appendChild(row('Net nightly rate (excl. cleaning)', fmt(hist.rate, hist.currency)));
-    const cleanPerNight = hist.adr - hist.rate;
-    if (cleanPerNight > 0.01) body.appendChild(row('Cleaning per night (amortised)', fmt(cleanPerNight, hist.currency), true));
+    body.appendChild(row('Airbnb daily rate (excl. cleaning, today\'s fee terms)', fmt(hist.rate, hist.currency)));
+    if (hist.payout != null) body.appendChild(row('You received per night (excl. cleaning)', fmt(hist.payout, hist.currency), true));
+    body.appendChild(row('ADR (incl. cleaning amortised)', fmt(hist.adr, hist.currency), true));
+    if (hist.lead != null) body.appendChild(row('Booked ahead', `${hist.lead} day${hist.lead !== 1 ? 's' : ''}${isLastMinute(hist.lead) ? ` — last-minute, counts ${LAST_MINUTE_WEIGHT}× in recommendations` : ''}`, true));
+    if (!hist.feeModel) body.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);padding:4px 0' }, 'Direct booking — shown here, but recommendations learn from Airbnb bookings only.'));
 
     if (hist.amount != null && hist.nights) {
       body.appendChild(section('Booking Totals'));
-      body.appendChild(row('Total booking amount', fmt(hist.amount, hist.currency)));
-      if (hist.cleaningFee != null) {
-        body.appendChild(row('of which cleaning fee', fmt(hist.cleaningFee, hist.currency), true));
-        body.appendChild(row('of which accommodation', fmt(hist.amount - hist.cleaningFee, hist.currency), true));
-      }
-      body.appendChild(section('Formulas'));
-      body.appendChild(row('ADR', `${fmt(hist.amount, hist.currency)} ÷ ${hist.nights} nights = ${fmt(hist.adr, hist.currency)}`));
-      if (hist.cleaningFee != null) {
-        // Only the cleaning that reached you (after Airbnb's fee on it) is taken off.
-        const cleanNet = hist.cleaningFee * (1 - (hist.feeRate || 0));
-        body.appendChild(row('Net rate', `(${fmt(hist.amount, hist.currency)} − ${fmt(cleanNet, hist.currency)} cleaning after fee) ÷ ${hist.nights} = ${fmt(hist.rate, hist.currency)}`));
+      if (hist.feeModel && hist.gross != null) body.appendChild(row('Booking total on Airbnb (before Airbnb\'s fee)', fmt(hist.gross, hist.currency)));
+      body.appendChild(row(hist.feeModel ? 'Paid out to you' : 'Total booking amount', fmt(hist.amount, hist.currency)));
+      if (hist.cleaningFee != null) body.appendChild(row('of which cleaning fee (as charged)', fmt(hist.cleaningFee, hist.currency), true));
+      body.appendChild(section('Formula'));
+      const clean = hist.cleaningFee || 0;
+      if (hist.feeModel === 'split') {
+        const fs = feeSettings(state.db.settings?.airbnb);
+        body.appendChild(row('Airbnb daily rate', `(${fmt(hist.gross, hist.currency)} − ${fmt(clean, hist.currency)} cleaning) ÷ ${hist.nights} × ${(1 + fs.guestFeePct / 100).toFixed(2)} old guest fee = ${fmt(hist.rate, hist.currency)}`));
+      } else if (hist.feeModel) {
+        body.appendChild(row('Airbnb daily rate', `(${fmt(hist.gross, hist.currency)} − ${fmt(clean, hist.currency)} cleaning) ÷ ${hist.nights} = ${fmt(hist.rate, hist.currency)}`));
+      } else {
+        body.appendChild(row('Nightly price', `(${fmt(hist.amount, hist.currency)} − ${fmt(clean, hist.currency)} cleaning) ÷ ${hist.nights} = ${fmt(hist.rate, hist.currency)}`));
       }
     }
   } else {
@@ -1701,7 +1766,7 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
       const mo1 = Number(date.slice(5, 7));
       const box = el('div', { style: 'margin:8px 0;padding:8px 10px;border-radius:6px;background:rgba(99,102,241,0.10);border-left:3px solid #6366f1;font-size:12px' });
       box.appendChild(el('div', { style: 'font-weight:700;color:var(--text);margin-bottom:2px' },
-        `Published rate: ${fmt(target.targetADR)}`));
+        `Published rate: ${fmt(target.targetADR * weekendFactor(date, feeSettings(state.db.settings?.airbnb)))}${isWeekendNight(date) && feeSettings(state.db.settings?.airbnb).weekendUpliftPct ? ' (weekend uplift included)' : ''}`));
       box.appendChild(el('div', { style: 'color:var(--text-muted)' },
         `Confirmed ADR target for ${MONTHS[mo1 - 1]} ${date.slice(0, 4)} — this overrides the suggestion below and is the rate sent to the daily-rate feed.`));
       body.appendChild(box);
@@ -1784,14 +1849,16 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
       }
 
       // ── Suggested rates ──
-      body.appendChild(section('Suggested Rates'));
+      body.appendChild(section('Suggested Rate — set this in Airbnb'));
       body.appendChild(row('ADR (incl. cleaning amortised)', fmt(s.adr)));
-      body.appendChild(row('Net nightly rate (excl. cleaning)', fmt(s.rate)));
+      body.appendChild(row('Airbnb daily rate (excl. cleaning)', fmt(s.rate)));
       {
         // Suggestions are payouts per night, learnt from old- and new-fee
         // bookings alike; this is the price that pays that out today.
         const fs = feeSettings(state.db.settings?.airbnb);
-        body.appendChild(row(`Set in Airbnb (${fs.hostOnly ? `${fs.hostFeePct}% host fee` : 'old split fee'})`, fmt(Math.round(airbnbPriceFor(s.rate, fs)))));
+        if (s.weekendUpliftPct) body.appendChild(row(`Weekend uplift (Fri/Sat)`, `${fmt(s.weekdayRate)} weekday + ${s.weekendUpliftPct}%`, true));
+        if (s.growthPct) body.appendChild(row('Yearly growth applied to older years', `+${s.growthPct}%/yr`, true));
+        body.appendChild(row(`You'd receive (after Airbnb's ${fs.hostOnly ? fs.hostFeePct : fs.splitHostFeePct}% fee)`, fmt(payoutForRate(s.rate, fs)), true));
       }
       const cleanEst = s.adr - s.rate;
       if (cleanEst > 0.01) body.appendChild(row('Est. cleaning per night', fmt(cleanEst), true));
@@ -1928,7 +1995,7 @@ function renderAnalysis(container, { propertyId, year, month1, ccy, onRerender }
   const anchor = `${year}-${String(month1).padStart(2, '0')}`;
   const histMap      = historicNightMap(propertyId); // built once, shared by the three helpers below
   const monthStats   = buildMonthlyStats(propertyId, anchor, 12, histMap);
-  const recommendedADR = computeRecommendedADR(propertyId, month1, histMap);
+  const recommendedADR = computeRecommendedADR(propertyId, month1, histMap, year);
   const confirmed    = getConfirmedTarget(propertyId, anchor);
   const currentStats = monthStats.find(s => s.month === anchor) || { month: anchor, adr: null, netRate: null, nights: 0, days: daysInMonth(year, month1), occ: 0 };
 
@@ -2099,7 +2166,7 @@ function renderInsights({ monthStats, anchor, currentStats, recommendedADR, conf
     const adj = confirmed.adjustmentPct ? ` (${confirmed.adjustmentPct > 0 ? '+' : ''}${confirmed.adjustmentPct}% adjustment)` : '';
     insights.push({ text: `Confirmed target for ${MONTHS[mo1 - 1]} ${yr}: ${fmt(confirmed.targetADR)}${adj} — will be used when publishing the rate feed`, color: '#6366f1' });
   } else if (recommendedADR) {
-    insights.push({ text: `Recommended ADR: ${fmt(recommendedADR)} per night excl. cleaning (${MONTHS[mo1 - 1]} historical avg, all years) — approve or override below`, color: '#6366f1' });
+    insights.push({ text: `Recommended Airbnb rate: ${fmt(recommendedADR)} per weekday night excl. cleaning (${MONTHS[mo1 - 1]} history, all years, old fee bookings adjusted)${feeSettings(state.db.settings?.airbnb).weekendUpliftPct ? ` · Fri/Sat +${feeSettings(state.db.settings?.airbnb).weekendUpliftPct}%` : ''} — approve or override below`, color: '#6366f1' });
   }
 
   if (!insights.length) return el('div', {});
@@ -2156,7 +2223,7 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
   );
 
   const targetWrap = el('div', {});
-  targetWrap.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px' }, 'Target ADR'));
+  targetWrap.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px' }, 'Target Airbnb rate (weekday)'));
   const targetInp = input({
     value: confirmed ? String(confirmed.targetADR) : (recommendedADR ? String(recommendedADR) : ''),
     placeholder: 'e.g. 130',
@@ -2215,7 +2282,7 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
 
   const guestPriceWrap = el('div', {});
   guestPriceWrap.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px' },
-    fs.hostOnly ? `Set in Airbnb (${fs.hostFeePct}% host fee${fs.taxPct ? ` + ${fs.taxPct}% tax` : ''})` : `Airbnb checkout price (incl. ${fs.guestFeePct + fs.taxPct}% fees)`));
+    fs.hostOnly ? `Airbnb checkout price${fs.taxPct ? ` (incl. ${fs.taxPct}% tax)` : ' (no guest fee)'}` : `Airbnb checkout price (incl. ${fs.guestFeePct + fs.taxPct}% fees)`));
   const guestPriceEl = el('div', { style: 'font-size:14px;font-weight:700;color:#6366f1;padding-bottom:6px;min-width:70px' }, '');
 
   const guestSavingWrap = el('div', {});
@@ -2281,6 +2348,7 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
       recommendedADR: recommendedADR || null,
       adjustmentPct: !isNaN(adjPct) ? adjPct : 0,
       targetADR,
+      basis: 'airbnb_rate',          // the Airbnb daily rate (older targets were payouts — targetBase)
       discountPct: discPct,
       confirmedAt: todayStr()
     });
@@ -2349,7 +2417,7 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
       } else {
         statusEl.appendChild(el('span', {}, ' · '));
       }
-      statusEl.appendChild(el('span', { style: 'color:#6366f1;font-weight:600' }, fs.hostOnly ? `set in Airbnb ${fmt(Math.round(airbnbPriceFor(confirmed.targetADR, fs)))} · Airbnb checkout ${fmt(fullGuest)}` : `Airbnb checkout ${fmt(fullGuest)}`));
+      statusEl.appendChild(el('span', { style: 'color:#6366f1;font-weight:600' }, `Airbnb checkout ${fmt(fullGuest)}`));
       statusEl.appendChild(el('span', { style: 'color:#10b981;font-weight:600' }, ` · guest saves ${fmt(saving)} (${savingPct}% off Airbnb)`));
     }
     wrap.appendChild(statusEl);

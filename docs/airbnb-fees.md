@@ -1,42 +1,64 @@
-# Airbnb fee models
+# Airbnb fee models and the STR daily rate
 
 On **13 Oct 2026** Airbnb moved hosts using a channel manager (incl. the EEA)
 from the **split** fee to a **host-only** fee:
 
 | | Host fee (taken from your price) | Guest fee (added on top) |
 |---|---|---|
-| Split (old) | 3% + VAT ≈ **3.6%** of the booking total | ~14% |
-| Host-only (new) | 15.5% + VAT ≈ **18.4%** of the booking total | none |
+| Split (old) | 3% + VAT (≈ 3.57% at 19% VAT) | ~14% |
+| Host-only (new) | 15.5% + VAT (≈ 18.45% at 19% VAT) | none |
 
 A reservation keeps the model it was **booked** under, even when the stay is
-after 13 Oct 2026. Keeping the same payout needs the Airbnb price raised by
-about **18%** (0.964 ÷ 0.816), not 15%.
+after 13 Oct 2026. To keep the guest's price the same, the Airbnb daily rate
+now has to carry the old guest fee: a €100 rate under the old model (the guest
+paid ~€114) is a €114 rate under the new one.
 
-## How the app handles it (`js/core/airbnb-fees.js`)
+## What STR Daily Rates recommends (`js/core/airbnb-fees.js`)
 
-- **Each reservation's model** comes from its own import figures (service fee ÷
-  gross earnings: ≥ 10% = host-only), else from its booking date (≥ 13 Oct 2026
-  = host-only), else from its check-in (before the switch = split). Manual and
-  off-platform bookings pay no Airbnb fee.
-- **STR Daily Rates learns from payouts.** Each booked night's net rate is what
-  the booking paid out per night excl. cleaning — and only the cleaning that
-  reached you (after Airbnb's fee on it) is taken off. Payouts are comparable
-  across both models, so old and new bookings feed the suggestions and the
-  recommended monthly target alike; next year's suggestion for a season blends
-  that season's old- and new-fee bookings on the same footing.
-- **"Set in Airbnb"** turns a payout (a suggestion or a confirmed target) into
-  the nightly price to type into Airbnb: payout ÷ (1 − host fee). Shown on the
-  month's KPIs, in each day's detail and in the target form.
-- **Day detail** shows each booking's booking date and fee model.
-- **Rates feed**: `amount` (the direct-booking price) stays the payout target;
-  `airbnbCheckout` is what an Airbnb guest pays — the Airbnb price (+ tax), plus
-  the guest fee only under the split model. `guestFeePct` is the mark-up from
-  `originalAmount` to `airbnbCheckout` net of tax (22.5% at an 18.4% host fee),
-  so `airbnbCheckout = originalAmount × (1 + (guestFeePct + taxPct)/100)` still
-  holds.
-- **Payments**: the estimated guest total adds the guest fee only to
-  reservations booked under the split model.
+The recommendation is **the Airbnb daily rate to set** (excl. cleaning), in
+today's host-only terms — what the guest pays per night.
 
-Settings → Airbnb: **fee model for new bookings** (host-only by default) and
-**host fee % incl. VAT** (default 18.4%, as measured on the first host-only
-payouts). The guest fee % only applies to the old split model.
+- **Every past Airbnb booking is put on that scale:** nightly rate = (booking
+  total − cleaning) ÷ nights; old split-fee bookings × (1 + guest fee), since
+  their guests paid the fee on top; new host-only ones as they are. So old and
+  new bookings blend without dragging the rate down.
+- **Which model a booking was on** comes from its own import figures (service
+  fee ÷ gross earnings: ≥ 10% = host-only), else its booking date (≥ 13 Oct
+  2026 = host-only), else its check-in (before the switch = split).
+- **Direct (off-platform) bookings** are shown on the calendar but not learnt
+  from: their price is the discounted website price.
+- **Last-minute bookings** (booked < 7 days ahead, often priced down to fill
+  the night) count at half weight. STR Daily Rates shows how much lower they
+  went than earlier bookings for the same months ("Last-Minute Bookings").
+- **Weekend uplift** (Settings, default 10%) applies to Friday and Saturday
+  nights. Past weekend nights are brought back to the weekday level before
+  blending, so the uplift isn't counted twice.
+- **Yearly price growth** (Settings, default 0%) raises older years' rates per
+  year before blending.
+- **Year weights** are unchanged: the target date's year 3× per night, each
+  year before × 0.65 (1.95×, 1.27×, 0.82×…); 5+ nights in the same month and
+  year stand alone.
+- **Confirmed monthly targets** are the weekday Airbnb rate (weekends get the
+  uplift). Targets confirmed before this change were payouts per night; they're
+  read on the new scale (× (1 + guest fee) ÷ (1 − old host fee) ≈ × 1.18)
+  without being rewritten, and saved with `basis: 'airbnb_rate'` when next
+  confirmed.
+- **"You receive"** shows what a night at that rate pays out after Airbnb's
+  current fee.
+
+## The website
+
+`amount` (the direct price) = the Airbnb daily rate − your discount (global,
+or the month's own, which overrides it). `airbnbCheckout` = what an Airbnb guest
+pays: the rate (+ tax); plus the guest fee only under the old split model.
+`guestFeePct` is 0 under host-only, so `airbnbCheckout = originalAmount ×
+(1 + (guestFeePct + taxPct)/100)` still holds.
+
+## Settings → Airbnb
+
+Fee model for new bookings · Host fee % (before VAT, 15.5) · VAT on Airbnb's
+fee % (19) · Guest service fee % (old split model only, 14) · Occupancy /
+tourist tax % · Weekend uplift % (10) · Yearly price growth % (0).
+
+STR Analytics keeps comparing targets with achieved revenue on the payout
+footing (a target night counts as what it would pay out).

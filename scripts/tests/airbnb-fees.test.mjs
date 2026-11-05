@@ -5,14 +5,18 @@ const f = await import('../../js/core/airbnb-fees.js');
 const fs = f.feeSettings({});
 const near = (a, b, eps = 0.01) => assert.ok(Math.abs(a - b) < eps, `${a} ≉ ${b}`);
 
-// Synthetic bookings (shapes as the Airbnb CSV import stores them).
-const oldBk = { source: 'airbnb', amount: 964, airbnbGrossEarnings: 1000, airbnbServiceFee: 36, airbnbCleaningFee: 60, airbnbBookingDate: '2026-09-01', airbnbCheckIn: '2026-12-01' };
-const newBk = { source: 'airbnb', amount: 816, airbnbGrossEarnings: 1000, airbnbServiceFee: 184, airbnbCleaningFee: 60, airbnbBookingDate: '2026-10-20', airbnbCheckIn: '2026-12-01' };
+// Synthetic bookings (shapes as the Airbnb CSV import stores them): 4 nights,
+// €60 cleaning. Old: listed at €235/night → gross 1000, 3.57% kept. New: the
+// same guest price (235 × 1.14 ≈ 268/night) → gross 1132, 18.45% kept.
+const oldBk = { source: 'airbnb', amount: 964.3, airbnbGrossEarnings: 1000, airbnbServiceFee: 35.7, airbnbCleaningFee: 60, airbnbBookingDate: '2026-09-01', airbnbCheckIn: '2026-12-01' };
+const newBk = { source: 'airbnb', amount: 923.15, airbnbGrossEarnings: 1131.6, airbnbServiceFee: 208.45, airbnbCleaningFee: 60, airbnbBookingDate: '2026-10-20', airbnbCheckIn: '2026-12-01' };
 
-test('defaults: host-only model at 18.4%', () => {
-  assert.deepEqual(fs, { hostOnly: true, hostFeePct: 18.4, guestFeePct: 14, taxPct: 0 });
-  assert.equal(f.feeSettings({ feeModel: 'split', hostFeePct: '17', taxPct: 2 }).hostOnly, false);
-  assert.equal(f.feeSettings({ hostFeePct: '' }).hostFeePct, 18.4);
+test('defaults: host-only, 15.5% + 19% VAT = 18.45%; old fee 3.57%; weekend +10%; growth 0', () => {
+  assert.deepEqual(fs, { hostOnly: true, hostFeeBasePct: 15.5, vatPct: 19, hostFeePct: 18.45, splitHostFeePct: 3.57, guestFeePct: 14, taxPct: 0, weekendUpliftPct: 10, growthPct: 0 });
+  const g = f.feeSettings({ feeModel: 'split', hostFeeBasePct: '15', vatPct: 27, weekendUpliftPct: 0, growthPct: '5' });
+  assert.equal(g.hostOnly, false); assert.equal(g.hostFeePct, 19.05); assert.equal(g.splitHostFeePct, 3.81);
+  assert.equal(g.weekendUpliftPct, 0); assert.equal(g.growthPct, 5);
+  assert.equal(f.feeSettings({ vatPct: '' }).vatPct, 19);
 });
 
 test('fee model per booking: measured fee wins, then booking date, then stay start', () => {
@@ -22,48 +26,65 @@ test('fee model per booking: measured fee wins, then booking date, then stay sta
   assert.equal(f.bookingFeeModel({ source: 'airbnb', amount: 500, airbnbBookingDate: '2026-10-12', airbnbCheckIn: '2027-02-01' }), 'split');
   assert.equal(f.bookingFeeModel({ source: 'airbnb', amount: 500, airbnbBookingDate: '2026-10-13' }), 'host_only');
   assert.equal(f.bookingFeeModel({ source: 'airbnb', amount: 500, airbnbCheckIn: '2026-08-01' }), 'split');
-  // the fee itself beats a missing/odd date
   assert.equal(f.bookingFeeModel({ ...newBk, airbnbBookingDate: '' }), 'host_only');
   assert.equal(f.bookingFeeModel({ source: 'manual', amount: 500 }), null);
   assert.equal(f.bookingFeeRate({ source: 'manual', amount: 500 }), 0);
-  near(f.bookingFeeRate(newBk), 0.184);
-  near(f.bookingFeeRate({ source: 'airbnb', amount: 500, airbnbBookingDate: '2027-01-01' }), 0.184);
-  near(f.bookingFeeRate({ source: 'airbnb', amount: 500, airbnbBookingDate: '2026-01-01' }), 0.036);
+  near(f.bookingFeeRate({ source: 'airbnb', amount: 500, airbnbBookingDate: '2027-01-01' }), 0.1845);
+  near(f.bookingFeeRate({ source: 'airbnb', amount: 500, airbnbBookingDate: '2026-01-01' }), 0.0357);
 });
 
-test('payout per night takes off only the cleaning that reached you', () => {
-  // old: (964 − 60×0.964)/4 ; new: (816 − 60×0.816)/4
-  near(f.payoutPerNight(oldBk, 4), (964 - 57.84) / 4);
-  near(f.payoutPerNight(newBk, 4), (816 - 48.96) / 4);
-  near(f.payoutPerNight({ source: 'manual', amount: 400, airbnbCleaningFee: 40 }, 4), 90);
-  assert.equal(f.payoutPerNight(oldBk, 0), null);
+test('Airbnb daily rate: old bookings × (1 + guest fee), new as they are — same guest price, same rate', () => {
+  const oldRate = f.airbnbRatePerNight(oldBk, 4), newRate = f.airbnbRatePerNight(newBk, 4);
+  near(oldRate, (1000 - 60) / 4 * 1.14);           // 267.9: what the old guest paid per night
+  near(newRate, (1131.6 - 60) / 4);                // 267.9
+  near(oldRate, newRate, 0.1);
+  // no gross in the import → derived from the payout and the fee
+  near(f.airbnbRatePerNight({ source: 'airbnb', amount: 816, airbnbCleaningFee: 0, airbnbBookingDate: '2026-11-01' }, 4), 816 / 0.8155 / 4);
+  // direct bookings: their own nightly price
+  near(f.airbnbRatePerNight({ source: 'manual', amount: 400, airbnbCleaningFee: 40 }, 4), 90);
+  assert.equal(f.airbnbRatePerNight(oldBk, 0), null);
 });
 
-test('same Airbnb price raised ~18% → same payout per night in both models', () => {
-  const oldPrice = 100, newPrice = 100 * 0.964 / 0.816;           // ≈ 118.1
-  near(newPrice / oldPrice - 1, 0.1814, 0.001);
-  near(oldPrice * 0.964, newPrice * 0.816);
+test('what you receive', () => {
+  near(f.payoutPerNight(oldBk, 4), (964.3 - 60 * (1 - 0.0357)) / 4);
+  near(f.payoutForRate(100, fs), 81.55);
+  near(f.payoutForRate(100, f.feeSettings({ feeModel: 'split' })), 96.43);
 });
 
-test('Set in Airbnb and checkout prices for a payout target', () => {
-  near(f.airbnbPriceFor(100, fs), 100 / 0.816);                   // 122.55
-  near(f.airbnbCheckoutFor(100, fs), 100 / 0.816);                 // no guest fee on top
-  near(f.airbnbCheckoutFor(100, { ...fs, taxPct: 5 }), 100 / 0.816 * 1.05);
-  const split = f.feeSettings({ feeModel: 'split' });
-  near(f.airbnbPriceFor(100, split), 100 / 0.964);
-  near(f.airbnbCheckoutFor(100, split), 100 / 0.964 * 1.14);
-  assert.equal(f.airbnbPriceFor(null, fs), null);
+test('Airbnb checkout and feed guestFeePct', () => {
+  near(f.airbnbCheckoutFor(100, fs), 100);                      // host-only: the guest pays the rate
+  near(f.airbnbCheckoutFor(100, { ...fs, taxPct: 5 }), 105);
+  near(f.airbnbCheckoutFor(100, f.feeSettings({ feeModel: 'split' })), 114);
+  assert.equal(f.feedGuestFeePct(fs), 0);
+  assert.equal(f.feedGuestFeePct(f.feeSettings({ feeModel: 'split' })), 14);
+  for (const s of [fs, { ...fs, taxPct: 5 }, f.feeSettings({ feeModel: 'split', taxPct: 3 })])
+    near(80 * (1 + (f.feedGuestFeePct(s) + s.taxPct) / 100), f.airbnbCheckoutFor(80, s));
 });
 
-test('feed guestFeePct keeps airbnbCheckout = amount × (1 + (guestFeePct + taxPct)/100)', () => {
-  for (const s of [fs, { ...fs, taxPct: 5 }, f.feeSettings({ feeModel: 'split', taxPct: 3 })]) {
-    const g = f.feedGuestFeePct(s);
-    near(80 * (1 + (g + s.taxPct) / 100), f.airbnbCheckoutFor(80, s), 0.1);
-  }
-  assert.equal(f.feedGuestFeePct(fs), 22.5);
+test('confirmed targets: old payout targets read as the Airbnb rate, new ones as saved', () => {
+  near(f.targetBase({ targetADR: 100 }, fs), 100 * 1.14 / (1 - 0.0357));      // ≈ 118.2
+  assert.equal(f.targetBase({ targetADR: 120, basis: 'airbnb_rate' }, fs), 120);
+  assert.equal(f.targetBase(null, fs), null);
+});
+
+test('weekend uplift on Friday and Saturday nights only', () => {
+  // 2027-01-01 is a Friday
+  assert.deepEqual(['2026-12-31', '2027-01-01', '2027-01-02', '2027-01-03'].map(f.isWeekendNight), [false, true, true, false]);
+  near(f.weekendFactor('2027-01-02', fs), 1.1);
+  assert.equal(f.weekendFactor('2027-01-04', fs), 1);
+  assert.equal(f.weekendFactor('2027-01-02', { ...fs, weekendUpliftPct: 0 }), 1);
+});
+
+test('lead time, last-minute and growth', () => {
+  assert.equal(f.leadDays('2026-12-28', '2027-01-02'), 5);
+  assert.equal(f.leadDays('', '2027-01-02'), null);
+  assert.equal(f.isLastMinute(5), true); assert.equal(f.isLastMinute(7), false); assert.equal(f.isLastMinute(null), false);
+  assert.equal(f.growthFactor(2, fs), 1);
+  near(f.growthFactor(2, { ...fs, growthPct: 5 }), 1.1025);
+  assert.equal(f.growthFactor(0, { ...fs, growthPct: 5 }), 1);
 });
 
 test('guest total: no guest fee on host-only bookings', () => {
-  near(f.guestTotalOf(newBk, fs), 1000);
+  near(f.guestTotalOf(newBk, fs), 1131.6);
   near(f.guestTotalOf(oldBk, fs), 1140);
 });

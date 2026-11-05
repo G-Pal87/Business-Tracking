@@ -5,6 +5,7 @@ import { state } from '../core/state.js';
 import { formatEUR, toEUR, listActive, listActivePayments, byId, isReservationNight, companyPropIds, isCompanyRecord, derivedCache, memoGet } from '../core/data.js';
 import { todayYmd, addDaysYmd, parseYmd, utcYmd, diffDaysYmd } from '../core/dates.js';
 import { isOwnerBlockSummary } from '../core/ical.js';
+import { feeSettings, targetBase, payoutForRate, weekendFactor } from '../core/airbnb-fees.js';
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
@@ -352,8 +353,14 @@ function makeRateForNight(propId) {
   return (date, applyDiscount) => {
     const t = getTargetADR(propId, date.slice(0, 7));
     if (t) {
+      // Targets are the weekday Airbnb daily rate (js/core/airbnb-fees.js):
+      // the published direct price is that minus the discount; an Airbnb
+      // night at it pays out the rate minus Airbnb's fee — kept on the same
+      // payout footing as the achieved revenue it's compared with.
+      const fs = feeSettings(state.db.settings?.airbnb);
+      const rate = (targetBase(t, fs) || 0) * weekendFactor(date, fs);
       const disc = (t.discountPct != null ? t.discountPct : globalDisc) / 100;
-      return toEUR((t.targetADR || 0) * (applyDiscount ? (1 - disc) : 1), ccy, date);
+      return toEUR(applyDiscount ? rate * (1 - disc) : payoutForRate(rate, fs), ccy, date);
     }
     return suggest(date) || 0;
   };
@@ -489,7 +496,8 @@ function getSpotlightData(propId, curRange) {
     const available = availByMonth.get(mk) || 0;  // available nights in range (excl. owner-blocks)
     const occ       = available > 0 ? occupied / available * 100 : 0;
     // Target ADR is entered in the property's currency; shown next to the EUR achieved ADR.
-    const targetEUR = target?.targetADR ? toEUR(target.targetADR, byId('properties', propId)?.currency || 'EUR', `${mk}-01`) : null;
+    // …as what a weekday night at the confirmed Airbnb rate pays out, comparable with the achieved (payout) ADR.
+    const targetEUR = target?.targetADR ? toEUR(payoutForRate(targetBase(target, feeSettings(state.db.settings?.airbnb)), feeSettings(state.db.settings?.airbnb)), byId('properties', propId)?.currency || 'EUR', `${mk}-01`) : null;
     return { mk, label: k.label, target: targetEUR || null, rev, nights, adr, occupied, available, occ };
   });
 

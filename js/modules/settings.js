@@ -13,7 +13,7 @@ import { downloadBytes, fmtFileSize, MAX_UPLOAD_BYTES, storagePathWithExt } from
 import { patchSettings, upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments, runAllReservationExpenseRules, formatRuleConflictWarning } from '../core/data.js';
 import { setDb } from '../core/state.js';
 import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS, EXPENSE_CATEGORIES, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
-import { DEFAULT_HOST_FEE_PCT } from '../core/airbnb-fees.js';
+import { feeSettings, DEFAULT_HOST_FEE_BASE_PCT, DEFAULT_VAT_PCT, DEFAULT_WEEKEND_UPLIFT_PCT, DEFAULT_GROWTH_PCT } from '../core/airbnb-fees.js';
 import { PDF_TEMPLATES } from '../core/pdf.js';
 const generateInvoicePDF = (...a) => import(`../core/pdf.js?v=${window._appV || ''}`).then(m => m.generateInvoicePDF(...a));
 import { openPreview as openInvoicePreview, invoicePdfPath, invoicePdfCanonicalName } from './invoices.js';
@@ -1465,17 +1465,36 @@ function buildStrSettingsCard() {
   wireCollapsible('str-airbnb', header, body, chevron);
 
   body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:12px' },
-    'Since 13 Oct 2026 Airbnb takes one host-only fee (15.5% + VAT ≈ 18.4%) out of your price and adds no guest fee; ' +
-    'reservations booked before that keep the old split fee (~3% host + guest fee on top). STR Daily Rates learns from what ' +
-    'each booking paid out and turns its suggestions into the price to set on Airbnb with the host fee below.'));
+    'Since 13 Oct 2026 Airbnb takes one host-only fee (15.5% + VAT) out of your price and adds no guest fee; ' +
+    'reservations booked before that keep the old split fee (3% + VAT for you, the guest fee below on top for the guest). ' +
+    'STR Daily Rates recommends the Airbnb daily rate to set: old bookings count at what their guests paid (× 1 + guest fee), ' +
+    'so both kinds blend on one scale. The website price is that rate minus your discount.'));
 
   const modelS = select([{ value: 'host_only', label: 'Host-only fee (from 13 Oct 2026)' }, { value: 'split', label: 'Old split fee (host + guest fee)' }],
     af.feeModel === 'split' ? 'split' : 'host_only');
-  const hostI = input({ value: af.hostFeePct != null ? af.hostFeePct : DEFAULT_HOST_FEE_PCT, type: 'number', step: '0.1', placeholder: String(DEFAULT_HOST_FEE_PCT) });
+  const pctInput = (v, d, attrs = {}) => input({ value: v != null ? v : d, type: 'number', step: '0.1', placeholder: String(d), ...attrs });
+  const hostI = pctInput(af.hostFeeBasePct, DEFAULT_HOST_FEE_BASE_PCT);
+  const vatI  = pctInput(af.vatPct, DEFAULT_VAT_PCT);
+  const effectiveFee = el('div', { style: 'font-size:12px;color:var(--text-muted);margin:-4px 0 10px' });
+  const showFee = () => {
+    const f = feeSettings({ hostFeeBasePct: hostI.value, vatPct: vatI.value });
+    effectiveFee.textContent = `Airbnb keeps ${f.hostFeePct}% of each new booking (${f.hostFeeBasePct}% + ${f.vatPct}% VAT); old split-fee bookings: ${f.splitHostFeePct}%.`;
+  };
+  hostI.addEventListener('input', showFee); vatI.addEventListener('input', showFee); showFee();
+  body.appendChild(formRow('Airbnb fee model for new bookings', modelS, 'Which fee new bookings pay. Past reservations are recognised automatically from their own fee and booking date.'));
   body.appendChild(el('div', { class: 'form-row horizontal' },
-    formRow('Airbnb fee model for new bookings', modelS, 'Which fee new bookings pay. Past reservations are recognised automatically from their own fee and booking date.'),
-    formRow('Host fee % (incl. VAT)', hostI, '15.5% + VAT on the fee — your first host-only payouts show 18.4%. "Set in Airbnb" = payout ÷ (1 − this).')
+    formRow('Host fee % (before VAT)', hostI, 'Airbnb\'s host-only fee — 15.5% since 13 Oct 2026.'),
+    formRow('VAT on Airbnb\'s fee %', vatI, 'VAT Airbnb charges on its fee (also on the old 3% fee). Your payouts fit 19%.')
   ));
+  body.appendChild(effectiveFee);
+
+  const weekendI = pctInput(af.weekendUpliftPct, DEFAULT_WEEKEND_UPLIFT_PCT, { min: '0', max: '100' });
+  const growthI  = pctInput(af.growthPct, DEFAULT_GROWTH_PCT, { min: '-50', max: '100' });
+  body.appendChild(el('div', { class: 'form-row horizontal' },
+    formRow('Weekend uplift %', weekendI, 'Added to Friday and Saturday nights in STR Daily Rates (suggestions and confirmed targets) and on the website.'),
+    formRow('Yearly price growth %', growthI, 'Older years\' prices are raised by this per year before they feed the recommendations. 0 = use them as they were.')
+  ));
+
 
   const feeI = input({ value: af.guestFeePct != null ? af.guestFeePct : AIRBNB_GUEST_FEE_PCT, type: 'number', placeholder: String(AIRBNB_GUEST_FEE_PCT) });
   const taxI = input({ value: af.taxPct      != null ? af.taxPct      : AIRBNB_TAX_PCT,      type: 'number', placeholder: String(AIRBNB_TAX_PCT) });
@@ -1517,8 +1536,11 @@ function buildStrSettingsCard() {
     const clean = parseFloat(cleanI.value);
     const globalDisc = parseFloat(globalDiscI.value);
     if (feeI.value !== '' && (isNaN(fee) || fee < 0)) { toast('Guest fee % must be a positive number', 'warning'); return; }
-    const hostFee = parseFloat(hostI.value);
-    if (hostI.value !== '' && (isNaN(hostFee) || hostFee < 0 || hostFee >= 60)) { toast('Host fee % must be between 0 and 60', 'warning'); return; }
+    const hostFee = parseFloat(hostI.value), vat = parseFloat(vatI.value), weekend = parseFloat(weekendI.value), growth = parseFloat(growthI.value);
+    if (hostI.value !== '' && (isNaN(hostFee) || hostFee < 0 || hostFee >= 50)) { toast('Host fee % must be between 0 and 50', 'warning'); return; }
+    if (vatI.value !== '' && (isNaN(vat) || vat < 0 || vat > 40)) { toast('VAT % must be between 0 and 40', 'warning'); return; }
+    if (weekendI.value !== '' && (isNaN(weekend) || weekend < 0 || weekend > 100)) { toast('Weekend uplift % must be between 0 and 100', 'warning'); return; }
+    if (growthI.value !== '' && (isNaN(growth) || growth < -50 || growth > 100)) { toast('Yearly growth % must be between −50 and 100', 'warning'); return; }
     if (taxI.value !== '' && (isNaN(tax) || tax < 0)) { toast('Tax % must be a positive number', 'warning'); return; }
     if (cleanI.value !== '' && (isNaN(clean) || clean < 0)) { toast('Cleaning fee must be a positive number', 'warning'); return; }
     const windowMonths = parseInt(windowI.value, 10);
@@ -1533,7 +1555,10 @@ function buildStrSettingsCard() {
       hideAllSitePrices: hideAllChk.checked,
       guestFeePct:       feeI.value === '' ? AIRBNB_GUEST_FEE_PCT : fee,
       feeModel:          modelS.value,
-      hostFeePct:        hostI.value === '' ? DEFAULT_HOST_FEE_PCT : hostFee,
+      hostFeeBasePct:    hostI.value === '' ? DEFAULT_HOST_FEE_BASE_PCT : hostFee,
+      vatPct:            vatI.value === '' ? DEFAULT_VAT_PCT : vat,
+      weekendUpliftPct:  weekendI.value === '' ? DEFAULT_WEEKEND_UPLIFT_PCT : weekend,
+      growthPct:         growthI.value === '' ? DEFAULT_GROWTH_PCT : growth,
       taxPct:            taxI.value === '' ? AIRBNB_TAX_PCT : tax,
       cleaningFee:       cleanI.value === '' ? AIRBNB_CLEANING_FEE : clean,
       globalDiscountPct: globalDiscI.value === '' ? 0 : globalDisc,
