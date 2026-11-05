@@ -948,25 +948,54 @@ function renderGapBanner(container, propertyId, onRerender) {
     return;
   }
 
-  const card  = el('div', { class: 'card', style: 'margin-bottom:16px;border-left:3px solid #ef4444' });
-  const inner = el('div', { style: 'padding:14px 16px' });
-  inner.appendChild(el('div', { style: 'font-size:13px;font-weight:700;color:var(--text);margin-bottom:2px;display:flex;align-items:center;gap:6px' },
-    el('span', { style: 'color:#ef4444' }, '⚠'),
-    `${titleOf(unresolved)} on Airbnb with no matching payment`
-  ));
-  inner.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' },
-    `${unresolvedCount === 1 ? 'It needs' : 'Each needs'} a reason — assign one below, or record the payment if it was a booking (off-platform, or not imported yet).`));
+  // One line, collapsed by default (remembered in this browser): what needs
+  // action — past stays with no payment, closures without a reason — apart
+  // from upcoming reservations, which normally have no payment until the
+  // pending payouts are imported. "Show" opens the list.
+  const pastRes = unresolved.filter(g => g.kind === 'reserved' && g.isPast).length;
+  const upcomingRes = unresolved.filter(g => g.kind === 'reserved' && !g.isPast).length;
+  const closedN = unresolved.filter(g => g.kind === 'owner').length;
+  const urgent = pastRes + closedN;
+  const expanded = gapBannerExpanded();
+  const color = urgent ? '#ef4444' : '#f59e0b';
+  const card  = el('div', { class: 'card', style: `margin-bottom:16px;border-left:3px solid ${color}` });
+  const inner = el('div', { style: 'padding:10px 16px' });
+  const parts = [
+    pastRes && `${pastRes} past stay${pastRes !== 1 ? 's' : ''} with no payment`,
+    closedN && `${closedN} closed range${closedN !== 1 ? 's' : ''} without a reason`,
+    upcomingRes && `${upcomingRes} upcoming reservation${upcomingRes !== 1 ? 's' : ''} not imported yet`
+  ].filter(Boolean);
+  inner.appendChild(el('div', { style: 'font-size:13px;color:var(--text);display:flex;align-items:center;gap:8px;flex-wrap:wrap' },
+    el('span', { style: `color:${color}` }, urgent ? '⚠' : '●'),
+    el('span', { style: urgent ? 'font-weight:600' : '' }, parts.join(' · ')),
+    link(expanded ? 'Hide' : 'Show', () => { setGapBannerExpanded(!expanded); renderGapBanner(container, propertyId, onRerender); })));
   if (offPlatformNote) inner.appendChild(offPlatformNote);
-
-  // Most urgent first: already checked out, then upcoming.
-  inner.appendChild(listOf([...unresolved].sort((a, b) => (b.isPast - a.isPast) || a.start.localeCompare(b.start))));
-  if (resolved.length) {
-    inner.appendChild(el('div', { style: 'margin-top:10px' },
-      link(showResolved ? `Hide ${resolved.length} with a reason` : `Show ${resolved.length} with a reason`, toggleResolved)));
-    if (showResolved) inner.appendChild(listOf(resolved));
+  if (expanded) {
+    inner.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-top:6px' },
+      'Give each a reason, or record the payment if it was a booking (off-platform, or not imported yet). Upcoming reservations clear when you import pending payouts from Airbnb.'));
+    // Most urgent first: already checked out, then upcoming.
+    inner.appendChild(listOf([...unresolved].sort((a, b) => (b.isPast - a.isPast) || a.start.localeCompare(b.start))));
+    if (resolved.length) {
+      inner.appendChild(el('div', { style: 'margin-top:10px' },
+        link(showResolved ? `Hide ${resolved.length} with a reason` : `Show ${resolved.length} with a reason`, toggleResolved)));
+      if (showResolved) inner.appendChild(listOf(resolved));
+    }
   }
   card.appendChild(inner);
   container.appendChild(card);
+}
+
+// Whether the no-payment banner's list is open — remembered in this browser
+// only (a viewing preference), collapsed when unknown or storage is blocked.
+const GAP_BANNER_KEY = 'bt.strGapBanner.expanded';
+let _gapExpandedMem = false;
+function gapBannerExpanded() {
+  try { const v = localStorage.getItem(GAP_BANNER_KEY); if (v != null) return v === '1'; } catch { /* storage blocked */ }
+  return _gapExpandedMem;
+}
+function setGapBannerExpanded(on) {
+  _gapExpandedMem = on;
+  try { localStorage.setItem(GAP_BANNER_KEY, on ? '1' : '0'); } catch { /* storage blocked */ }
 }
 
 function renderGapRow(gap, propertyId, onRerender) {
