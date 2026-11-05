@@ -1765,7 +1765,7 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
       }
       body.appendChild(box);
     }
-    if (target && !isPast) {
+    if (target && !isPast && !suggest(date)) {
       const mo1 = Number(date.slice(5, 7));
       const box = el('div', { style: 'margin:8px 0;padding:8px 10px;border-radius:6px;background:rgba(99,102,241,0.10);border-left:3px solid #6366f1;font-size:12px' });
       box.appendChild(el('div', { style: 'font-weight:700;color:var(--text);margin-bottom:2px' },
@@ -1776,21 +1776,57 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
     }
     const s = isPast ? null : suggest(date);
     if (s) {
-      // ── Confidence badge ──
+      // ── At a glance: the rate and why, in a few lines; the full working is
+      // folded into "How it's calculated" below.
+      const fs = feeSettings(state.db.settings?.airbnb);
+      const mon = MONTHS[Number(date.slice(5, 7)) - 1], yr = date.slice(0, 4);
+      const cur = s.pools.find(p => p.yearsAgo === 0), priors = s.pools.filter(p => p.yearsAgo > 0);
+      const sameDay = s.pools.some(p => / day \d+$/.test(p.label || ''));
+      const nightsTxt = n => `${n} night${n !== 1 ? 's' : ''}`;
+      const why = cur && !priors.length ? `Based on ${nightsTxt(cur.entries.length)} of ${mon} ${yr} already booked on Airbnb.`
+        : cur ? `Based on ${nightsTxt(cur.entries.length)} of ${mon} ${yr} already booked (counts most), plus ${priors.map(p => `${p.yr2} (${nightsTxt(p.entries.length)})`).join(' and ')}.`
+        : priors.length ? `No ${mon} ${yr} bookings yet — based on ${mon}${sameDay ? ` ${Number(date.slice(8))}` : ''} in ${priors.map(p => `${p.yr2} (${nightsTxt(p.entries.length)})`).join(' and ')}; recent years count more.`
+        : 'Little history for this month — based on the property\'s overall average.';
+      const src = s.sources || [];
+      const splitN = src.filter(e => e.feeModel === 'split').length, lmN = src.filter(e => e.w < 1).length;
+      const fmt0 = v => formatMoney(Math.round(v), ccy, { maxFrac: 0 });
+      const notes = [
+        splitN ? `Old-fee bookings +${fs.guestFeePct}% (their guests paid that fee on top)` : '',
+        lmN ? `${nightsTxt(lmN)} booked last-minute count half` : '',
+        s.weekendUpliftPct ? `Weekend +${s.weekendUpliftPct}% (weekday ${fmt0(s.weekdayRate)})` : '',
+        s.growthPct ? `Older years +${s.growthPct}%/yr` : ''
+      ].filter(Boolean);
       const confColor = s.confidence === 'high' ? '#10b981' : s.confidence === 'medium' ? '#f59e0b' : '#ef4444';
-      const confLabel = s.confidence === 'high' ? 'HIGH' : s.confidence === 'medium' ? 'MEDIUM' : 'LOW';
-      const confRow = el('div', { style: 'display:flex;align-items:center;gap:8px;margin:8px 0' });
-      confRow.appendChild(el('span', { style: `background:${confColor};color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;letter-spacing:.05em` }, confLabel));
-      confRow.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted)' }, `effectiveN = ${s.effectiveN}`));
-      body.appendChild(confRow);
+      const disc = target?.discountPct != null ? target.discountPct : (state.db.settings?.airbnb?.globalDiscountPct || 0);
+      // A confirmed target is what's published — lead with it; the history-based suggestion follows.
+      const price = target ? target.targetADR * weekendFactor(date, fs) : s.rate;
+      const confLabel = { high: 'High confidence', medium: 'Medium confidence', low: 'Low confidence' }[s.confidence] || '';
+      const glance = el('div', { style: 'margin:10px 0 6px;padding:10px 12px;border-radius:8px;background:var(--bg-alt,rgba(0,0,0,.04))' });
+      glance.appendChild(el('div', { style: 'display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap' },
+        el('div', {},
+          el('div', { style: 'font-size:11px;color:var(--text-muted)' }, target ? 'Set in Airbnb — your confirmed target' : 'Set in Airbnb'),
+          el('div', { style: 'font-size:24px;font-weight:700;line-height:1.2' }, fmt0(price))),
+        target ? el('span', { style: 'font-size:12px;color:var(--text-muted)' }, `history suggests ${fmt0(s.rate)}`)
+          : el('span', { style: `color:${confColor};font-size:12px;font-weight:600` }, `● ${confLabel}`)));
+      glance.appendChild(el('div', { style: 'font-size:13px;margin-top:8px;line-height:1.45' }, `Why: ${why}`));
+      if (notes.length) glance.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-top:2px;line-height:1.45' }, notes.join(' · ')));
+      glance.appendChild(el('div', { style: 'display:flex;gap:16px;flex-wrap:wrap;font-size:12px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)' },
+        el('span', {}, el('span', { class: 'muted' }, 'You receive '), el('strong', {}, `≈ ${fmt0(payoutForRate(price, fs))}`)),
+        el('span', {}, el('span', { class: 'muted' }, 'Website '), el('strong', {}, fmt0(price * (1 - disc / 100))), el('span', { class: 'muted' }, disc ? ` (−${disc}%)` : ' (no discount set)'))));
+      // Right under the date: the answer first, status and actions after it.
+      body.insertBefore(glance, body.children[1] || null);
+      const more = el('details', { style: 'margin-top:4px' });
+      more.appendChild(el('summary', { style: 'cursor:pointer;font-size:12px;color:var(--accent,#6366f1);padding:4px 0' }, 'How it\'s calculated'));
+      // ── Confidence ──
+      more.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin:6px 0 4px' }, `Confidence: ${s.confidence} (${s.effectiveN} weighted nights)`));
       if (s.confidenceNote) {
-        body.appendChild(el('div', { style: `font-size:12px;padding:5px 8px;border-radius:4px;border-left:3px solid ${confColor};background:var(--bg-alt,rgba(0,0,0,.04));margin-bottom:8px` }, s.confidenceNote));
+        more.appendChild(el('div', { style: `font-size:12px;padding:5px 8px;border-radius:4px;border-left:3px solid ${confColor};background:var(--bg-alt,rgba(0,0,0,.04));margin-bottom:8px` }, s.confidenceNote));
       }
 
       // ── Why reasoning ──
       if (s.why) {
-        body.appendChild(section('Why This Rate?'));
-        body.appendChild(el('div', { style: 'font-size:12px;line-height:1.5;padding:3px 0 4px' }, s.why));
+        more.appendChild(section('Why This Rate?'));
+        more.appendChild(el('div', { style: 'font-size:12px;line-height:1.5;padding:3px 0 4px' }, s.why));
       }
 
       // ── Current-year cross-month context ──
@@ -1803,19 +1839,19 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
         ctxBox.appendChild(el('div', { style: 'color:var(--text-muted);font-size:11px;margin-top:3px' },
           `These are your current-year ${yr} bookings, but from a different month. They are shown here for context — they do not directly feed the formula above. Once bookings arrive for this month in ${yr}, they will become the primary signal (${CURRENT_YEAR_WEIGHT}× weight).`
         ));
-        body.appendChild(ctxBox);
+        more.appendChild(ctxBox);
       }
 
       // ── Method explanation ──
-      body.appendChild(section('Suggestion Method'));
-      body.appendChild(row('Basis', s.basis));
+      more.appendChild(section('Suggestion Method'));
+      more.appendChild(row('Basis', s.basis));
       if (s.fallbackReason) {
-        body.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);padding:3px 0 6px' }, `ℹ ${s.fallbackReason}`));
+        more.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);padding:3px 0 6px' }, `ℹ ${s.fallbackReason}`));
       }
 
       // ── Pool breakdown ──
       if (s.pools && s.pools.length) {
-        body.appendChild(section(`Data Pools (${s.pools.length} source${s.pools.length !== 1 ? 's' : ''})`));
+        more.appendChild(section(`Data Pools (${s.pools.length} source${s.pools.length !== 1 ? 's' : ''})`));
         const poolTable = el('div', { style: 'font-size:12px' });
         for (const pool of s.pools) {
           const poolAvgAdr = pool.adr ?? pool.entries.reduce((a, e) => a + e.adr, 0) / pool.entries.length;
@@ -1832,7 +1868,7 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
           poolRow.appendChild(left); poolRow.appendChild(right);
           poolTable.appendChild(poolRow);
         }
-        body.appendChild(poolTable);
+        more.appendChild(poolTable);
 
         // Blended formula when multiple pools
         if (s.pools.length > 1) {
@@ -1848,24 +1884,24 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
             return `${fmt(p.rate)}×${w.toFixed(1)}`;
           }).join(' + ');
           fmlaEl.appendChild(el('div', { style: 'margin-top:2px' }, `Rate = (${netParts}) ÷ ${totalW.toFixed(1)} = ${fmt(s.weekdayRate ?? s.rate)}${s.weekendUpliftPct ? ` → +${s.weekendUpliftPct}% weekend = ${fmt(s.rate)}` : ''}`));
-          body.appendChild(fmlaEl);
+          more.appendChild(fmlaEl);
         }
       }
 
       // ── Suggested rates ──
-      body.appendChild(section('Suggested Rate — set this in Airbnb'));
-      body.appendChild(row('ADR (incl. cleaning amortised)', fmt(s.adr)));
-      body.appendChild(row('Airbnb daily rate (excl. cleaning)', fmt(s.rate)));
+      more.appendChild(section('Suggested Rate — set this in Airbnb'));
+      more.appendChild(row('ADR (incl. cleaning amortised)', fmt(s.adr)));
+      more.appendChild(row('Airbnb daily rate (excl. cleaning)', fmt(s.rate)));
       {
         // Suggestions are payouts per night, learnt from old- and new-fee
         // bookings alike; this is the price that pays that out today.
         const fs = feeSettings(state.db.settings?.airbnb);
-        if (s.weekendUpliftPct) body.appendChild(row(`Weekend uplift (Fri/Sat)`, `${fmt(s.weekdayRate)} weekday + ${s.weekendUpliftPct}%`, true));
-        if (s.growthPct) body.appendChild(row('Yearly growth applied to older years', `+${s.growthPct}%/yr`, true));
-        body.appendChild(row(`You'd receive (after Airbnb's ${fs.hostOnly ? fs.hostFeePct : fs.splitHostFeePct}% fee)`, fmt(payoutForRate(s.rate, fs)), true));
+        if (s.weekendUpliftPct) more.appendChild(row(`Weekend uplift (Fri/Sat)`, `${fmt(s.weekdayRate)} weekday + ${s.weekendUpliftPct}%`, true));
+        if (s.growthPct) more.appendChild(row('Yearly growth applied to older years', `+${s.growthPct}%/yr`, true));
+        more.appendChild(row(`You'd receive (after Airbnb's ${fs.hostOnly ? fs.hostFeePct : fs.splitHostFeePct}% fee)`, fmt(payoutForRate(s.rate, fs)), true));
       }
       const cleanEst = s.adr - s.rate;
-      if (cleanEst > 0.01) body.appendChild(row('Est. cleaning per night', fmt(cleanEst), true));
+      if (cleanEst > 0.01) more.appendChild(row('Est. cleaning per night', fmt(cleanEst), true));
 
       if (s.sources && s.sources.length) {
         // De-duplicate nights → unique bookings keyed by checkIn|checkOut
@@ -1882,7 +1918,7 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
         }
         const bks = [...bkMap.values()].sort((a, b) => (a.checkIn || '').localeCompare(b.checkIn || ''));
 
-        body.appendChild(section(`Source bookings (${bks.length} booking${bks.length !== 1 ? 's' : ''} · ${s.sources.length} nights)`));
+        more.appendChild(section(`Source bookings (${bks.length} booking${bks.length !== 1 ? 's' : ''} · ${s.sources.length} nights)`));
         for (const b of bks) {
           const avgNet = b.rateSum / b.n, avgAdr = b.adrSum / b.n;
           const dateRange = b.checkIn ? `${fmtDate(b.checkIn)} – ${fmtDate(b.checkOut)}` : '—';
@@ -1899,7 +1935,7 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
             el('span', { style: 'color:var(--text-muted)' }, `Net ${fmt(avgNet)}`),
             Math.abs(avgAdr - avgNet) > 0.5 ? el('span', { style: 'color:var(--text-muted)' }, `Clean ${fmt(avgAdr - avgNet)}/night`) : null
           ));
-          body.appendChild(bkRow);
+          more.appendChild(bkRow);
         }
 
         // Weighted average formula (compact, up to 4 bookings)
@@ -1916,8 +1952,9 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
           formulaEl.appendChild(el('div', {}, `Plain average of these bookings (the suggestion above weights them by year, weekday and last-minute): ADR ${fmt(avgAdr)} over ${totalN} nights from ${bks.length} bookings`));
           formulaEl.appendChild(el('div', { style: 'margin-top:2px' }, `Airbnb daily rate ${fmt(avgNet)}`));
         }
-        body.appendChild(formulaEl);
+        more.appendChild(formulaEl);
       }
+      body.appendChild(more);
     } else {
       body.appendChild(el('div', { style: 'padding:8px 0;font-size:13px;color:var(--text-muted)' }, 'No historic data yet to suggest a rate.'));
     }
