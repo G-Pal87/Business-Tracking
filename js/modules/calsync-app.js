@@ -228,17 +228,20 @@ export function renderSyncBanner(container, onUpdate) {
 }
 
 // The line under a property's calendar: when it last synced, or what's wrong.
-export function syncLine(propertyId, onUpdate) {
+// `lead` (optional) starts the line, e.g. "18 reserved periods"; `onRefresh`
+// replaces what its single Refresh link does.
+export function syncLine(propertyId, onUpdate, { lead = '', onRefresh = null } = {}) {
   const s = propertySyncStatus(propertyId);
   const wrap = el('div', { style: 'margin-top:4px;font-size:11px;display:flex;gap:8px;flex-wrap:wrap;align-items:center' });
-  const refresh = el('span', { style: 'color:var(--accent,#6366f1);cursor:pointer;text-decoration:underline' }, 'Refresh now');
-  refresh.onclick = () => refreshNow(onUpdate);
+  const refresh = el('span', { style: 'color:var(--accent,#6366f1);cursor:pointer;text-decoration:underline' }, 'Refresh');
+  refresh.onclick = () => (onRefresh ? onRefresh() : refreshNow(onUpdate));
   if (s.state === 'off') return null;
-  if (s.state === 'never') wrap.appendChild(el('span', { class: 'muted' }, 'Not synced from Airbnb yet.'));
+  if (lead) wrap.appendChild(el('span', { class: 'muted' }, `${lead} ·`));
+  if (s.state === 'never') wrap.appendChild(el('span', { class: 'muted' }, 'not synced from Airbnb yet'));
   else if (s.state === 'error') wrap.appendChild(el('span', { style: 'color:var(--danger,#ef4444)' }, `Airbnb sync failed: ${s.error}${s.syncedAt ? ` · last good sync ${ago(s.syncedAt)}` : ''}`));
   else if (s.state === 'stale') wrap.appendChild(el('span', { style: 'color:var(--warning,#d97706)' }, `Not synced from Airbnb since ${ago(s.syncedAt)} — click Refresh, or check the "Sync Airbnb calendars" run on GitHub.`));
   else if (s.state === 'checking') wrap.appendChild(el('span', { class: 'muted' }, `Last synced ${ago(s.checkedAt || s.syncedAt)} — checking Airbnb now…`));
-  else wrap.appendChild(el('span', { class: 'muted' }, `Synced from Airbnb ${ago(s.syncedAt)} (GitHub, every 30 min).`));
+  else wrap.appendChild(el('span', { class: 'muted' }, `synced from Airbnb ${ago(s.syncedAt)}`));
   wrap.appendChild(refresh);
   return wrap;
 }

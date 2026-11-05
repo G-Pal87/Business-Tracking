@@ -1776,7 +1776,20 @@ function renderCalendar(card, { histMap, suggest, blocked, blockInfo, year, mont
     if (hasOwnProxy()) autoRefreshICal(_propId, onAutoRefresh, { force: true });
     if (calSyncSettings().secretKey || !hasOwnProxy()) refreshNow(onAutoRefresh);
   };
-  if (calUrl) {
+  // One line: what's imported, when it last synced, one Refresh.
+  const syncedLine = calUrl ? syncLine(_propId, onAutoRefresh, {
+    lead: calInfo?.importedAt ? `${(calInfo.blocks || []).length} reserved period(s)` : '',
+    onRefresh: refreshAll
+  }) : null;
+  if (syncedLine) {
+    syncedLine.style.marginTop = '8px';
+    body.appendChild(syncedLine);
+    const lastErr = _icalLastError.get(_propId);
+    if (lastErr && !refreshing) {
+      body.appendChild(el('div', { style: 'margin-top:4px;font-size:11px;color:var(--danger,#ef4444)' },
+        `Last refresh through your calendar proxy failed (${new Date(lastErr.at).toLocaleTimeString()}): ${lastErr.msg}.`));
+    }
+  } else if (calUrl) {
     const infoWrap = el('div', { style: 'margin-top:8px;font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:8px;flex-wrap:wrap' });
     infoWrap.appendChild(el('span', {}, calInfo?.importedAt
       ? `Calendar imported ${fmtDate(calInfo.importedAt)} · ${(calInfo.blocks || []).length} reserved period(s).`
@@ -1786,8 +1799,6 @@ function renderCalendar(card, { histMap, suggest, blocked, blockInfo, year, mont
     if (!refreshing) refreshLnk.onclick = refreshAll;
     infoWrap.appendChild(refreshLnk);
     body.appendChild(infoWrap);
-    const line = syncLine(_propId);
-    if (line) body.appendChild(line);
     const lastErr = _icalLastError.get(_propId);
     if (lastErr && !refreshing) {
       body.appendChild(el('div', { style: 'margin-top:4px;font-size:11px;color:var(--danger,#ef4444)' },
