@@ -28,8 +28,14 @@ app ◀──(encrypted calendars)────── data branch: <data dir>/cal
   `unavailable`, no amount). Reopening a night or changing a price still comes
   from the app's pricing when it publishes.
 - A cut-off or empty response never wipes stored bookings (`mergeBlocksChecked`).
-- `calendars.json` is rewritten when bookings or errors change, and at least
-  every 3 hours otherwise, so "last checked" stays meaningful.
+- `calendars.json` is rewritten when bookings or errors change, on every run
+  someone asked for (Refresh, the app's catch-up run, a manual run), and at
+  least every 3 hours otherwise, so "last checked" stays meaningful.
+- **GitHub starts scheduled runs late** — in practice often 4–7 hours apart
+  instead of every 30 minutes. So whenever the app is open and the last check
+  is over an hour old, it asks GitHub for a run itself (at most every 30
+  minutes) and redraws when the result lands; meanwhile a late calendar shows
+  "checking Airbnb now…" instead of a warning.
 - It runs in its own concurrency group: GitHub keeps one pending run per group
   and cancels the older pending one, so sharing backup/squash's group could
   cancel a queued backup. Free on a public repository (GitHub-hosted runners).

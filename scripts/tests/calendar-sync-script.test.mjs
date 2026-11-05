@@ -162,6 +162,16 @@ test('a property that newly fails fails the run once; while it keeps failing the
   assert.equal((await readCal()).calendars.p2.error, null);
 });
 
+test('a run someone asked for always records its check, even with nothing changed', async () => {
+  const before = writes.length;
+  assert.equal(await main(), 0);
+  assert.equal(writes.length, before);                      // scheduled, unchanged, heartbeat not due → no write
+  process.env.GITHUB_EVENT_NAME = 'repository_dispatch';
+  try { assert.equal(await main(), 0); } finally { delete process.env.GITHUB_EVENT_NAME; }
+  assert.equal(writes.length, before + 1);
+  assert.ok(Date.now() - Date.parse((await readCal()).checkedAt) < 60e3);
+});
+
 test('wrong key in the secret → clear error (exit 1), nothing written', async () => {
   const before = writes.length;
   put('data', 'data/ical-sources.json', await cs.encryptCalendarJson({ v: 1, sources: [] }, cs.generateCalendarKey(), 'data/ical-sources.json'));

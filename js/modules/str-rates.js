@@ -1388,6 +1388,9 @@ function build() {
     _lastSyncTick = Date.now();
     calendarSyncTick().then(() => { if (wrap.isConnected) rerender(); }, () => {});
   }
+  // A catch-up sync the app started (calsync-app.js) has landed: redraw.
+  const onSynced = () => { if (wrap.isConnected) rerender(); else globalThis.removeEventListener('calsync-updated', onSynced); };
+  globalThis.addEventListener('calsync-updated', onSynced);
   return wrap;
 }
 let _lastSyncTick = 0;
@@ -2203,7 +2206,7 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
     const recRow = el('div', { style: 'font-size:13px;margin-bottom:12px' });
     recRow.appendChild(el('span', { style: 'color:var(--text-muted)' }, 'Recommended: '));
     recRow.appendChild(el('strong', {}, fmt(recommendedADR)));
-    recRow.appendChild(el('span', { style: 'font-size:11px;color:var(--text-muted);margin-left:6px' }, `(${MONTHS[mo1 - 1]} historical average net of cleaning, all years)`));
+    recRow.appendChild(el('span', { style: 'font-size:11px;color:var(--text-muted);margin-left:6px' }, `(weekday Airbnb daily rate excl. cleaning — ${MONTHS[mo1 - 1]} Airbnb bookings, all years, old-fee ones × ${(1 + feeSettings(state.db.settings?.airbnb).guestFeePct / 100).toFixed(2)})`));
     wrap.appendChild(recRow);
   } else {
     wrap.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted);margin-bottom:12px' }, 'No historical data for this month yet. Enter a target ADR manually.'));

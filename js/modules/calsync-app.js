@@ -100,9 +100,32 @@ export function applySyncedCalendars(doc, today = todayYmd()) {
 
 // Push sources if they changed, then read the latest result. Called at start-
 // up, every 30 minutes and when STR Daily Rates opens (all properties at once).
+//
+// GitHub starts scheduled runs late — often hours apart instead of every 30
+// minutes — so when the last check is over AUTO_RUN_AFTER_MIN old, the app
+// asks for a run itself (at most every AUTO_RUN_GAP_MIN), re-reads the result
+// a few times and tells open views (`calsync-updated`). While that run is
+// under way a late calendar shows as "checking" rather than flagged.
+export const AUTO_RUN_AFTER_MIN = 60, AUTO_RUN_GAP_MIN = 30, AUTO_RUN_WAIT_MIN = 5;
+let _autoRunAt = 0;
+export const autoRunInProgress = () => Date.now() - _autoRunAt < AUTO_RUN_WAIT_MIN * 60e3;
 export async function calendarSyncTick() {
   try { await pushCalendarSources(); } catch (e) { console.warn('[calsync] could not share calendar links:', e.message); }
-  return pullSyncedCalendars();
+  const r = await pullSyncedCalendars();
+  const age = r?.checkedAt ? Date.now() - Date.parse(r.checkedAt) : Infinity;
+  if (r?.state === 'ok' && age > AUTO_RUN_AFTER_MIN * 60e3 && Date.now() - _autoRunAt > AUTO_RUN_GAP_MIN * 60e3) {
+    _autoRunAt = Date.now();
+    const before = r.checkedAt;
+    dispatchRepoEvent(CALSYNC.event).then(ok => {
+      if (!ok) { _autoRunAt = 0; return; }
+      for (const delay of [60e3, 120e3, 200e3, 300e3]) setTimeout(async () => {
+        const n = await pullSyncedCalendars().catch(() => null);
+        if (n?.checkedAt && n.checkedAt !== before) { _autoRunAt = 0; }
+        globalThis.dispatchEvent?.(new CustomEvent('calsync-updated'));
+      }, delay)?.unref?.();   // (unref: Node tests only — browsers return a number)
+    }, () => { _autoRunAt = 0; });
+  }
+  return r;
 }
 
 // "Refresh": ask GitHub for a run now, then watch for the result.
@@ -138,7 +161,8 @@ export function propertySyncStatus(propertyId) {
   const rec = calendarOf(propertyId);
   if (!calSyncSettings().secretKey) return { state: 'off' };
   if (!rec?.syncedAt && !rec?.syncError) return { state: 'never' };
-  const st = syncState({ fetchedAt: rec.syncedAt, error: rec.syncError, checkedAt: rec.syncCheckedAt || rec.syncedAt });
+  let st = syncState({ fetchedAt: rec.syncedAt, error: rec.syncError, checkedAt: rec.syncCheckedAt || rec.syncedAt });
+  if (st === 'stale' && autoRunInProgress()) st = 'checking';   // the app just asked GitHub for a run
   return { state: st, syncedAt: rec.syncedAt, checkedAt: rec.syncCheckedAt, error: rec.syncError };
 }
 
@@ -212,7 +236,8 @@ export function syncLine(propertyId, onUpdate) {
   if (s.state === 'off') return null;
   if (s.state === 'never') wrap.appendChild(el('span', { class: 'muted' }, 'Not synced from Airbnb yet.'));
   else if (s.state === 'error') wrap.appendChild(el('span', { style: 'color:var(--danger,#ef4444)' }, `Airbnb sync failed: ${s.error}${s.syncedAt ? ` · last good sync ${ago(s.syncedAt)}` : ''}`));
-  else if (s.state === 'stale') wrap.appendChild(el('span', { style: 'color:var(--warning,#d97706)' }, `Not synced from Airbnb since ${ago(s.syncedAt)} — check the "Sync Airbnb calendars" run on GitHub.`));
+  else if (s.state === 'stale') wrap.appendChild(el('span', { style: 'color:var(--warning,#d97706)' }, `Not synced from Airbnb since ${ago(s.syncedAt)} — click Refresh, or check the "Sync Airbnb calendars" run on GitHub.`));
+  else if (s.state === 'checking') wrap.appendChild(el('span', { class: 'muted' }, `Last synced ${ago(s.checkedAt || s.syncedAt)} — checking Airbnb now…`));
   else wrap.appendChild(el('span', { class: 'muted' }, `Synced from Airbnb ${ago(s.syncedAt)} (GitHub, every 30 min).`));
   wrap.appendChild(refresh);
   return wrap;

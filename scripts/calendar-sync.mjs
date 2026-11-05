@@ -149,10 +149,13 @@ export async function main() {
     log(`${s.propertyId}: ${entry.error ? `FAILED — ${publicErrors[s.propertyId]}` : `${entry.blocks.length} block(s)`}`);
   }
 
-  // Write when bookings or errors changed, or the heartbeat is due.
+  // Write when bookings or errors changed, or the heartbeat is due — and on
+  // every run someone asked for (the app's Refresh / automatic catch-up run,
+  // or a manual run): the app waits for a new checkedAt to know it's done.
   const sig = cals => JSON.stringify(Object.entries(cals || {}).sort().map(([id, c]) => [id, c.blocks, c.error || null]));
   const heartbeatDue = !prev.checkedAt || Date.now() - Date.parse(prev.checkedAt) > CALSYNC.heartbeatHours * 3600e3;
-  if (sig(next) !== sig(prev.calendars) || heartbeatDue) {
+  const requested = ['repository_dispatch', 'workflow_dispatch'].includes(process.env.GITHUB_EVENT_NAME || '');
+  if (sig(next) !== sig(prev.calendars) || heartbeatDue || requested) {
     const doc = { v: 1, checkedAt: nowIso, calendars: next };
     await writeJsonFile(calPath, await encryptCalendarJson(doc, key, calPath), prevFile.sha, 'Sync Airbnb calendars');
     log(`wrote ${calPath}`);

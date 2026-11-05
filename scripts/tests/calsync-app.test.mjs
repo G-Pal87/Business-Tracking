@@ -82,3 +82,33 @@ test('a replaced Airbnb link is the one shared and stored (not the old one kept 
   app.applySyncedCalendars({ checkedAt: now2, calendars: { s1: { blocks: [], fetchedAt: now2 } } });
   assert.equal(data.listActive('strCalendars').find(c => c.propertyId === 's1').url, 'https://www.airbnb.test/calendar/ical/1.ics?s=NEW');
 });
+
+test('calendarSyncTick asks GitHub for a run when the last check is over an hour old (not more than every 30 min)', async () => {
+  const realFetch = globalThis.fetch;
+  const dispatches = [];
+  let file = null;
+  globalThis.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    if (u.endsWith('/dispatches') && opts.method === 'POST') { dispatches.push(JSON.parse(opts.body).event_type); return { ok: true, status: 204, headers: { get: () => null }, json: async () => ({}) }; }
+    if (u.includes('/contents/data/calendars.json') && file) return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ sha: 's', content: Buffer.from(JSON.stringify(file)).toString('base64') }) };
+    return { ok: false, status: 404, headers: { get: () => null }, json: async () => ({}), text: async () => '' };
+  };
+  try {
+    load();
+    state.github.token = 't';
+    const fresh = new Date(Date.now() - 20 * 60e3).toISOString();
+    file = await cs.encryptCalendarJson({ v: 1, checkedAt: fresh, calendars: { s1: { blocks: [], fetchedAt: fresh } } }, KEY, 'data/calendars.json');
+    await app.calendarSyncTick();
+    assert.deepEqual(dispatches, []);                         // checked 20 min ago → nothing to do
+    const old = new Date(Date.now() - 8 * 3600e3).toISOString();
+    file = await cs.encryptCalendarJson({ v: 1, checkedAt: old, calendars: { s1: { blocks: [], fetchedAt: old }, s2: { blocks: [], fetchedAt: old } } }, KEY, 'data/calendars.json');
+    await app.calendarSyncTick();
+    await new Promise(r => setTimeout(r, 20));
+    assert.deepEqual(dispatches, ['calendar-sync']);          // 8 h old → asked for a run
+    assert.equal(app.autoRunInProgress(), true);
+    assert.equal(app.propertySyncStatus('s1').state, 'checking');   // not flagged while the run is under way
+    assert.deepEqual(app.calendarSyncProblems(), []);
+    await app.calendarSyncTick();
+    assert.deepEqual(dispatches, ['calendar-sync']);          // not again within 30 minutes
+  } finally { globalThis.fetch = realFetch; state.github.token = ''; }
+});
