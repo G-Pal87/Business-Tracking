@@ -70,3 +70,25 @@ tourist tax % · Weekend uplift % (10) · Yearly price growth % (0).
 
 STR Analytics keeps comparing targets with achieved revenue on the payout
 footing (a target night counts as what it would pay out).
+
+## Pricing strategy (`js/core/pricing-strategy.js`)
+
+The history-based suggestion is adjusted by a strategy before it's shown and
+published. Confirmed monthly targets are explicit prices and are never adjusted.
+
+| Strategy | Effect |
+|---|---|
+| **Auto** (default) | Per property and month, from booking pace: occupancy booked on Airbnb now vs booked by the same day last year (by booking date). ½% per point ahead/behind, ±3% for months that usually sell out (≥ 85%) / stay quiet (≤ 40%), capped (±15%). Falls back to Balanced without last year's booking dates, or when the month is mostly closed. |
+| **Fill nights** | −10% (editable) |
+| **Balanced** | the suggestion as it is |
+| **Maximise rate** | +10% (editable) |
+
+**Last-minute drop:** open nights within 7 days (editable) get your measured
+last-minute drop (how much cheaper your last-minute bookings went), or a fixed
+% — under Fill nights, and under Auto unless it's raising the price.
+
+**Which applies:** the month's own choice (per property, in the ADR target box)
+beats the property's (STR Daily Rates, next to "Website prices"), which beats
+the global one (Settings → Airbnb). The day popup says which applied and why,
+e.g. "Strategy: Auto: Fill nights −11% — July 31% booked vs 52% this time last
+year → history rate €70 becomes €62 (global setting)".

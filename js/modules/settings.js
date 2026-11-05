@@ -13,6 +13,7 @@ import { downloadBytes, fmtFileSize, MAX_UPLOAD_BYTES, storagePathWithExt } from
 import { patchSettings, upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments, runAllReservationExpenseRules, formatRuleConflictWarning } from '../core/data.js';
 import { setDb } from '../core/state.js';
 import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS, EXPENSE_CATEGORIES, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
+import { strategySettings, STRATEGY_LABEL, DEFAULTS as STRATEGY_DEFAULTS } from '../core/pricing-strategy.js';
 import { feeSettings, DEFAULT_HOST_FEE_BASE_PCT, DEFAULT_VAT_PCT, DEFAULT_WEEKEND_UPLIFT_PCT, DEFAULT_GROWTH_PCT } from '../core/airbnb-fees.js';
 import { PDF_TEMPLATES } from '../core/pdf.js';
 const generateInvoicePDF = (...a) => import(`../core/pdf.js?v=${window._appV || ''}`).then(m => m.generateInvoicePDF(...a));
@@ -1495,6 +1496,32 @@ function buildStrSettingsCard() {
     formRow('Yearly price growth %', growthI, 'Older years\' prices are raised by this per year before they feed the recommendations. 0 = use them as they were.')
   ));
 
+  // Pricing strategy (global default; a property or a month can override it in STR Daily Rates).
+  const ssCur = strategySettings(af);
+  const stratS = select([
+    { value: 'auto', label: 'Auto — from booking pace vs last year (recommended)' },
+    { value: 'fill', label: 'Fill nights — below the suggestion, last-minute drop' },
+    { value: 'balanced', label: 'Balanced — the suggestion as it is' },
+    { value: 'maximise', label: 'Maximise rate — above the suggestion' }
+  ], ssCur.strategy);
+  body.appendChild(formRow('Pricing strategy', stratS, 'Applied to the suggested rates (not to confirmed monthly targets). A property or a single month can use a different one — set in STR Daily Rates; the month wins over the property, the property over this.'));
+  const fillI = pctInput(af.fillPct, STRATEGY_DEFAULTS.fillPct, { min: '0', max: '50' });
+  const maxI  = pctInput(af.maximisePct, STRATEGY_DEFAULTS.maximisePct, { min: '0', max: '100' });
+  const capI  = pctInput(af.autoCapPct, STRATEGY_DEFAULTS.capPct, { min: '0', max: '50' });
+  body.appendChild(el('div', { class: 'form-row horizontal' },
+    formRow('Fill nights: lower by %', fillI),
+    formRow('Maximise rate: raise by %', maxI),
+    formRow('Auto: at most ± %', capI, 'Auto moves the price by ½% per point of occupancy ahead of / behind last year, ±3% for months that usually sell out / stay quiet, capped here.')
+  ));
+  const lmDaysI = input({ value: af.lastMinuteDays != null ? af.lastMinuteDays : STRATEGY_DEFAULTS.lmDays, type: 'number', min: '0', max: '30', step: '1', placeholder: String(STRATEGY_DEFAULTS.lmDays) });
+  const lmModeS = select([{ value: 'measured', label: 'Measured from my bookings' }, { value: 'fixed', label: 'Fixed %' }], ssCur.lmMode);
+  const lmPctI  = pctInput(af.lastMinutePct, STRATEGY_DEFAULTS.lmPct, { min: '0', max: '50' });
+  body.appendChild(el('div', { class: 'form-row horizontal' },
+    formRow('Last-minute window (days)', lmDaysI, 'Open nights this close to the date get the last-minute drop (Fill nights, and Auto unless it\'s raising the price).'),
+    formRow('Last-minute drop', lmModeS, 'Measured: how much cheaper your last-minute bookings went, shown in STR Daily Rates.'),
+    formRow('Fixed / fallback %', lmPctI, 'Used when "Fixed", or when nothing has been measured yet.')
+  ));
+
 
   const feeI = input({ value: af.guestFeePct != null ? af.guestFeePct : AIRBNB_GUEST_FEE_PCT, type: 'number', placeholder: String(AIRBNB_GUEST_FEE_PCT) });
   const taxI = input({ value: af.taxPct      != null ? af.taxPct      : AIRBNB_TAX_PCT,      type: 'number', placeholder: String(AIRBNB_TAX_PCT) });
@@ -1547,6 +1574,11 @@ function buildStrSettingsCard() {
     if (vatI.value !== '' && (isNaN(vat) || vat < 0 || vat > 40)) { toast('VAT % must be between 0 and 40', 'warning'); return; }
     if (weekendI.value !== '' && (isNaN(weekend) || weekend < 0 || weekend > 100)) { toast('Weekend uplift % must be between 0 and 100', 'warning'); return; }
     if (growthI.value !== '' && (isNaN(growth) || growth < -50 || growth > 100)) { toast('Yearly growth % must be between −50 and 100', 'warning'); return; }
+    const pctOk = (inp, lo, hi) => inp.value === '' || (!isNaN(parseFloat(inp.value)) && parseFloat(inp.value) >= lo && parseFloat(inp.value) <= hi);
+    if (!pctOk(fillI, 0, 50) || !pctOk(capI, 0, 50) || !pctOk(lmPctI, 0, 50)) { toast('Fill nights, Auto limit and last-minute % must be between 0 and 50', 'warning'); return; }
+    if (!pctOk(maxI, 0, 100)) { toast('Maximise rate % must be between 0 and 100', 'warning'); return; }
+    if (!pctOk(lmDaysI, 0, 30)) { toast('Last-minute window must be 0–30 days', 'warning'); return; }
+    const pv = (inp, d) => (inp.value === '' ? d : parseFloat(inp.value));
     if (taxI.value !== '' && (isNaN(tax) || tax < 0)) { toast('Tax % must be a positive number', 'warning'); return; }
     if (cleanI.value !== '' && (isNaN(clean) || clean < 0)) { toast('Cleaning fee must be a positive number', 'warning'); return; }
     const windowMonths = parseInt(windowI.value, 10);
@@ -1566,6 +1598,13 @@ function buildStrSettingsCard() {
       vatPct:            vatI.value === '' ? DEFAULT_VAT_PCT : vat,
       weekendUpliftPct:  weekendI.value === '' ? DEFAULT_WEEKEND_UPLIFT_PCT : weekend,
       growthPct:         growthI.value === '' ? DEFAULT_GROWTH_PCT : growth,
+      pricingStrategy:   stratS.value,
+      fillPct:           pv(fillI, STRATEGY_DEFAULTS.fillPct),
+      maximisePct:       pv(maxI, STRATEGY_DEFAULTS.maximisePct),
+      autoCapPct:        pv(capI, STRATEGY_DEFAULTS.capPct),
+      lastMinuteDays:    pv(lmDaysI, STRATEGY_DEFAULTS.lmDays),
+      lastMinuteMode:    lmModeS.value,
+      lastMinutePct:     pv(lmPctI, STRATEGY_DEFAULTS.lmPct),
       taxPct:            taxI.value === '' ? AIRBNB_TAX_PCT : tax,
       cleaningFee:       cleanI.value === '' ? AIRBNB_CLEANING_FEE : clean,
       globalDiscountPct: globalDiscI.value === '' ? 0 : globalDisc,

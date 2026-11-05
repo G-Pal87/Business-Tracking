@@ -10,6 +10,7 @@ import { AIRBNB_CLEANING_FEE } from '../core/config.js';
 import { feeSettings, bookingFeeModel, bookingFeeRate, airbnbRatePerNight, payoutPerNight, payoutForRate, airbnbCheckoutFor, feedGuestFeePct, targetBase, weekendFactor, isWeekendNight, leadDays, isLastMinute, growthFactor, LAST_MINUTE_DAYS, LAST_MINUTE_WEIGHT, FEE_MODEL_LABEL } from '../core/airbnb-fees.js';
 import { openPaymentForm } from './payments.js';
 import { todayYmd, addDaysYmd, addMonthsYmd } from '../core/dates.js';
+import { strategySettings, resolveStrategy, strategyEffect, STRATEGY_LABEL, STRATEGIES, SOURCE_LABEL } from '../core/pricing-strategy.js';
 import { calendarSyncTick, renderSyncBanner, syncLine, refreshNow, calSyncSettings } from './calsync-app.js';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -437,6 +438,74 @@ function buildSuggester(histMap) {
       fallbackReason, currentYearContext
     };
   };
+}
+
+// ── Pricing strategy layer ──────────────────────────────────────────────────
+// The history-based suggestion, adjusted by the pricing strategy that applies
+// (month → property → global; js/core/pricing-strategy.js). Same shape as
+// buildSuggester's result, with `rate` adjusted and the unadjusted rate kept
+// as `historyRate`, plus `strategy` ({ strategy, source, as, pct, lmPct, note }).
+function buildPricedSuggester(propertyId, histMap) {
+  const base = buildSuggester(histMap);
+  const ss = strategySettings(state.db.settings?.airbnb);
+  const prop = byId('properties', propertyId);
+  const today = todayStr();
+  const lm = lastMinuteDrop(histMap);
+  const paceMemo = new Map();
+  const paceOf = ym => {
+    if (!paceMemo.has(ym)) paceMemo.set(ym, monthPace(propertyId, ym, histMap, today));
+    return paceMemo.get(ym);
+  };
+  return function suggest(date) {
+    const s = base(date);
+    if (!s) return s;
+    const ym = date.slice(0, 7);
+    const r = resolveStrategy(ss, prop, ym);
+    const eff = strategyEffect({ ss, r, pace: r.strategy === 'auto' ? paceOf(ym) : null,
+      daysAway: date >= today ? Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 864e5) : null,
+      measuredLmPct: lm?.pct ?? null, monthName: MONTHS[Number(date.slice(5, 7)) - 1] });
+    return { ...s, historyRate: s.rate, rate: s.rate * eff.factor, adr: s.adr * eff.factor,
+      strategy: { ...eff, strategy: r.strategy, source: r.source } };
+  };
+}
+
+// Booking pace for one month of a property (for Auto):
+//   curOcc  — % of the month's open nights booked on Airbnb now (imported
+//             reservations + Airbnb calendar reservations; your closures and
+//             direct bookings aren't open nights);
+//   lyOcc   — % of the same month last year already booked on Airbnb by the
+//             same day last year (by booking date);
+//   lyFinal — % of that month last year that ended up booked.
+// lyOcc/lyFinal are null without last year's Airbnb booking dates.
+function monthPace(propertyId, ym, histMap, today = todayStr()) {
+  const [y, m] = ym.split('-').map(Number);
+  const dim = daysInMonth(y, m);
+  const blocks = classifyBlockedDates(propertyId);
+  let booked = 0, closed = 0;
+  for (let d = 1; d <= dim; d++) {
+    const date = `${ym}-${String(d).padStart(2, '0')}`;
+    const b = blocks.get(date);
+    const h = histMap.get(date);
+    // Airbnb nights only, like last year's side (direct bookings have no
+    // booking date there) — a direct booking's night isn't an open one.
+    if ((h && h.feeModel) || (!h && b?.type === 'reserved')) booked++;
+    else if (h || b) closed++;
+  }
+  const open = dim - closed;
+  const curOcc = open > 0 ? booked / open * 100 : 0;
+  // Mostly closed (e.g. beyond Airbnb's booking window): too few open nights to judge pace.
+  if (open < dim / 2) return { curOcc, lyOcc: null, lyFinal: null, reason: 'mostly closed this month' };
+  const lyYm = `${y - 1}-${String(m).padStart(2, '0')}`;
+  const lyToday = `${Number(today.slice(0, 4)) - 1}${today.slice(4)}`;
+  let lyBooked = 0, lyAll = 0, lyDated = 0;
+  for (const [date, info] of histMap) {
+    if (date.slice(0, 7) !== lyYm) continue;
+    lyAll++;
+    if (info.feeModel && info.bookingDate) { lyDated++; if (info.bookingDate.slice(0, 10) <= lyToday) lyBooked++; }
+  }
+  const lyDim = daysInMonth(y - 1, m);
+  if (!lyDated) return { curOcc, lyOcc: null, lyFinal: null };
+  return { curOcc, lyOcc: lyBooked / lyDim * 100, lyFinal: lyAll / lyDim * 100 };
 }
 
 function buildConfidenceNote(pools, effectiveN, confidence, moName, yr, dayStr, priorDayYears, currentEffN) {
@@ -1059,7 +1128,7 @@ export function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
   const prop    = byId('properties', propertyId);
   const ccy     = prop?.currency || 'EUR';
   const histMap = historicNightMap(propertyId);
-  const suggest = buildSuggester(histMap);
+  const suggest = buildPricedSuggester(propertyId, histMap);
   const blocked = blockedDateSet(propertyId);
 
   // Rates here are payout targets; the Airbnb checkout price adds Airbnb's
@@ -1334,6 +1403,27 @@ function build() {
   };
   syncSitePriceBtn();
   propSel.addEventListener('change', syncSitePriceBtn);
+  // Per-property pricing strategy (empty = the global one; a month can override it).
+  const stratSel = select([], '');
+  stratSel.style.maxWidth = '210px';
+  stratSel.title = 'Pricing strategy for this property — a month can override it in the ADR target box below; empty uses Settings → Airbnb';
+  const syncStratSel = () => {
+    const g = strategySettings(state.db.settings?.airbnb).strategy;
+    stratSel.innerHTML = '';
+    for (const [v, l] of [['', `Strategy: global (${STRATEGY_LABEL[g]})`], ...STRATEGIES.map(k => [k, `Strategy: ${STRATEGY_LABEL[k]}`])])
+      stratSel.appendChild(el('option', { value: v }, l));
+    stratSel.value = byId('properties', _propId)?.pricingStrategy || '';
+  };
+  stratSel.onchange = () => {
+    const prop = byId('properties', _propId);
+    if (!prop) return;
+    upsert('properties', { ...prop, pricingStrategy: stratSel.value || null });
+    toast(`Pricing strategy for ${prop.name}: ${stratSel.value ? STRATEGY_LABEL[stratSel.value] : 'global setting'}`, 'success');
+    rerender();
+  };
+  syncStratSel();
+  propSel.addEventListener('change', syncStratSel);
+  bar.appendChild(stratSel);
   bar.appendChild(sitePriceBtn);
   bar.appendChild(publishBtn);
   wrap.appendChild(bar);
@@ -1358,7 +1448,7 @@ function build() {
     monthLbl.textContent = `${MONTHS[month1 - 1]} ${year}`;
 
     const histMap   = historicNightMap(_propId);
-    const suggest   = buildSuggester(histMap);
+    const suggest   = buildPricedSuggester(_propId, histMap);
     const blocked   = blockedDateSet(_propId);
     const blockInfo = classifyBlockedDates(_propId);
 
@@ -1798,7 +1888,7 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
       const notes = [
         splitN ? `Old-fee bookings at what their guests paid (+${fs.guestFeePct}% guest fee${fs.cleaningStrategy === 'keep' ? ', cleaning fee unchanged' : ''})` : '',
         lmN ? `${nightsTxt(lmN)} booked last-minute count half` : '',
-        s.weekendUpliftPct ? `Weekend +${s.weekendUpliftPct}% (weekday ${fmt0(s.weekdayRate)})` : '',
+        s.weekendUpliftPct ? `Weekend +${s.weekendUpliftPct}%` : '',
         s.growthPct ? `Older years +${s.growthPct}%/yr` : ''
       ].filter(Boolean);
       const confColor = s.confidence === 'high' ? '#10b981' : s.confidence === 'medium' ? '#f59e0b' : '#ef4444';
@@ -1815,6 +1905,13 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
           : el('span', { style: `color:${confColor};font-size:12px;font-weight:600` }, `● ${confLabel}`)));
       glance.appendChild(el('div', { style: 'font-size:13px;margin-top:8px;line-height:1.45' }, `Why: ${why}`));
       if (notes.length) glance.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-top:2px;line-height:1.45' }, notes.join(' · ')));
+      if (s.strategy && !target) {
+        const st = s.strategy;
+        const moved = Math.abs(st.factor - 1) > 0.001;
+        glance.appendChild(el('div', { style: 'font-size:12px;margin-top:4px;line-height:1.45' },
+          el('strong', {}, 'Strategy: '), `${st.note}${moved ? ` → history rate ${fmt0(s.historyRate)} becomes ${fmt0(s.rate)}` : ''}`,
+          el('span', { class: 'muted' }, ` (${SOURCE_LABEL[st.source]})`)));
+      }
       glance.appendChild(el('div', { style: 'display:flex;gap:16px;flex-wrap:wrap;font-size:12px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)' },
         el('span', {}, el('span', { class: 'muted' }, 'You receive '), el('strong', {}, `≈ ${fmt0(payoutForRate(price, fs))}`)),
         el('span', {}, el('span', { class: 'muted' }, 'Website '), el('strong', {}, fmt0(price * (1 - disc / 100))), el('span', { class: 'muted' }, disc ? ` (−${disc}%)` : ' (no discount set)'))));
@@ -1895,6 +1992,8 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
 
       // ── Suggested rates ──
       more.appendChild(section('Suggested Rate — set this in Airbnb'));
+      if (s.strategy && Math.abs(s.strategy.factor - 1) > 0.001)
+        more.appendChild(row('History-based rate → after strategy', `${fmt(s.historyRate)} × ${s.strategy.factor.toFixed(3)} = ${fmt(s.rate)}`));
       more.appendChild(row('ADR (incl. cleaning amortised)', fmt(s.adr)));
       more.appendChild(row('Airbnb daily rate (excl. cleaning)', fmt(s.rate)));
       {
@@ -2371,6 +2470,44 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
   guestSavingWrap.appendChild(guestSavingEl);
   discountSection.appendChild(discRow);
   wrap.appendChild(discountSection);
+
+  // ── Pricing strategy for this month (beats the property's, which beats the global one) ──
+  {
+    const prop = byId('properties', propertyId);
+    const ss = strategySettings(state.db.settings?.airbnb);
+    const cur = prop?.monthStrategies?.[anchor] || null;
+    const inherited = prop?.pricingStrategy ? `property: ${STRATEGY_LABEL[prop.pricingStrategy]}` : `global: ${STRATEGY_LABEL[ss.strategy]}`;
+    const box = el('div', { style: 'margin-bottom:12px;padding:10px 12px;border-radius:6px;background:var(--bg-alt,rgba(0,0,0,.04));border:1px solid var(--border)' });
+    box.appendChild(el('div', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:8px' }, `Pricing strategy — ${monthName}`));
+    const sel = select([{ value: '', label: `Same as ${inherited}` }, ...STRATEGIES.map(k => ({ value: k, label: STRATEGY_LABEL[k] }))], cur?.strategy || '');
+    sel.style.maxWidth = '230px';
+    const pctI = input({ value: cur?.pct != null ? String(cur.pct) : '', type: 'number', min: '0', max: '100', step: '1', style: 'width:80px' });
+    const pctWrap = el('label', { style: 'display:flex;align-items:center;gap:6px;font-size:12px' }, el('span', { class: 'muted' }, ''), pctI, el('span', { class: 'muted' }, '%'));
+    const syncPct = () => {
+      const k = sel.value;
+      pctWrap.style.display = k === 'fill' || k === 'maximise' ? '' : 'none';
+      pctWrap.firstChild.textContent = k === 'fill' ? 'lower by' : 'raise by';
+      pctI.placeholder = String(k === 'fill' ? ss.fillPct : ss.maximisePct);
+    };
+    const save = () => {
+      const p = byId('properties', propertyId);
+      if (!p) return;
+      const ms = { ...(p.monthStrategies || {}) };
+      const pv = pctI.value.trim() === '' ? null : Math.max(0, Math.min(100, parseFloat(pctI.value) || 0));
+      if (sel.value) ms[anchor] = { strategy: sel.value, pct: (sel.value === 'fill' || sel.value === 'maximise') ? pv : null };
+      else delete ms[anchor];
+      upsert('properties', { ...p, monthStrategies: ms });
+      toast(`${monthName}: ${sel.value ? STRATEGY_LABEL[sel.value] + (pv != null && (sel.value === 'fill' || sel.value === 'maximise') ? ` ${sel.value === 'fill' ? '−' : '+'}${pv}%` : '') : `same as ${inherited}`}`, 'success');
+      onRerender?.();
+    };
+    sel.onchange = () => { syncPct(); save(); };
+    pctI.onchange = save;
+    syncPct();
+    box.appendChild(el('div', { style: 'display:flex;align-items:center;gap:12px;flex-wrap:wrap' }, sel, pctWrap));
+    box.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:6px' },
+      confirmed ? 'This month has a confirmed target, which is used as is — the strategy applies to suggested rates only.' : 'Applies to this month\'s suggested rates for this property.'));
+    wrap.appendChild(box);
+  }
 
   updateDiscountPreview();
 
