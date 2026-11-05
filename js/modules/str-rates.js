@@ -488,6 +488,20 @@ function buildPricedSuggester(propertyId, histMap) {
   };
 }
 
+// The rate STR Daily Rates suggests for a night (the Airbnb daily rate, in the
+// property's currency) — for STR Performance, so its targets match this page.
+// Future nights get the full pricing (strategy, special dates, gap nights,
+// limits); past nights the history-based rate, as there's nothing left to price.
+export function strSuggestedRateFn(propertyId) {
+  const suggest = buildPricedSuggester(propertyId, historicNightMap(propertyId));
+  const today = todayStr();
+  return date => {
+    const s = suggest(date);
+    if (!s) return null;
+    return date < today ? s.historyRate : s.rate;
+  };
+}
+
 // Booking pace for one month of a property (for Auto):
 //   curOcc  — % of the month's open nights booked on Airbnb now (imported
 //             reservations + Airbnb calendar reservations; your closures and

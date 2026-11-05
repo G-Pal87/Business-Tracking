@@ -6,6 +6,7 @@ import { formatEUR, toEUR, listActive, listActivePayments, byId, isReservationNi
 import { todayYmd, addDaysYmd, parseYmd, utcYmd, diffDaysYmd } from '../core/dates.js';
 import { isOwnerBlockSummary } from '../core/ical.js';
 import { feeSettings, targetBase, payoutForRate, weekendFactor } from '../core/airbnb-fees.js';
+import { strSuggestedRateFn } from './str-rates.js';
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
@@ -108,7 +109,9 @@ const propShare = propId => makeMatchers(gF).wOwner({ propertyId: propId });
 // (getTargetADR's index lives here and upsert() pushes into the same targets
 // array) or calendars (occupancy sets)), instead of rescanning every payment
 // once per property per helper on every render.
-const _strCacheD = derivedCache(['payments', 'strRateTargets', 'strCalendars']);
+// Settings and properties too: the suggested rates (STR Daily Rates) depend on
+// the Airbnb settings, each property's strategy/limits and the closures.
+const _strCacheD = derivedCache(['payments', 'strRateTargets', 'strCalendars', 'properties', 'strBlockAnnotations'], () => JSON.stringify(state.db.settings?.airbnb || {}));
 function strCache() {
   return memoGet(_strCacheD(), 'c', () => {
     const paidByProp = new Map();
@@ -302,53 +305,21 @@ function rangeOccupancy(occupiedSet, ownerBlockSet, start, end, rateFn) {
   return { totalDays, available, occupied, blocked, occByMonth, availByMonth, rev };
 }
 
-// Historic achieved-ADR suggester for a property — same priority as the daily-
-// rate feed: same calendar day across prior years → same month → overall average.
+// The suggested rate for a night, exactly as STR Daily Rates shows it (the
+// Airbnb daily rate, property currency) — one source of truth for both pages.
 function buildAdrSuggester(propId) {
   const cache = strCache().adr;
-  if (cache.has(propId)) return cache.get(propId);
-  const byMonthDay = new Map(), byMonth = new Map(), all = [];
-  paidStrPays(propId).forEach(p => {
-    // Exclude Airbnb payout adjustments (Resolution Adjustment, Cancellation Fee,
-    // etc.) — they repeat the same check-in/check-out/nights as their originating
-    // Reservation but carry a much smaller amount, which would pollute the
-    // historic per-night rate buckets with a tiny, unrelated rate.
-    if (!isReservationNight(p)) return;
-    const rawRate = p.avgNightExclCleaning != null ? p.avgNightExclCleaning
-                  : (p.avgNightlyRate != null ? p.avgNightlyRate : null);
-    if (rawRate == null || rawRate <= 0) return;
-    const rate = toEUR(rawRate, p.currency, p.date); // EUR, like every figure on this page
-    const ci = p.airbnbCheckIn || p.checkIn, co = p.airbnbCheckOut || p.checkOut;
-    eachNight(ci, co, ds => {
-      const md = ds.slice(5), mo = ds.slice(5, 7);
-      (byMonthDay.get(md) || byMonthDay.set(md, []).get(md)).push(rate);
-      (byMonth.get(mo)    || byMonth.set(mo, []).get(mo)).push(rate);
-      all.push(rate);
-    });
-  });
-  const avg = a => a.reduce((s, r) => s + r, 0) / a.length;
-  const overall = all.length ? avg(all) : null;
-  // Buckets never change after this point — average each once instead of on
-  // every call (called per night of every range).
-  const mdAvg = new Map(), moAvg = new Map();
-  for (const [k, a] of byMonthDay) if (a.length) mdAvg.set(k, avg(a));
-  for (const [k, a] of byMonth)    if (a.length) moAvg.set(k, avg(a));
-  const fn = (date) => {
-    const md = mdAvg.get(date.slice(5));   if (md !== undefined) return md;
-    const mo = moAvg.get(date.slice(5, 7)); if (mo !== undefined) return mo;
-    return overall;
-  };
-  cache.set(propId, fn);
-  return fn;
+  if (!cache.has(propId)) cache.set(propId, strSuggestedRateFn(propId));
+  return cache.get(propId);
 }
 
 // Published nightly rate for a property on a date — mirrors the daily-rate feed:
 // confirmed target ADR (optionally after promo discount) when set, otherwise the
-// historic suggestion. Keeps dashboard revenue tied to the rates we actually push
+// STR Daily Rates suggestion. Keeps dashboard revenue tied to the rates we actually push
 // instead of zeroing months that have no confirmed target.
-function makeRateForNight(propId) {
+export function makeRateForNight(propId) {   // (exported for tests)
   const globalDisc = state.db.settings?.airbnb?.globalDiscountPct ?? 0;
-  const suggest = buildAdrSuggester(propId);  // already EUR
+  const suggest = buildAdrSuggester(propId);  // Airbnb daily rate, property currency
   const ccy = byId('properties', propId)?.currency || 'EUR'; // targets are set in the property's currency
   return (date, applyDiscount) => {
     const t = getTargetADR(propId, date.slice(0, 7));
@@ -362,7 +333,13 @@ function makeRateForNight(propId) {
       const disc = (t.discountPct != null ? t.discountPct : globalDisc) / 100;
       return toEUR(applyDiscount ? rate * (1 - disc) : payoutForRate(rate, fs), ccy, date);
     }
-    return suggest(date) || 0;
+    // No target: the STR Daily Rates suggestion — as the published direct
+    // price (minus the global discount), or as what an Airbnb night at it
+    // pays out, like the achieved revenue it's compared with.
+    const r = suggest(date);
+    if (r == null) return 0;
+    const fs = feeSettings(state.db.settings?.airbnb);
+    return toEUR(applyDiscount ? r * (1 - globalDisc / 100) : payoutForRate(r, fs), ccy, date);
   };
 }
 
@@ -418,7 +395,7 @@ function getPortfolioData(curRange, cmpRange) {
     const { occupiedSet, ownerBlockSet } = buildOccupancySets(p.id, cal?.blocks || []);
     const rateForNight = makeRateForNight(p.id);
     // Expected ("target") revenue values each occupied night at the published
-    // rate (confirmed target if set, else historic suggestion) — no more €0 for
+    // rate (confirmed target if set, else STR Daily Rates suggestion) — no more €0 for
     // properties/months without a confirmed target.
     const { available, occupied, blocked, rev, occByMonth: propOccByMonth, availByMonth: propAvailByMonth } =
       rangeOccupancy(occupiedSet, ownerBlockSet, curRange.start, curRange.end, rateForNight);
@@ -465,7 +442,7 @@ function getSpotlightData(propId, curRange) {
   const monthKeys = getMonthKeysForRange(curRange.start, curRange.end).keys;
   // Target revenue uses the same historic-fallback-aware published rate
   // (makeRateForNight) as getPortfolioData — confirmed target ADR when set,
-  // otherwise the historic suggestion — so the Spotlight's "Target Revenue"
+  // otherwise the STR Daily Rates suggestion — so the Spotlight's "Target Revenue"
   // agrees with the Portfolio view for the same property/months instead of
   // silently reading 0 for months without a confirmed strRateTargets entry.
   const rateForNight = makeRateForNight(propId);
@@ -535,7 +512,7 @@ function getForwardPipeline() {
     let potRevMax    = 0; // open nights × published rate (full)
 
     // Value every night in the next 90 days at the published rate (confirmed
-    // target if set, otherwise the historic suggestion) — same as the feed.
+    // target if set, otherwise the STR Daily Rates suggestion) — same as the feed.
     // Also group consecutive same-type nights into date-range segments (with
     // the revenue-derived avg published rate) so the totals are auditable.
     const rateForNight = makeRateForNight(prop.id);
@@ -765,7 +742,7 @@ function buildPortfolioKpis(data) {
           { label: 'Target Revenue', value: formatEUR(targetRev) }
         ],
         source: 'analytics-str.js:480 buildPortfolioKpis() (targetRev from getPortfolioData():262-277)',
-        note: 'Target Revenue values every occupied night at its published rate — the confirmed strRateTargets ADR when set, otherwise the historic-suggestion rate (makeRateForNight():207) — so months without a confirmed target still get a target instead of reading €0.'
+        note: 'Target Revenue values every occupied night at its published rate — the confirmed strRateTargets ADR when set, otherwise the STR Daily Rates suggestion (makeRateForNight():207) — so months without a confirmed target still get a target instead of reading €0.'
       }
     }));
   }
@@ -1056,7 +1033,7 @@ function buildSpotlightContent(propId, curRange) {
     source: 'analytics-str.js:320,329 getSpotlightData()'
   }));
   adrSummary.appendChild(mkSummaryBox('Target Revenue', targetRev > 0 ? formatEUR(targetRev, { maxFrac: 0 }) : '—', 'at published rate', {
-    title: 'Target Revenue', formula: 'Sum, over every occupied night in the range, of that night\'s published rate (confirmed strRateTargets ADR when set, otherwise the historic-suggestion rate).',
+    title: 'Target Revenue', formula: 'Sum, over every occupied night in the range, of that night\'s published rate (confirmed strRateTargets ADR when set, otherwise the STR Daily Rates suggestion).',
     inputs: [{ label: 'Target Revenue', value: targetRev > 0 ? formatEUR(targetRev, { maxFrac: 0 }) : '—' }],
     source: 'analytics-str.js:307-314 getSpotlightData() (makeRateForNight():207)'
   }));
@@ -1187,7 +1164,7 @@ function buildForwardPipelineCard() {
       { label: 'Locked Revenue', value: formatEUR(totalLockedRev, { maxFrac: 0 }) }
     ],
     source: 'analytics-str.js:368-379 getForwardPipeline() (makeRateForNight():207)',
-    note: 'Rate = confirmed strRateTargets ADR (minus discount) when set, otherwise the historic-suggestion rate — same published-rate logic as the rest of this dashboard.'
+    note: 'Rate = confirmed strRateTargets ADR (minus discount) when set, otherwise the STR Daily Rates suggestion — same published-rate logic as the rest of this dashboard.'
   });
   lockedRevBox.style.cursor = 'pointer';
   lockedRevBox.title = 'Click for locked date ranges';
@@ -1568,7 +1545,7 @@ function openTargetModal(data) {
     },
     { label: 'Target Revenue', value: formatEUR(targetRev),
       explain: {
-        title: 'Target Revenue', formula: 'Sum, over every occupied night in the period, of that night\'s published rate (confirmed strRateTargets ADR when set, otherwise the historic-suggestion rate).',
+        title: 'Target Revenue', formula: 'Sum, over every occupied night in the period, of that night\'s published rate (confirmed strRateTargets ADR when set, otherwise the STR Daily Rates suggestion).',
         inputs: [{ label: 'Target Revenue', value: formatEUR(targetRev) }],
         source: 'analytics-str.js:262-277 getPortfolioData() (rangeOccupancy():147, makeRateForNight():207)',
         note: 'Ensures months/properties without a confirmed target still get a meaningful target instead of reading €0.'
@@ -1671,7 +1648,7 @@ function openPropertyRangeModal(propId, curRange) {
     },
     { label: 'Target Revenue', value: targetRev > 0 ? formatEUR(targetRev, { maxFrac: 0 }) : '—',
       explain: {
-        title: 'Target Revenue', formula: 'Sum, over every occupied night in the range, of that night\'s published rate (confirmed strRateTargets ADR when set, otherwise the historic-suggestion rate).',
+        title: 'Target Revenue', formula: 'Sum, over every occupied night in the range, of that night\'s published rate (confirmed strRateTargets ADR when set, otherwise the STR Daily Rates suggestion).',
         inputs: [{ label: 'Target Revenue', value: targetRev > 0 ? formatEUR(targetRev, { maxFrac: 0 }) : '—' }],
         source: 'analytics-str.js:307-314 getSpotlightData() (makeRateForNight():207)'
       }
