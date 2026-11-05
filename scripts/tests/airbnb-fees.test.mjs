@@ -12,7 +12,7 @@ const oldBk = { source: 'airbnb', amount: 964.3, airbnbGrossEarnings: 1000, airb
 const newBk = { source: 'airbnb', amount: 923.15, airbnbGrossEarnings: 1131.6, airbnbServiceFee: 208.45, airbnbCleaningFee: 60, airbnbBookingDate: '2026-10-20', airbnbCheckIn: '2026-12-01' };
 
 test('defaults: host-only, 15.5% + 19% VAT = 18.45%; old fee 3.57%; weekend +10%; growth 0', () => {
-  assert.deepEqual(fs, { hostOnly: true, hostFeeBasePct: 15.5, vatPct: 19, hostFeePct: 18.45, splitHostFeePct: 3.57, guestFeePct: 14, taxPct: 0, weekendUpliftPct: 10, growthPct: 0 });
+  assert.deepEqual(fs, { hostOnly: true, hostFeeBasePct: 15.5, vatPct: 19, hostFeePct: 18.45, splitHostFeePct: 3.57, guestFeePct: 14, taxPct: 0, weekendUpliftPct: 10, cleaningStrategy: 'keep', growthPct: 0 });
   const g = f.feeSettings({ feeModel: 'split', hostFeeBasePct: '15', vatPct: 27, weekendUpliftPct: 0, growthPct: '5' });
   assert.equal(g.hostOnly, false); assert.equal(g.hostFeePct, 19.05); assert.equal(g.splitHostFeePct, 3.81);
   assert.equal(g.weekendUpliftPct, 0); assert.equal(g.growthPct, 5);
@@ -33,11 +33,19 @@ test('fee model per booking: measured fee wins, then booking date, then stay sta
   near(f.bookingFeeRate({ source: 'airbnb', amount: 500, airbnbBookingDate: '2026-01-01' }), 0.0357);
 });
 
-test('Airbnb daily rate: old bookings × (1 + guest fee), new as they are — same guest price, same rate', () => {
-  const oldRate = f.airbnbRatePerNight(oldBk, 4), newRate = f.airbnbRatePerNight(newBk, 4);
-  near(oldRate, (1000 - 60) / 4 * 1.14);           // 267.9: what the old guest paid per night
-  near(newRate, (1131.6 - 60) / 4);                // 267.9
-  near(oldRate, newRate, 0.1);
+test('Airbnb daily rate: old bookings at what their guests paid, new as they are', () => {
+  // cleaning fee kept (default): the old guest fee on cleaning moves into the nightly rate
+  near(f.airbnbRatePerNight(oldBk, 4), (1000 * 1.14 - 60) / 4);        // 270
+  // the case from the Airbnb app: €160 total, €40 cleaning, 3 nights, guest paid 19% on top (€190.53)
+  const bk = { source: 'airbnb', amount: 154.29, airbnbGrossEarnings: 160, airbnbServiceFee: 5.71, airbnbCleaningFee: 40, airbnbBookingDate: '2026-03-21' };
+  const g19 = f.feeSettings({ guestFeePct: 19 });
+  near(f.airbnbRatePerNight(bk, 3, g19), (190.4 - 40) / 3);           // €50.13 → €50 a night with €40 cleaning
+  near(50 * 3 + 40, 190.4, 0.5);                                       // guest pays the same total
+  // cleaning fee raised by the guest fee too: it stays with cleaning
+  const raise = f.feeSettings({ guestFeePct: 19, cleaningStrategy: 'raise' });
+  near(f.airbnbRatePerNight(bk, 3, raise), 40 * 1.19);                // €47.60 (+ €47.60 cleaning)
+  near(f.airbnbRatePerNight(oldBk, 4, f.feeSettings({ cleaningStrategy: 'raise' })), f.airbnbRatePerNight(newBk, 4), 0.1);
+  near(f.airbnbRatePerNight(newBk, 4), (1131.6 - 60) / 4);            // host-only: as it is
   // no gross in the import → derived from the payout and the fee
   near(f.airbnbRatePerNight({ source: 'airbnb', amount: 816, airbnbCleaningFee: 0, airbnbBookingDate: '2026-11-01' }, 4), 816 / 0.8155 / 4);
   // direct bookings: their own nightly price

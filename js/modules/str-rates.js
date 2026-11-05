@@ -1717,7 +1717,12 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
       const clean = hist.cleaningFee || 0;
       if (hist.feeModel === 'split') {
         const fs = feeSettings(state.db.settings?.airbnb);
-        body.appendChild(row('Airbnb daily rate', `(${fmt(hist.gross, hist.currency)} − ${fmt(clean, hist.currency)} cleaning) ÷ ${hist.nights} × ${(1 + fs.guestFeePct / 100).toFixed(2)} old guest fee = ${fmt(hist.rate, hist.currency)}`));
+        const g = (1 + fs.guestFeePct / 100).toFixed(2);
+        if (fs.cleaningStrategy === 'raise') body.appendChild(row('Airbnb daily rate', `(${fmt(hist.gross, hist.currency)} − ${fmt(clean, hist.currency)} cleaning) ÷ ${hist.nights} × ${g} old guest fee = ${fmt(hist.rate, hist.currency)}`));
+        else {
+          body.appendChild(row('Guest paid (incl. old guest fee)', `${fmt(hist.gross, hist.currency)} × ${g} = ${fmt(hist.gross * (1 + fs.guestFeePct / 100), hist.currency)}`));
+          body.appendChild(row('Airbnb daily rate', `(${fmt(hist.gross * (1 + fs.guestFeePct / 100), hist.currency)} − ${fmt(clean, hist.currency)} cleaning) ÷ ${hist.nights} = ${fmt(hist.rate, hist.currency)}`));
+        }
       } else if (hist.feeModel) {
         body.appendChild(row('Airbnb daily rate', `(${fmt(hist.gross, hist.currency)} − ${fmt(clean, hist.currency)} cleaning) ÷ ${hist.nights} = ${fmt(hist.rate, hist.currency)}`));
       } else {
@@ -1791,7 +1796,7 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
       const splitN = src.filter(e => e.feeModel === 'split').length, lmN = src.filter(e => e.w < 1).length;
       const fmt0 = v => formatMoney(Math.round(v), ccy, { maxFrac: 0 });
       const notes = [
-        splitN ? `Old-fee bookings +${fs.guestFeePct}% (their guests paid that fee on top)` : '',
+        splitN ? `Old-fee bookings at what their guests paid (+${fs.guestFeePct}% guest fee${fs.cleaningStrategy === 'keep' ? ', cleaning fee unchanged' : ''})` : '',
         lmN ? `${nightsTxt(lmN)} booked last-minute count half` : '',
         s.weekendUpliftPct ? `Weekend +${s.weekendUpliftPct}% (weekday ${fmt0(s.weekdayRate)})` : '',
         s.growthPct ? `Older years +${s.growthPct}%/yr` : ''
@@ -2244,7 +2249,7 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
     const recRow = el('div', { style: 'font-size:13px;margin-bottom:12px' });
     recRow.appendChild(el('span', { style: 'color:var(--text-muted)' }, 'Recommended: '));
     recRow.appendChild(el('strong', {}, fmt(recommendedADR)));
-    recRow.appendChild(el('span', { style: 'font-size:11px;color:var(--text-muted);margin-left:6px' }, `(weekday Airbnb daily rate excl. cleaning — ${MONTHS[mo1 - 1]} Airbnb bookings, all years, old-fee ones × ${(1 + feeSettings(state.db.settings?.airbnb).guestFeePct / 100).toFixed(2)})`));
+    recRow.appendChild(el('span', { style: 'font-size:11px;color:var(--text-muted);margin-left:6px' }, `(weekday Airbnb daily rate excl. cleaning — ${MONTHS[mo1 - 1]} Airbnb bookings, all years, old-fee ones at what their guests paid)`));
     wrap.appendChild(recRow);
   } else {
     wrap.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted);margin-bottom:12px' }, 'No historical data for this month yet. Enter a target ADR manually.'));

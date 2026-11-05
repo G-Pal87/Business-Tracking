@@ -1503,6 +1503,12 @@ function buildStrSettingsCard() {
     formRow('Guest service fee % (old split fee only)', feeI, 'Old model only: what Airbnb added for the guest on top of your price (~14%). Used for reservations booked before 13 Oct 2026.'),
     formRow('Occupancy / tourist tax %', taxI, 'Any tax added to the guest total. Leave 0 if not applicable.')
   ));
+  const cleanStratS = select([
+    { value: 'keep', label: 'I keep my Airbnb cleaning fee as it is' },
+    { value: 'raise', label: 'I raise my Airbnb cleaning fee by the old guest fee too' }
+  ], af.cleaningStrategy === 'raise' ? 'raise' : 'keep');
+  body.appendChild(formRow('Cleaning fee after the fee change', cleanStratS,
+    'Keep: the guest fee your guests used to pay on cleaning moves into the nightly rate, so a guest pays the same total as before (e.g. €40 a night + €40 cleaning, 19% fee → €50 a night). Raise: it stays with cleaning (€48 a night + €48 cleaning).'));
   body.appendChild(formRow('Cleaning fee (flat, per booking)', cleanI, 'Flat fee the guest pays for cleaning, once per booking (no guest fee/tax added). Published in the daily-rate feed for the Short-Term-Rentals repo.'));
 
   const globalDiscI = input({ value: af.globalDiscountPct != null ? af.globalDiscountPct : '', type: 'number', min: '0', max: '100', placeholder: '0' });
@@ -1555,6 +1561,7 @@ function buildStrSettingsCard() {
       hideAllSitePrices: hideAllChk.checked,
       guestFeePct:       feeI.value === '' ? AIRBNB_GUEST_FEE_PCT : fee,
       feeModel:          modelS.value,
+      cleaningStrategy:  cleanStratS.value,
       hostFeeBasePct:    hostI.value === '' ? DEFAULT_HOST_FEE_BASE_PCT : hostFee,
       vatPct:            vatI.value === '' ? DEFAULT_VAT_PCT : vat,
       weekendUpliftPct:  weekendI.value === '' ? DEFAULT_WEEKEND_UPLIFT_PCT : weekend,

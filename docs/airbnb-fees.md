@@ -22,6 +22,14 @@ today's host-only terms — what the guest pays per night.
   total − cleaning) ÷ nights; old split-fee bookings × (1 + guest fee), since
   their guests paid the fee on top; new host-only ones as they are. So old and
   new bookings blend without dragging the rate down.
+- **Cleaning fee after the change** (Settings): *keep* (default) — your
+  Airbnb cleaning fee stays as it is, so the guest fee your guests used to pay
+  on cleaning moves into the nightly rate: (booking total × (1 + guest fee) −
+  cleaning) ÷ nights, e.g. €160 total, €40 cleaning, 3 nights, 19% → €50 a
+  night, and the guest pays €190 as before. *Raise* — you raise the cleaning
+  fee by the guest fee too: (booking total − cleaning) ÷ nights × (1 + guest
+  fee) = €48 a night + €48 cleaning. The guest fee your guests paid can be
+  checked in the Airbnb app (guest total ÷ booking total; 19% ≈ 16% + VAT).
 - **Which model a booking was on** comes from its own import figures (service
   fee ÷ gross earnings: ≥ 10% = host-only), else its booking date (≥ 13 Oct
   2026 = host-only), else its check-in (before the switch = split).

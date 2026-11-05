@@ -41,6 +41,10 @@ export function feeSettings(af = {}) {
     guestFeePct: num(af.guestFeePct, DEFAULT_GUEST_FEE_PCT),
     taxPct: num(af.taxPct, 0),
     weekendUpliftPct: num(af.weekendUpliftPct, DEFAULT_WEEKEND_UPLIFT_PCT),
+    // 'keep': your Airbnb cleaning fee stays as it is, so the old guest fee
+    // on cleaning moves into the nightly rate; 'raise': you raise the
+    // cleaning fee by the guest fee too, so it stays with cleaning.
+    cleaningStrategy: af.cleaningStrategy === 'raise' ? 'raise' : 'keep',
     growthPct: num(af.growthPct, DEFAULT_GROWTH_PCT)
   };
 }
@@ -77,9 +81,13 @@ export function bookingFeeRate(p, fs = feeSettings()) {
   return (model === 'host_only' ? fs.hostFeePct : fs.splitHostFeePct) / 100;
 }
 
-// The booking's AIRBNB DAILY RATE in today's (host-only) terms, excl. cleaning:
-// the nightly price on Airbnb, × (1 + guest fee) for split-model bookings —
-// what their guest paid per night, which is the rate that now matches it.
+// The booking's AIRBNB DAILY RATE in today's (host-only) terms, excl. cleaning
+// — the nightly price that, with today's cleaning fee, costs a guest what
+// this booking's guest paid:
+//   host-only bookings: (booking total − cleaning) ÷ nights, as they are;
+//   split bookings, cleaning fee kept:   (booking total × (1 + guest fee) − cleaning) ÷ nights
+//     e.g. €160 total, €40 cleaning, 3 nights, 19% → (190.40 − 40) ÷ 3 = €50.13;
+//   split bookings, cleaning fee raised: (booking total − cleaning) ÷ nights × (1 + guest fee).
 // Manual / off-platform bookings: their own nightly price (no Airbnb fee).
 export function airbnbRatePerNight(p, nights, fs = feeSettings()) {
   if (!(nights > 0) || p?.amount == null) return null;
@@ -87,8 +95,9 @@ export function airbnbRatePerNight(p, nights, fs = feeSettings()) {
   const model = bookingFeeModel(p);
   if (!model) return (Number(p.amount) - cleaning) / nights;
   const gross = Number(p.airbnbGrossEarnings) > 0 ? Number(p.airbnbGrossEarnings) : Number(p.amount) / (1 - bookingFeeRate(p, fs));
-  const room = (gross - cleaning) / nights;
-  return model === 'split' ? room * (1 + fs.guestFeePct / 100) : room;
+  if (model !== 'split') return (gross - cleaning) / nights;
+  const g = 1 + fs.guestFeePct / 100;
+  return fs.cleaningStrategy === 'raise' ? (gross - cleaning) / nights * g : (gross * g - cleaning) / nights;
 }
 
 // What the booking paid out per night, excl. cleaning (the cleaning that
