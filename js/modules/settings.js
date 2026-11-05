@@ -1513,6 +1513,38 @@ function buildStrSettingsCard() {
     formRow('Maximise rate: raise by %', maxI),
     formRow('Auto: at most ± %', capI, 'Auto moves the price by ½% per point of occupancy ahead of / behind last year, ±3% for months that usually sell out / stay quiet, capped here.')
   ));
+  const gapPctI = pctInput(af.gapNightPct, 15, { min: '0', max: '50' });
+  const gapMaxI = input({ value: af.gapNightMax != null ? af.gapNightMax : 2, type: 'number', min: '0', max: '7', step: '1', placeholder: '2' });
+  body.appendChild(el('div', { class: 'form-row horizontal' },
+    formRow('Gap nights: lower by %', gapPctI, 'Open nights in a short gap between two bookings (or closures) rarely sell at full price. 0 = off.'),
+    formRow('Gap nights: up to (nights)', gapMaxI, 'A gap this long or shorter counts.')
+  ));
+
+  // Special dates: +/- % on given days (yearly = every year).
+  const specials = (Array.isArray(af.specialDates) ? af.specialDates : []).map(x => ({ ...x }));
+  const spWrap = el('div', {});
+  const spList = el('div', { style: 'display:flex;flex-direction:column;gap:6px' });
+  const drawSpecials = () => {
+    spList.innerHTML = '';
+    specials.forEach((sd, i) => {
+      const name = input({ value: sd.label || '', placeholder: 'e.g. Christmas', style: 'width:140px' });
+      const from = input({ value: sd.from || '', type: 'date' });
+      const to = input({ value: sd.to || '', type: 'date' });
+      const pct = input({ value: sd.pct != null ? sd.pct : '', type: 'number', step: '1', placeholder: '+20', style: 'width:70px' });
+      const yearly = el('input', { type: 'checkbox' }); yearly.checked = !!sd.yearly;
+      const upd = () => { specials[i] = { label: name.value.trim(), from: from.value, to: to.value || from.value, pct: parseFloat(pct.value), yearly: yearly.checked }; };
+      [name, from, to, pct].forEach(x => x.addEventListener('input', upd)); yearly.addEventListener('change', upd);
+      spList.appendChild(el('div', { style: 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px' },
+        name, from, el('span', { class: 'muted' }, 'to'), to, pct, el('span', { class: 'muted' }, '%'),
+        el('label', { style: 'display:flex;align-items:center;gap:4px' }, yearly, 'every year'),
+        button('Remove', { variant: 'sm ghost', onClick: () => { specials.splice(i, 1); drawSpecials(); } })));
+    });
+  };
+  drawSpecials();
+  spWrap.appendChild(spList);
+  spWrap.appendChild(button('+ Add date', { variant: 'sm', onClick: () => { specials.push({ label: '', from: '', to: '', pct: 20, yearly: true }); drawSpecials(); } }));
+  body.appendChild(formRow('Special dates', spWrap, 'Raise (or lower) the suggested rate on these days, e.g. Christmas +20%, a local festival +30%. Applies to all properties.'));
+
   const lmDaysI = input({ value: af.lastMinuteDays != null ? af.lastMinuteDays : STRATEGY_DEFAULTS.lmDays, type: 'number', min: '0', max: '30', step: '1', placeholder: String(STRATEGY_DEFAULTS.lmDays) });
   const lmModeS = select([{ value: 'measured', label: 'Measured from my bookings' }, { value: 'fixed', label: 'Fixed %' }], ssCur.lmMode);
   const lmPctI  = pctInput(af.lastMinutePct, STRATEGY_DEFAULTS.lmPct, { min: '0', max: '50' });
@@ -1578,6 +1610,10 @@ function buildStrSettingsCard() {
     if (!pctOk(fillI, 0, 50) || !pctOk(capI, 0, 50) || !pctOk(lmPctI, 0, 50)) { toast('Fill nights, Auto limit and last-minute % must be between 0 and 50', 'warning'); return; }
     if (!pctOk(maxI, 0, 100)) { toast('Maximise rate % must be between 0 and 100', 'warning'); return; }
     if (!pctOk(lmDaysI, 0, 30)) { toast('Last-minute window must be 0–30 days', 'warning'); return; }
+    if (!pctOk(gapPctI, 0, 50)) { toast('Gap nights % must be between 0 and 50', 'warning'); return; }
+    if (!pctOk(gapMaxI, 0, 7)) { toast('Gap nights must be 0–7 nights', 'warning'); return; }
+    const cleanSpecials = specials.filter(x => x.from && Number.isFinite(x.pct) && x.pct !== 0)
+      .map(x => ({ label: x.label || '', from: x.from, to: x.to && x.to >= x.from ? x.to : x.from, pct: Math.max(-90, Math.min(300, x.pct)), yearly: !!x.yearly }));
     const pv = (inp, d) => (inp.value === '' ? d : parseFloat(inp.value));
     if (taxI.value !== '' && (isNaN(tax) || tax < 0)) { toast('Tax % must be a positive number', 'warning'); return; }
     if (cleanI.value !== '' && (isNaN(clean) || clean < 0)) { toast('Cleaning fee must be a positive number', 'warning'); return; }
@@ -1605,6 +1641,9 @@ function buildStrSettingsCard() {
       lastMinuteDays:    pv(lmDaysI, STRATEGY_DEFAULTS.lmDays),
       lastMinuteMode:    lmModeS.value,
       lastMinutePct:     pv(lmPctI, STRATEGY_DEFAULTS.lmPct),
+      gapNightPct:       pv(gapPctI, 15),
+      gapNightMax:       pv(gapMaxI, 2),
+      specialDates:      cleanSpecials,
       taxPct:            taxI.value === '' ? AIRBNB_TAX_PCT : tax,
       cleaningFee:       cleanI.value === '' ? AIRBNB_CLEANING_FEE : clean,
       globalDiscountPct: globalDiscI.value === '' ? 0 : globalDisc,

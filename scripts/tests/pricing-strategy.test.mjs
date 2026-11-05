@@ -59,3 +59,34 @@ test('Auto on a night: pace decides; no history → Balanced; last-minute only w
   e = ps.strategyEffect({ ss, r: R, pace: { curOcc: 0, lyOcc: null, lyFinal: null, reason: 'mostly closed this month' }, daysAway: 200 });
   near(e.factor, 1); assert.equal(e.note, 'Auto: Balanced (mostly closed this month)');
 });
+
+test('gap nights: a short open run with booked/closed nights on both sides', () => {
+  const U = new Set(['2027-03-01', '2027-03-02', '2027-03-04', '2027-03-08', '2027-03-11']);
+  assert.equal(ps.gapRunLength('2027-03-03', U, 2), 1);           // 1-night gap (2nd and 4th booked)
+  assert.equal(ps.gapRunLength('2027-03-09', U, 2), 2);           // 9–10 between 8 and 11
+  assert.equal(ps.gapRunLength('2027-03-10', U, 2), 2);
+  assert.equal(ps.gapRunLength('2027-03-05', U, 2), 0);           // 5–7 is 3 nights > 2
+  assert.equal(ps.gapRunLength('2027-03-05', U, 3), 3);
+  assert.equal(ps.gapRunLength('2027-03-02', U, 2), 0);           // booked itself
+  assert.equal(ps.gapRunLength('2027-03-12', U, 2), 0);           // open after the last booking
+  assert.equal(ps.gapRunLength('2027-03-03', U, 0), 0);           // off
+});
+
+test('special dates: exact and every year, across New Year', () => {
+  const list = [{ label: 'Christmas', from: '2026-12-24', to: '2026-12-26', pct: 20, yearly: true },
+                { label: 'NYE', from: '2026-12-31', to: '2027-01-01', pct: 40, yearly: true },
+                { label: 'Festival', from: '2027-06-10', to: '2027-06-12', pct: 30 }];
+  assert.deepEqual(ps.specialDateFor('2027-12-25', list), { label: 'Christmas', pct: 20 });
+  assert.deepEqual(ps.specialDateFor('2028-01-01', list), { label: 'NYE', pct: 40 });
+  assert.deepEqual(ps.specialDateFor('2027-06-11', list), { label: 'Festival', pct: 30 });
+  assert.equal(ps.specialDateFor('2028-06-11', list), null);       // not yearly
+  assert.equal(ps.specialDateFor('2027-12-27', list), null);
+  assert.equal(ps.specialDateFor('2027-12-25', [{ from: '2026-12-24', pct: 0, yearly: true }]), null);
+});
+
+test('price limits', () => {
+  assert.deepEqual(ps.clampRate(30, 35, 90), { rate: 35, capped: 'min' });
+  assert.deepEqual(ps.clampRate(120, 35, 90), { rate: 90, capped: 'max' });
+  assert.deepEqual(ps.clampRate(60, 35, 90), { rate: 60, capped: null });
+  assert.deepEqual(ps.clampRate(10, null, null), { rate: 10, capped: null });
+});

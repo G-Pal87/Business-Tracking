@@ -92,3 +92,21 @@ beats the property's (STR Daily Rates, next to "Website prices"), which beats
 the global one (Settings → Airbnb). The day popup says which applied and why,
 e.g. "Strategy: Auto: Fill nights −11% — July 31% booked vs 52% this time last
 year → history rate €70 becomes €62 (global setting)".
+
+## After the strategy: special dates, gap nights, price limits
+
+Applied to suggested rates in this order, after the strategy (confirmed
+targets are used as set):
+
+1. **Special dates** (Settings → Airbnb): + / − % on given days, optionally
+   every year — e.g. Christmas +20%.
+2. **Gap nights** (Settings → Airbnb, default −15% for gaps up to 2 nights):
+   open nights in a short gap with booked or closed nights on both sides.
+3. **Price limits per apartment** (STR Daily Rates → "Limits"): a minimum, and
+   optionally a maximum (empty = no ceiling). The day popup says when a price
+   was kept at a limit.
+
+The top cards are: Airbnb Daily Rate · Suggested Rate (or Confirmed Target) ·
+You Receive · Website Price · Occupancy (with last year at the same point) ·
+Last-Minute Bookings. While the old guest service fee is still the 14%
+default, STR Daily Rates shows a dismissable reminder (Airbnb showed ~19%).

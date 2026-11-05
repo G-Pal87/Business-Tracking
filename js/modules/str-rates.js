@@ -10,7 +10,7 @@ import { AIRBNB_CLEANING_FEE } from '../core/config.js';
 import { feeSettings, bookingFeeModel, bookingFeeRate, airbnbRatePerNight, payoutPerNight, payoutForRate, airbnbCheckoutFor, feedGuestFeePct, targetBase, weekendFactor, isWeekendNight, leadDays, isLastMinute, growthFactor, LAST_MINUTE_DAYS, LAST_MINUTE_WEIGHT, FEE_MODEL_LABEL } from '../core/airbnb-fees.js';
 import { openPaymentForm } from './payments.js';
 import { todayYmd, addDaysYmd, addMonthsYmd } from '../core/dates.js';
-import { strategySettings, resolveStrategy, strategyEffect, STRATEGY_LABEL, STRATEGIES, SOURCE_LABEL } from '../core/pricing-strategy.js';
+import { strategySettings, resolveStrategy, strategyEffect, STRATEGY_LABEL, STRATEGIES, SOURCE_LABEL, gapRunLength, specialDateFor, clampRate, GAP_DEFAULTS } from '../core/pricing-strategy.js';
 import { calendarSyncTick, renderSyncBanner, syncLine, refreshNow, calSyncSettings } from './calsync-app.js';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -451,6 +451,13 @@ function buildPricedSuggester(propertyId, histMap) {
   const prop = byId('properties', propertyId);
   const today = todayStr();
   const lm = lastMinuteDrop(histMap);
+  const af = state.db.settings?.airbnb || {};
+  const gapPct = af.gapNightPct != null && af.gapNightPct !== '' ? Number(af.gapNightPct) : GAP_DEFAULTS.pct;
+  const gapMax = af.gapNightMax != null && af.gapNightMax !== '' ? Number(af.gapNightMax) : GAP_DEFAULTS.maxLen;
+  const specials = Array.isArray(af.specialDates) ? af.specialDates : [];
+  const minRate = Number(prop?.minRate) > 0 ? Number(prop.minRate) : null;
+  const maxRate = Number(prop?.maxRate) > 0 ? Number(prop.maxRate) : null;
+  let unavailable = null;   // booked or closed nights, for gap nights (built on first use)
   const paceMemo = new Map();
   const paceOf = ym => {
     if (!paceMemo.has(ym)) paceMemo.set(ym, monthPace(propertyId, ym, histMap, today));
@@ -464,8 +471,20 @@ function buildPricedSuggester(propertyId, histMap) {
     const eff = strategyEffect({ ss, r, pace: r.strategy === 'auto' ? paceOf(ym) : null,
       daysAway: date >= today ? Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 864e5) : null,
       measuredLmPct: lm?.pct ?? null, monthName: MONTHS[Number(date.slice(5, 7)) - 1] });
-    return { ...s, historyRate: s.rate, rate: s.rate * eff.factor, adr: s.adr * eff.factor,
-      strategy: { ...eff, strategy: r.strategy, source: r.source } };
+    // Then special dates and gap nights, and finally the property's price limits.
+    let rate = s.rate * eff.factor;
+    const extras = [];
+    const sp = specialDateFor(date, specials);
+    if (sp) { rate *= 1 + sp.pct / 100; extras.push(`${sp.label} ${sp.pct > 0 ? '+' : '−'}${Math.abs(sp.pct)}%`); }
+    if (gapPct > 0 && gapMax > 0 && date >= today) {
+      if (!unavailable) unavailable = new Set([...histMap.keys(), ...blockedDateSet(propertyId)]);
+      const run = gapRunLength(date, unavailable, gapMax);
+      if (run) { rate *= 1 - gapPct / 100; extras.push(`Gap night −${gapPct}% (${run}-night gap between bookings)`); }
+    }
+    const c = clampRate(rate, minRate, maxRate);
+    if (c.capped) extras.push(c.capped === 'min' ? `Kept at your minimum ${Math.round(minRate)}` : `Kept at your maximum ${Math.round(maxRate)}`);
+    return { ...s, historyRate: s.rate, rate: c.rate, adr: s.adr * (c.rate / s.rate),
+      strategy: { ...eff, strategy: r.strategy, source: r.source }, extras, capped: c.capped };
   };
 }
 
@@ -985,6 +1004,26 @@ function renderGapBanner(container, propertyId, onRerender) {
   container.appendChild(card);
 }
 
+// A one-line nudge while the old guest service fee is still the 14% default:
+// the Airbnb app showed ~19% (16% + VAT) on real bookings, and it decides how
+// old-fee bookings convert. Dismissable (remembered in this browser).
+const FEE_REMINDER_KEY = 'bt.strGuestFeeReminder.dismissed';
+function guestFeeReminder() {
+  const fs = feeSettings(state.db.settings?.airbnb);
+  let dismissed = false;
+  try { dismissed = localStorage.getItem(FEE_REMINDER_KEY) === '1'; } catch { /* storage blocked */ }
+  if (fs.guestFeePct !== 14 || dismissed) return el('div', {});
+  const box = el('div', { class: 'card', style: 'margin-bottom:16px;border-left:3px solid #f59e0b;padding:10px 16px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap' });
+  const go = el('span', { style: 'color:var(--accent,#6366f1);cursor:pointer;text-decoration:underline;font-size:12px' }, 'Open Settings');
+  go.onclick = () => import('../core/router.js').then(r => r.navigate?.('settings')).catch(() => { location.hash = '#settings'; });
+  const hide = el('span', { style: 'color:var(--text-muted);cursor:pointer;text-decoration:underline;font-size:12px' }, 'Dismiss');
+  hide.onclick = () => { try { localStorage.setItem(FEE_REMINDER_KEY, '1'); } catch { /* storage blocked */ } box.remove(); };
+  box.append(el('span', { style: 'color:#f59e0b' }, '●'),
+    el('span', {}, 'Old guest service fee is set to 14%, but your Airbnb app showed about 19% (e.g. €190.53 paid on €160). Old-fee bookings convert with this — update it in Settings → Airbnb.'),
+    go, hide);
+  return box;
+}
+
 // Whether the no-payment banner's list is open — remembered in this browser
 // only (a viewing preference), collapsed when unknown or storage is blocked.
 const GAP_BANNER_KEY = 'bt.strGapBanner.expanded';
@@ -1453,16 +1492,44 @@ function build() {
   syncStratSel();
   propSel.addEventListener('change', syncStratSel);
   bar.appendChild(stratSel);
+  // Per-property price limits: suggestions never go below / above these.
+  const limitI = ph => input({ type: 'number', min: '0', step: '1', placeholder: ph, style: 'width:64px' });
+  const minI = limitI('min'), maxI = limitI('max');
+  const limits = el('label', { style: 'display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-muted)', title: 'Suggested rates for this property stay within these (confirmed targets are used as set). Empty = no limit.' },
+    'Limits', minI, '–', maxI);
+  const syncLimits = () => {
+    const p = byId('properties', _propId);
+    minI.value = p?.minRate > 0 ? String(p.minRate) : '';
+    maxI.value = p?.maxRate > 0 ? String(p.maxRate) : '';
+  };
+  const saveLimits = () => {
+    const p = byId('properties', _propId);
+    if (!p) return;
+    const mn = parseFloat(minI.value), mx = parseFloat(maxI.value);
+    const minRate = mn > 0 ? mn : null, maxRate = mx > 0 ? mx : null;
+    if (minRate && maxRate && minRate > maxRate) { toast('The minimum is above the maximum', 'warning'); syncLimits(); return; }
+    if ((p.minRate || null) === minRate && (p.maxRate || null) === maxRate) return;   // unchanged (e.g. the blur after Enter)
+    upsert('properties', { ...p, minRate, maxRate });
+    toast(`Price limits for ${p.name}: ${minRate ? `min ${minRate}` : 'no minimum'} · ${maxRate ? `max ${maxRate}` : 'no maximum'}`, 'success');
+    // Redraw just after: the change fires on blur, often from a click on a
+    // day — redrawing at once would swallow that click.
+    setTimeout(rerender, 150);
+  };
+  minI.onchange = saveLimits; maxI.onchange = saveLimits;
+  syncLimits();
+  propSel.addEventListener('change', syncLimits);
+  bar.appendChild(limits);
   bar.appendChild(sitePriceBtn);
   bar.appendChild(publishBtn);
   wrap.appendChild(bar);
 
   const gapBanner  = el('div', {});
-  const kpiRow     = el('div', { style: 'display:grid;grid-template-columns:repeat(7,1fr);gap:12px;margin-bottom:16px' });
+  const kpiRow     = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px' });
   const calCard    = el('div', { class: 'card' });
   const analysisEl = el('div', {});
   const syncBanner = el('div', {});
   wrap.appendChild(syncBanner);
+  wrap.appendChild(guestFeeReminder());
   wrap.appendChild(gapBanner);
   wrap.appendChild(kpiRow);
   wrap.appendChild(calCard);
@@ -1528,12 +1595,10 @@ function renderKpis(row, { histMap, suggest, blocked, year, month1, ccy, propert
   const mo = String(month1).padStart(2, '0');
   const dim = daysInMonth(year, month1);
 
-  // Airbnb daily rate (excl. cleaning, today's fee terms) + ADR (incl. cleaning) for this month, all years.
+  // Airbnb daily rate (excl. cleaning, today's fee terms) for this month, all years.
   const monthEntries = [...histMap].filter(([d]) => d.slice(5, 7) === mo);
   const netRates = monthEntries.filter(([, v]) => v.feeModel).map(([, v]) => v.rate);   // Airbnb bookings only
-  const adrRates = monthEntries.map(([, v]) => v.adr);
   const avgNet = netRates.length ? netRates.reduce((s, r) => s + r, 0) / netRates.length : null;
-  const avgADR = adrRates.length ? adrRates.reduce((s, r) => s + r, 0) / adrRates.length : null;
 
   // Confirmed target for this month
   const anchor = `${year}-${mo}`;
@@ -1556,41 +1621,26 @@ function renderKpis(row, { histMap, suggest, blocked, year, month1, ccy, propert
     el('div', { class: 'kpi-value num' }, value),
     sub ? el('div', { class: 'fx-hint' }, sub) : null
   );
-
-  // Published (pushed) rate = confirmed target after effective promo discount
-  // (monthly override if set, else global).
-  const af        = state.db.settings?.airbnb || {};
-  const fs        = feeSettings(af);
-  const kpiGlobal = af.globalDiscountPct || 0;
-  let published = null, saving = null, savingPct = null, effDisc = 0;
-  if (confirmed) {
-    effDisc   = confirmed.discountPct != null ? confirmed.discountPct : kpiGlobal;
-    published = Math.round(confirmed.targetADR * (1 - effDisc / 100));
-    const full = Math.round(airbnbCheckoutFor(confirmed.targetADR, fs));
-    saving     = full - published;
-    savingPct  = Math.round((saving / full) * 100);
-  }
-  const pubSub = confirmed
-    ? (effDisc > 0
-        ? `${effDisc}% promo${confirmed.discountPct == null ? ' (global)' : ''} · pushed to feed`
-        : 'pushed to feed')
-    : 'no target';
-
-  row.appendChild(card('ADR', avgADR != null ? formatMoney(avgADR, ccy, { maxFrac: 0 }) : '—', `incl. cleaning · ${MONTHS[month1 - 1]}, all years`));
-  row.appendChild(card('Airbnb Daily Rate', avgNet != null ? formatMoney(avgNet, ccy, { maxFrac: 0 }) : '—', `excl. cleaning · Airbnb bookings, today's fee terms · ${netRates.length} night(s)`));
-  row.appendChild(card('Confirmed Target', confirmed ? formatMoney(confirmed.targetADR, ccy, { maxFrac: 0 }) : '—', confirmed ? `weekday Airbnb rate${fs.weekendUpliftPct ? ` · Fri/Sat +${fs.weekendUpliftPct}%` : ''} · set ${fmtDate(confirmed.confirmedAt)}` : 'not set', confirmed ? 'success' : ''));
-  // What you'd receive per night at that Airbnb rate (target, else the
-  // month's average suggestion), after Airbnb's current host fee.
+  const money = v => (v != null ? formatMoney(Math.round(v), ccy, { maxFrac: 0 }) : '—');
+  const af = state.db.settings?.airbnb || {};
+  const fs = feeSettings(af);
+  // The rate to set: the confirmed target (weekday), else the month's average suggestion.
   const rateBase = confirmed ? confirmed.targetADR : avgSugg;
-  row.appendChild(card('You Receive', rateBase != null ? formatMoney(Math.round(payoutForRate(rateBase, fs)), ccy, { maxFrac: 0 }) : '—',
-    rateBase != null ? `per night after Airbnb's ${fs.hostOnly ? fs.hostFeePct : fs.splitHostFeePct}% fee${confirmed ? '' : ' · from suggestions'}` : 'no target or suggestion'));
+  const disc = confirmed?.discountPct != null ? confirmed.discountPct : (af.globalDiscountPct || 0);
+  const pace = propertyId ? monthPace(propertyId, anchor, histMap) : null;
   const lm = lastMinuteDrop(histMap);
+
+  row.appendChild(card('Airbnb Daily Rate', money(avgNet), `${MONTHS[month1 - 1]}, all years · ${netRates.length} night(s) · excl. cleaning`));
+  row.appendChild(confirmed
+    ? card('Confirmed Target', money(confirmed.targetADR), `set in Airbnb (weekday)${fs.weekendUpliftPct ? ` · Fri/Sat +${fs.weekendUpliftPct}%` : ''}`, 'success')
+    : card('Suggested Rate', money(avgSugg), avgSugg != null ? 'set in Airbnb · average of open nights' : 'no open nights to price'));
+  row.appendChild(card('You Receive', money(rateBase != null ? payoutForRate(rateBase, fs) : null), `per night after Airbnb's ${fs.hostOnly ? fs.hostFeePct : fs.splitHostFeePct}% fee`));
+  row.appendChild(card('Website Price', money(rateBase != null ? rateBase * (1 - disc / 100) : null),
+    rateBase == null ? '—' : disc ? `${disc}% cheaper than Airbnb${confirmed?.discountPct == null ? ' (global)' : ''}` : 'no discount set — same as Airbnb', disc ? 'success' : ''));
+  row.appendChild(card('Occupancy', `${occ}%`,
+    `${booked} of ${dim} nights booked${pace?.lyOcc != null ? ` · last year by now ${Math.round(pace.lyOcc)}%` : ''}`, occ >= 70 ? 'success' : ''));
   row.appendChild(card('Last-Minute Bookings', lm ? `${lm.pct > 0 ? '−' : '+'}${Math.abs(lm.pct)}%` : '—',
-    lm ? `booked < ${LAST_MINUTE_DAYS} days ahead vs earlier, same months · ${lm.nights} night(s), counted at ${LAST_MINUTE_WEIGHT}×` : `none booked < ${LAST_MINUTE_DAYS} days ahead`));
-  row.appendChild(card('Published Rate', published != null ? formatMoney(published, ccy, { maxFrac: 0 }) : '—', pubSub, confirmed ? 'success' : ''));
-  row.appendChild(card('Guest Saving', saving != null ? formatMoney(saving, ccy, { maxFrac: 0 }) : '—', savingPct != null ? `${savingPct}% off Airbnb checkout` : 'no target', saving != null ? 'success' : ''));
-  row.appendChild(card('Booked Nights', String(booked), `of ${dim} · ${occ}% occupancy`, occ >= 70 ? 'success' : ''));
-  row.appendChild(card('Open Nights', String(dim - booked), 'awaiting bookings', (dim - booked) > 0 ? 'warning' : ''));
+    lm ? `vs booked earlier · booked < ${LAST_MINUTE_DAYS} days ahead · ${lm.nights} night(s)` : `none booked < ${LAST_MINUTE_DAYS} days ahead`));
 }
 
 // ── Calendar grid ───────────────────────────────────────────────────────────
@@ -1936,9 +1986,10 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
       if (notes.length) glance.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-top:2px;line-height:1.45' }, notes.join(' · ')));
       if (s.strategy && !target) {
         const st = s.strategy;
-        const moved = Math.abs(st.factor - 1) > 0.001;
+        const moved = Math.abs(s.rate - s.historyRate) > 0.005;
+        const extra = (s.extras || []).length ? ` · ${s.extras.join(' · ')}` : '';
         glance.appendChild(el('div', { style: 'font-size:12px;margin-top:4px;line-height:1.45' },
-          el('strong', {}, 'Strategy: '), `${st.note}${moved ? ` → history rate ${fmt0(s.historyRate)} becomes ${fmt0(s.rate)}` : ''}`,
+          el('strong', {}, 'Strategy: '), `${st.note}${extra}${moved ? ` → history rate ${fmt0(s.historyRate)} becomes ${fmt0(s.rate)}` : ''}`,
           el('span', { class: 'muted' }, ` (${SOURCE_LABEL[st.source]})`)));
       }
       glance.appendChild(el('div', { style: 'display:flex;gap:16px;flex-wrap:wrap;font-size:12px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)' },
@@ -2021,8 +2072,8 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
 
       // ── Suggested rates ──
       more.appendChild(section('Suggested Rate — set this in Airbnb'));
-      if (s.strategy && Math.abs(s.strategy.factor - 1) > 0.001)
-        more.appendChild(row('History-based rate → after strategy', `${fmt(s.historyRate)} × ${s.strategy.factor.toFixed(3)} = ${fmt(s.rate)}`));
+      if (s.historyRate != null && Math.abs(s.rate - s.historyRate) > 0.005)
+        more.appendChild(row('History-based rate → after strategy, special dates, gap nights, limits', `${fmt(s.historyRate)} → ${fmt(s.rate)}`));
       more.appendChild(row('ADR (incl. cleaning amortised)', fmt(s.adr)));
       more.appendChild(row('Airbnb daily rate (excl. cleaning)', fmt(s.rate)));
       {

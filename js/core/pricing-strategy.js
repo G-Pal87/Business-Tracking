@@ -86,3 +86,42 @@ export function strategyEffect({ ss, r, pace, daysAway, measuredLmPct, monthName
 }
 
 export const SOURCE_LABEL = { month: 'set for this month', property: 'set for this property', global: 'global setting' };
+
+// ── Gap nights ───────────────────────────────────────────────────────────────
+// An open night inside a run of at most `maxLen` open nights with a booked or
+// closed night on BOTH sides — e.g. a 1–2 night gap between two bookings,
+// which rarely sells at full price. Returns the run length, or 0.
+export const GAP_DEFAULTS = { pct: 15, maxLen: 2 };
+export function gapRunLength(date, unavailable, maxLen = GAP_DEFAULTS.maxLen) {
+  if (!maxLen || unavailable.has(date)) return 0;
+  const step = (d, n) => { const x = new Date(`${d}T00:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+  let len = 1, left = date, right = date, boundedL = false, boundedR = false;
+  for (let i = 0; i < maxLen; i++) { left = step(left, -1); if (unavailable.has(left)) { boundedL = true; break; } len++; }
+  for (let i = 0; i < maxLen && len <= maxLen; i++) { right = step(right, 1); if (unavailable.has(right)) { boundedR = true; break; } len++; }
+  return boundedL && boundedR && len <= maxLen ? len : 0;
+}
+
+// ── Special dates ────────────────────────────────────────────────────────────
+// Settings → Airbnb: [{ label, from, to, pct, yearly }] (to inclusive; yearly
+// = the same days every year, e.g. 24–26 Dec, also across New Year).
+export function specialDateFor(date, list) {
+  for (const sd of list || []) {
+    if (!sd?.from || !Number.isFinite(Number(sd.pct)) || Number(sd.pct) === 0) continue;
+    const to = sd.to || sd.from;
+    let hit;
+    if (sd.yearly) {
+      const md = date.slice(5), a = sd.from.slice(5), b = to.slice(5);
+      hit = a <= b ? md >= a && md <= b : md >= a || md <= b;
+    } else hit = date >= sd.from && date <= to;
+    if (hit) return { label: sd.label || 'Special date', pct: Number(sd.pct) };
+  }
+  return null;
+}
+
+// ── Price limits ─────────────────────────────────────────────────────────────
+// A property's minimum / maximum Airbnb rate; null = no limit.
+export function clampRate(rate, min, max) {
+  if (min > 0 && rate < min) return { rate: min, capped: 'min' };
+  if (max > 0 && rate > max) return { rate: max, capped: 'max' };
+  return { rate, capped: null };
+}
