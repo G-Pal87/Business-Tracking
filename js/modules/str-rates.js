@@ -1824,10 +1824,11 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
           const left = el('div', {});
           left.appendChild(el('div', { style: 'font-weight:600' }, pool.label));
           const wLabel = Number.isInteger(pool.weight) ? `${pool.weight}` : pool.weight.toFixed(2);
-          left.appendChild(el('div', { style: 'color:var(--text-muted);font-size:11px' }, `${pool.entries.length} night${pool.entries.length !== 1 ? 's' : ''} · weight ${wLabel}×`));
+          const lmNights = pool.entries.filter(e => e.w < 1).length;
+          left.appendChild(el('div', { style: 'color:var(--text-muted);font-size:11px' }, `${pool.entries.length} night${pool.entries.length !== 1 ? 's' : ''}${lmNights ? ` (${lmNights} last-minute at ½)` : ''} · weight ${wLabel}×`));
           const right = el('div', { style: 'text-align:right' });
           right.appendChild(el('div', {}, `ADR ${fmt(poolAvgAdr)}`));
-          right.appendChild(el('div', { style: 'color:var(--text-muted);font-size:11px' }, `Net ${fmt(poolAvgNet)}`));
+          right.appendChild(el('div', { style: 'color:var(--text-muted);font-size:11px' }, `Rate ${fmt(poolAvgNet)} (weekday)`));
           poolRow.appendChild(left); poolRow.appendChild(right);
           poolTable.appendChild(poolRow);
         }
@@ -1837,16 +1838,16 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
         if (s.pools.length > 1) {
           const fmlaEl = el('div', { style: 'margin-top:6px;font-size:12px;background:var(--bg-alt,rgba(0,0,0,.04));border-radius:4px;padding:6px 8px' });
           const adrParts = s.pools.map(p => {
-            const w = p.entries.length * p.weight;
+            const w = (p.n ?? p.entries.length) * p.weight;   // last-minute nights count ½
             return `${fmt(p.adr)}×${w.toFixed(1)}`;
           }).join(' + ');
-          const totalW = s.pools.reduce((a, p) => a + p.entries.length * p.weight, 0);
-          fmlaEl.appendChild(el('div', {}, `ADR = (${adrParts}) ÷ ${totalW.toFixed(1)} = ${fmt(s.adr)}`));
+          const totalW = s.pools.reduce((a, p) => a + (p.n ?? p.entries.length) * p.weight, 0);
+          fmlaEl.appendChild(el('div', {}, `ADR = (${adrParts}) ÷ ${totalW.toFixed(1)} = ${fmt(s.adr / (1 + (s.weekendUpliftPct || 0) / 100))}`));
           const netParts = s.pools.map(p => {
-            const w = p.entries.length * p.weight;
+            const w = (p.n ?? p.entries.length) * p.weight;   // last-minute nights count ½
             return `${fmt(p.rate)}×${w.toFixed(1)}`;
           }).join(' + ');
-          fmlaEl.appendChild(el('div', { style: 'margin-top:2px' }, `Net = (${netParts}) ÷ ${totalW.toFixed(1)} = ${fmt(s.rate)}`));
+          fmlaEl.appendChild(el('div', { style: 'margin-top:2px' }, `Rate = (${netParts}) ÷ ${totalW.toFixed(1)} = ${fmt(s.weekdayRate ?? s.rate)}${s.weekendUpliftPct ? ` → +${s.weekendUpliftPct}% weekend = ${fmt(s.rate)}` : ''}`));
           body.appendChild(fmlaEl);
         }
       }
@@ -1874,7 +1875,7 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
           if (!bkMap.has(key)) bkMap.set(key, {
             checkIn: src.checkIn, checkOut: src.checkOut,
             code: src.code, label: src.label,
-            feeModel: src.feeModel, bookingDate: src.bookingDate,
+            feeModel: src.feeModel, bookingDate: src.bookingDate, lastMinute: src.w < 1,
             rateSum: 0, adrSum: 0, n: 0
           });
           const b = bkMap.get(key); b.rateSum += src.rate; b.adrSum += src.adr; b.n++;
@@ -1891,7 +1892,7 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
             el('span', { style: 'font-weight:600' }, guest),
             el('span', { style: 'color:var(--text-muted)' }, `${b.n} night${b.n !== 1 ? 's' : ''}`)
           ));
-          const bookedInfo = [b.bookingDate ? `booked ${fmtDate(b.bookingDate)}` : '', b.feeModel ? FEE_MODEL_LABEL[b.feeModel] : ''].filter(Boolean).join(' · ');
+          const bookedInfo = [b.bookingDate ? `booked ${fmtDate(b.bookingDate)}` : '', b.feeModel ? FEE_MODEL_LABEL[b.feeModel] : '', b.lastMinute ? `last-minute (½ weight)` : ''].filter(Boolean).join(' · ');
           bkRow.appendChild(el('div', { style: 'color:var(--text-muted);font-size:11px;margin-top:1px' }, bookedInfo ? `${dateRange} · ${bookedInfo}` : dateRange));
           bkRow.appendChild(el('div', { style: 'display:flex;gap:12px;margin-top:3px' },
             el('span', {}, `ADR ${fmt(avgAdr)}`),
@@ -1912,8 +1913,8 @@ function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target,
           formulaEl.appendChild(el('div', {}, `ADR = (${adrParts}) ÷ ${totalN} = ${fmt(avgAdr)}`));
           formulaEl.appendChild(el('div', { style: 'margin-top:2px' }, `Net = (${netParts}) ÷ ${totalN} = ${fmt(avgNet)}`));
         } else {
-          formulaEl.appendChild(el('div', {}, `ADR avg: ${fmt(avgAdr)} over ${totalN} nights from ${bks.length} bookings`));
-          formulaEl.appendChild(el('div', { style: 'margin-top:2px' }, `Net avg: ${fmt(avgNet)} over ${totalN} nights`));
+          formulaEl.appendChild(el('div', {}, `Plain average of these bookings (the suggestion above weights them by year, weekday and last-minute): ADR ${fmt(avgAdr)} over ${totalN} nights from ${bks.length} bookings`));
+          formulaEl.appendChild(el('div', { style: 'margin-top:2px' }, `Airbnb daily rate ${fmt(avgNet)}`));
         }
         body.appendChild(formulaEl);
       }
