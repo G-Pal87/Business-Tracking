@@ -957,7 +957,8 @@ export function buildMultiSelect(initialItems, filterSet, allLabel, onRefresh, s
       menu.style.display = ''; menu.classList.add('open');
       msSearch.value = ''; applySearch();
       // Focus the search box only where there is something to search.
-      if (chks.length > 6) msSearch.focus();
+      // Not on touch screens: the keyboard would cover the list.
+      if (chks.length > 6 && !globalThis.matchMedia?.('(pointer: coarse)').matches) msSearch.focus();
     }
     else closeMenu();
   };

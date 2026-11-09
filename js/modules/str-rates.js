@@ -1823,9 +1823,8 @@ function renderCalendar(card, { histMap, suggest, blocked, blockInfo, year, mont
       style: 'margin-top:10px;padding:8px 12px;border-radius:6px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);font-size:12px;display:flex;align-items:center;gap:8px'
     },
       el('span', { style: 'color:#ef4444;font-size:14px' }, '⚠'),
-      el('span', {}, 'No Airbnb iCal URL set for this property — upcoming reservations won\'t show as blocked. Add the iCal URL in '),
-      el('strong', {}, 'Properties → Edit Property → Airbnb iCal URL'),
-      el('span', {}, '.')
+      el('span', {}, 'No Airbnb iCal URL set for this property — upcoming reservations won\'t show as blocked. Add the iCal URL in ',
+        el('strong', {}, 'Properties → Edit Property → Airbnb iCal URL'), '.')
     ));
   }
 

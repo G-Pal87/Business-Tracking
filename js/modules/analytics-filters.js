@@ -55,6 +55,7 @@ function buildMonthYearRange(fromVal, toVal, onFrom, onTo) {
   const lbl = txt => el('span', { style: 'font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap' }, txt);
 
   return el('div', {
+    class: 'af-range',
     style: 'display:inline-flex;align-items:center;gap:4px;background:var(--bg-elev-1);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 8px'
   }, lbl('From'), fyS, fmS,
      el('span', { style: 'color:var(--border);padding:0 4px' }, '→'),
@@ -491,6 +492,20 @@ export function buildComparisonLine(curRange, cmpRange) {
 // ── Filter bar ────────────────────────────────────────────────────────────────
 // opts: { showOwner, showStream, showProperty, showClient, storagePrefix }
 // onChange(newGF?) — if called with a new state object, caller should replace gF
+// Phones: the bar collapses behind a one-line "Filters" toggle (see .af-bar
+// in css/components.css; the toggle is display:none on wider screens, so the
+// desktop bar is unchanged). The bar is rebuilt on every filter change, so
+// the open/closed choice is kept here per dashboard for the session.
+const _afOpen = new Map();
+function filterSummary(gF) {
+  const period = gF.period?.startsWith('year-') ? gF.period.slice(5)
+    : (PERIOD_OPTIONS.find(([v]) => v === gF.period)?.[1] || 'Period');
+  const cmp = gF.compareTo && gF.compareTo !== 'none'
+    ? ` vs ${COMPARISON_OPTIONS.find(([v]) => v === gF.compareTo)?.[1] || ''}` : '';
+  const active = [gF.owners, gF.streams, gF.propertyIds, gF.clientIds].filter(s => s && s.size > 0).length;
+  return { text: `${period}${cmp}`, active };
+}
+
 function makeSelect(options, value, onChange) {
   const s = el('select', { style: SS });
   options.forEach(([v, lbl]) => { const o = el('option', { value: v }, lbl); if (v === value) o.selected = true; s.appendChild(o); });
@@ -517,7 +532,27 @@ export function buildFilterBar(gF, opts, onChange) {
   // Compute available options using leave-one-out faceting & trim stale selections
   const { availProps, availOwners, availStreams, availClients } = computeAvailableOptions(gF, channelScope);
 
-  const bar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });
+  const bar = el('div', { class: 'flex gap-8 mb-16 af-bar', style: 'flex-wrap:wrap;align-items:center' });
+  if (_afOpen.get(storagePrefix)) bar.classList.add('af-open');
+
+  // Mobile-only toggle (hidden by CSS on wider screens).
+  {
+    const { text, active } = filterSummary(gF);
+    const toggle = el('button', {
+      type: 'button', class: 'af-toggle',
+      'aria-expanded': bar.classList.contains('af-open') ? 'true' : 'false',
+    },
+      el('span', { class: 'af-toggle-label' }, 'Filters'),
+      el('span', { class: 'af-toggle-summary' }, text),
+      active ? el('span', { class: 'af-toggle-count' }, String(active)) : null,
+      el('span', { class: 'af-toggle-chevron', 'aria-hidden': 'true' }, '▾'));
+    toggle.addEventListener('click', () => {
+      const open = bar.classList.toggle('af-open');
+      _afOpen.set(storagePrefix, open);
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    bar.appendChild(toggle);
+  }
 
   // Period — static options + dynamic past-year shortcuts
   {
@@ -558,7 +593,7 @@ export function buildFilterBar(gF, opts, onChange) {
     ));
     // One partner selected: shared records count at their share (makeMatchers).
     if (gF.owners.size === 1) {
-      bar.appendChild(el('span', { style: 'font-size:11px;color:var(--text-muted)', title: "Records owned by both partners count at 50% for each, so one partner's figures plus the other's add up to the total." }, 'Shared items count at 50%'));
+      bar.appendChild(el('span', { class: 'af-note', style: 'font-size:11px;color:var(--text-muted)', title: "Records owned by both partners count at 50% for each, so one partner's figures plus the other's add up to the total." }, 'Shared items count at 50%'));
     }
   }
 
