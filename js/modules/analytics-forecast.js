@@ -52,21 +52,6 @@ const EXP_COLS = [
   { key: 'description', label: 'Description', tip: 'Free-text description of the expense.' },
   { key: 'eur',         label: 'EUR', right: true, format: v => formatEUR(v), tip: 'Amount converted to EUR at the expense date.' }
 ];
-const EXP_MO_COLS = [
-  { key: 'month',  label: 'Month', tip: 'Calendar month.' },
-  { key: 'fcExp',  label: 'Forecast OpEx', right: true, tip: 'Forecast operating expenses for the month, from property/service forecast records.' },
-  { key: 'actExp', label: 'Actual OpEx',   right: true, tip: 'Actual operating expenses recorded for the month (excludes CapEx).' },
-  { key: 'varStr', label: 'Variance',      right: true, tip: 'Actual OpEx minus Forecast OpEx.' },
-  { key: 'pctStr', label: 'Var %',         right: true, tip: 'Variance as a percentage of Forecast OpEx.' }
-];
-const NET_MO_COLS = [
-  { key: 'month',  label: 'Month', tip: 'Calendar month.' },
-  { key: 'actRev', label: 'Actual Revenue', right: true, tip: 'Actual revenue recorded for the month (paid payments + paid invoices).' },
-  { key: 'actExp', label: 'Actual OpEx',    right: true, tip: 'Actual operating expenses recorded for the month (excludes CapEx).' },
-  { key: 'actNet', label: 'Actual Net',     right: true, tip: 'Actual Revenue minus Actual OpEx.' },
-  { key: 'fcNet',  label: 'Forecast Net',   right: true, tip: 'Forecast Revenue minus Forecast OpEx for the month.' },
-  { key: 'varStr', label: 'Variance',       right: true, tip: 'Actual Net minus Forecast Net.' }
-];
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -776,49 +761,189 @@ function computePropertyBreakdown(actPayments, months, pendingItems, propFcReven
   }).sort((a, b) => b.actRev - a.actRev);
 }
 
-// ── Drill row helpers ─────────────────────────────────────────────────────────
-const MO_COLS = [
-  { key: 'month', label: 'Month', tip: 'Calendar month.' },
-  { key: 'fcRev', label: 'Forecast',  right: true, tip: 'Forecast revenue for the month, from property/service forecast records.' },
-  { key: 'actRev',label: 'Actual',    right: true, tip: 'Actual revenue recorded for the month (paid payments + paid invoices).' },
-  { key: 'var',   label: 'Variance',  right: true, tip: 'Actual Revenue minus Forecast Revenue for the elapsed part of the month (in-progress month pro-rated by days elapsed; future months not counted).' },
-  { key: 'pct',   label: 'Var %',     right: true, tip: 'Variance as a percentage of the elapsed-share Forecast Revenue.' }
+// ── Per-card breakdowns ───────────────────────────────────────────────────────
+// Each headline card opens its own table: the figures that add up to that
+// card's number, one row per month / property / stream, and a bold Total row
+// equal to the card.
+const eurCell   = v => (v == null ? '—' : formatEUR(v));
+const signedEur = v => (v == null ? '—' : (v >= 0 ? '+' : '') + formatEUR(v));
+const pctCell   = v => (v == null ? '—' : `${v.toFixed(1)}%`);
+const signedPct = v => (v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`);
+const signedPp  = v => (v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(1)} pp`);
+
+// drillDownModal plus a bold Total row (skipped when there's only one row —
+// that row already is the total).
+function drillWithTotal(title, rows, cols, total) {
+  const all = total && rows.length > 1 ? [...rows, { ...total, _total: true }] : rows;
+  drillDownModal(title, all, cols.map(c => ({
+    ...c,
+    format: (v, r) => {
+      const d = c.format ? c.format(v, r) : (v ?? '—');
+      return r._total ? el('strong', {}, d instanceof Node ? d : String(d ?? '—')) : d;
+    }
+  })));
+}
+
+// Forecast Revenue — by property and service stream.
+const FC_REV_COLS = [
+  { key: 'name',   label: 'Property / Stream' },
+  { key: 'kind',   label: 'Type' },
+  { key: 'toDate', label: 'Forecast to Date', right: true, format: eurCell, tip: 'Forecast for the part of the period that has already passed.' },
+  { key: 'rest',   label: '+ Rest of Period', right: true, format: eurCell, tip: 'Forecast for the days and months still ahead.' },
+  { key: 'fc',     label: '= Forecast Revenue', right: true, format: eurCell },
+  { key: 'share',  label: 'Share', right: true, format: pctCell, tip: 'Share of the total forecast revenue.' }
 ];
-function monthDrillRows(monthlyBreakdown) {
-  return monthlyBreakdown
+const SERVICE_STREAM_KEYS = new Set(['customer_success', 'marketing_services']);
+function fcRevSourceRows(data) {
+  const rows = [];
+  data.propertyBreakdown.filter(p => p.fcRev > 0)
+    .forEach(p => rows.push({ name: p.label, kind: 'Property', fc: p.fcRev, toDate: p.fcRevCmp }));
+  data.streamBreakdown.filter(s => s.fcRev > 0 && SERVICE_STREAM_KEYS.has(s.key))
+    .forEach(s => rows.push({ name: s.label, kind: 'Service stream', fc: s.fcRev, toDate: s.fcRevCmp }));
+  // Anything the per-source split can't place keeps the Total equal to the card.
+  const gap = data.forecastRev - rows.reduce((s, r) => s + r.fc, 0);
+  const gapToDate = data.forecastRevToDate - rows.reduce((s, r) => s + r.toDate, 0);
+  if (Math.abs(gap) > 0.005) rows.push({ name: 'Other forecast', kind: '—', fc: gap, toDate: gapToDate });
+  rows.forEach(r => {
+    r.rest = r.fc - r.toDate;
+    r.share = data.forecastRev ? (r.fc / data.forecastRev) * 100 : null;
+  });
+  return rows.sort((a, b) => b.fc - a.fc);
+}
+function openForecastRevenueDrill(data, title = 'Forecast Revenue') {
+  drillWithTotal(title, fcRevSourceRows(data), FC_REV_COLS, {
+    name: 'Total', kind: '', toDate: data.forecastRevToDate, rest: data.forecastRev - data.forecastRevToDate,
+    fc: data.forecastRev, share: data.forecastRev ? 100 : null
+  });
+}
+
+// Forecast Variance — per month: actual vs the forecast for the elapsed part.
+const FC_VAR_COLS = [
+  { key: 'month',    label: 'Month' },
+  { key: 'fc',       label: 'Forecast (Month)', right: true, format: eurCell, tip: 'Full forecast revenue for the month.' },
+  { key: 'elapsed',  label: '× Elapsed', right: true, format: pctCell, tip: 'Share of the month that has passed within the period. Future months count 0%.' },
+  { key: 'fcToDate', label: '= Forecast to Date', right: true, format: eurCell },
+  { key: 'act',      label: 'Actual Revenue', right: true, format: eurCell },
+  { key: 'variance', label: 'Variance', right: true, format: signedEur, tip: 'Actual Revenue − Forecast to Date.' }
+];
+function openForecastVarianceDrill(data) {
+  const rows = data.monthlyBreakdown
     .filter(m => m.fcRev > 0 || m.actRev > 0)
-    .map(m => ({
-      month:  m.label,
-      fcRev:  formatEUR(m.fcRev),
-      actRev: formatEUR(m.actRev),
-      var:    fmtVar(m.actRev, m.fcRevCmp),
-      pct:    fmtVarPct(m.actRev, m.fcRevCmp)
-    }));
+    .map(m => ({ month: m.label, fc: m.fcRev, elapsed: m.elapsedFrac * 100, fcToDate: m.fcRevCmp, act: m.actRev, variance: m.actRev - m.fcRevCmp }));
+  drillWithTotal('Forecast Variance', rows, FC_VAR_COLS, {
+    month: 'Total', fc: data.forecastRev,
+    elapsed: data.forecastRev ? (data.forecastRevToDate / data.forecastRev) * 100 : null,
+    fcToDate: data.forecastRevToDate, act: data.actualRev, variance: data.actualRev - data.forecastRevToDate
+  });
 }
 
-function expMoDrillRows(monthlyBreakdown) {
-  return monthlyBreakdown
-    .filter(m => m.fcExp > 0 || m.actExp > 0)
-    .map(m => ({
-      month:  m.label,
-      fcExp:  formatEUR(m.fcExp),
-      actExp: formatEUR(m.actExp),
-      varStr: fmtVar(m.actExp, m.fcExp),
-      pctStr: fmtVarPct(m.actExp, m.fcExp)
-    }));
+// Forecast Variance % — per stream, with each stream's share of the % so the
+// contributions add up to the card.
+const FC_VARPCT_COLS = [
+  { key: 'name',     label: 'Stream' },
+  { key: 'fcToDate', label: 'Forecast to Date', right: true, format: eurCell },
+  { key: 'act',      label: 'Actual Revenue', right: true, format: eurCell },
+  { key: 'variance', label: 'Variance', right: true, format: signedEur },
+  { key: 'pct',      label: 'Own Var %', right: true, format: signedPct, tip: 'This stream\'s variance ÷ its own forecast to date.' },
+  { key: 'contrib',  label: 'Contribution', right: true, format: signedPp, tip: 'This stream\'s variance ÷ the total forecast to date. These add up to the card\'s Variance %.' }
+];
+function openForecastVariancePctDrill(data) {
+  const base = Math.abs(data.forecastRevToDate);
+  const rows = data.streamBreakdown
+    .filter(s => s.fcRevCmp !== 0 || s.actRev !== 0)
+    .map(s => ({ name: s.label, fcToDate: s.fcRevCmp, act: s.actRev }));
+  const gapFc = data.forecastRevToDate - rows.reduce((s, r) => s + r.fcToDate, 0);
+  const gapAct = data.actualRev - rows.reduce((s, r) => s + r.act, 0);
+  if (Math.abs(gapFc) > 0.005 || Math.abs(gapAct) > 0.005) rows.push({ name: 'Other', fcToDate: gapFc, act: gapAct });
+  rows.forEach(r => {
+    r.variance = r.act - r.fcToDate;
+    r.pct = safeVariancePct(r.act, r.fcToDate);
+    r.contrib = base > 0 ? (r.variance / base) * 100 : null;
+  });
+  rows.sort((a, b) => Math.abs(b.variance) - Math.abs(a.variance));
+  drillWithTotal('Forecast Variance %', rows, FC_VARPCT_COLS, {
+    name: 'Total', fcToDate: data.forecastRevToDate, act: data.actualRev,
+    variance: data.actualRev - data.forecastRevToDate,
+    pct: safeVariancePct(data.actualRev, data.forecastRevToDate),
+    contrib: base > 0 ? ((data.actualRev - data.forecastRevToDate) / base) * 100 : null
+  });
 }
 
-function netMoDrillRows(monthlyBreakdown) {
-  return monthlyBreakdown
-    .filter(m => m.actRev > 0 || m.actExp > 0 || m.fcNet !== 0 || m.actNet !== 0)
-    .map(m => ({
-      month:  m.label,
-      actRev: formatEUR(m.actRev),
-      actExp: formatEUR(m.actExp),
-      actNet: formatEUR(m.actNet),
-      fcNet:  formatEUR(m.fcNet),
-      varStr: fmtVar(m.actNet, m.fcNet)
-    }));
+// Forecast OpEx — per month, property vs service-stream forecasts.
+const FC_OPEX_COLS = [
+  { key: 'month', label: 'Month' },
+  { key: 'prop',  label: 'Property OpEx', right: true, format: eurCell, tip: 'Forecast operating expenses entered on property forecasts.' },
+  { key: 'svc',   label: '+ Services OpEx', right: true, format: eurCell, tip: 'Forecast operating expenses entered on Customer Success / Marketing forecasts.' },
+  { key: 'fc',    label: '= Forecast OpEx', right: true, format: eurCell },
+  { key: 'share', label: 'Share', right: true, format: pctCell, tip: 'Share of the period\'s forecast OpEx.' }
+];
+function openForecastOpexDrill(data) {
+  const tot = data.forecastExp;
+  const rows = data.monthlyBreakdown
+    .filter(m => m.fcExp > 0)
+    .map(m => ({ month: m.label, prop: m.fcPropExp, svc: m.fcExp - m.fcPropExp, fc: m.fcExp, share: tot ? (m.fcExp / tot) * 100 : null }));
+  const propTot = rows.reduce((s, r) => s + r.prop, 0);
+  drillWithTotal('Forecast OpEx', rows, FC_OPEX_COLS, { month: 'Total', prop: propTot, svc: tot - propTot, fc: tot, share: tot ? 100 : null });
+}
+
+// Forecast Net — per month: forecast revenue − forecast OpEx.
+const FC_NET_COLS = [
+  { key: 'month', label: 'Month' },
+  { key: 'rev',   label: 'Forecast Revenue', right: true, format: eurCell },
+  { key: 'exp',   label: '− Forecast OpEx', right: true, format: eurCell },
+  { key: 'net',   label: '= Forecast Net', right: true, format: eurCell },
+  { key: 'margin', label: 'Margin', right: true, format: pctCell, tip: 'Forecast Net ÷ Forecast Revenue.' }
+];
+function openForecastNetDrill(data) {
+  const rows = data.monthlyBreakdown
+    .filter(m => m.fcRev !== 0 || m.fcExp !== 0)
+    .map(m => ({ month: m.label, rev: m.fcRev, exp: m.fcExp, net: m.fcNet, margin: m.fcRev ? (m.fcNet / m.fcRev) * 100 : null }));
+  drillWithTotal('Forecast Net', rows, FC_NET_COLS, {
+    month: 'Total', rev: data.forecastRev, exp: data.forecastExp, net: data.forecastNet,
+    margin: data.forecastRev ? (data.forecastNet / data.forecastRev) * 100 : null
+  });
+}
+
+// Actual Net — per month: actual revenue − actual OpEx (CapEx excluded).
+const ACT_NET_COLS = [
+  { key: 'month', label: 'Month' },
+  { key: 'rev',   label: 'Actual Revenue', right: true, format: eurCell, tip: 'Paid payments + paid invoices (before VAT) dated in the month.' },
+  { key: 'exp',   label: '− Actual OpEx', right: true, format: eurCell, tip: 'Expenses dated in the month, excluding CapEx.' },
+  { key: 'net',   label: '= Actual Net', right: true, format: eurCell },
+  { key: 'margin', label: 'Margin', right: true, format: pctCell, tip: 'Actual Net ÷ Actual Revenue.' }
+];
+function openActualNetDrill(d, title = 'Actual Net') {
+  const rows = d.monthlyBreakdown
+    .filter(m => m.actRev !== 0 || m.actExp !== 0)
+    .map(m => ({ month: m.label, rev: m.actRev, exp: m.actExp, net: m.actNet, margin: m.actRev ? (m.actNet / m.actRev) * 100 : null }));
+  drillWithTotal(title, rows, ACT_NET_COLS, {
+    month: 'Total', rev: d.actualRev, exp: d.actualExp, net: d.actualNet,
+    margin: d.actualRev ? (d.actualNet / d.actualRev) * 100 : null
+  });
+}
+
+// "Name | Records | Amount" table with a bold Total row — the grouped tables
+// inside the Actual Revenue / Actual OpEx / Actual CapEx breakdowns.
+function mkGroupTotalTable(nameLabel, nameTip, amountLabel, amountTip, groups) {
+  const entries = [...groups.entries()].sort((a, b) => b[1].amt - a[1].amt);
+  const rows = entries.map(([name, g]) => [name, String(g.n), formatEUR(g.amt)]);
+  if (entries.length > 1) {
+    rows.push([
+      el('strong', {}, 'Total'),
+      el('strong', {}, String(entries.reduce((s, [, g]) => s + g.n, 0))),
+      el('strong', {}, formatEUR(entries.reduce((s, [, g]) => s + g.amt, 0)))
+    ]);
+  }
+  return mkModalTable([
+    { label: nameLabel, tip: nameTip },
+    { label: 'Records', right: true, tip: 'Number of records behind the amount.' },
+    { label: amountLabel, right: true, tip: amountTip }
+  ], rows);
+}
+function addToGroup(map, key, amt) {
+  const g = map.get(key) || { n: 0, amt: 0 };
+  g.n += 1; g.amt += amt;
+  map.set(key, g);
 }
 
 // ── Pending pipeline modal ────────────────────────────────────────────────────
@@ -978,6 +1103,68 @@ function openPendingPipelineModal(data, cmpData, cmpLabel) {
   openModal({ title: 'Pending Pipeline — Confirmed Revenue', body, large: true });
 }
 
+// Projected Services breakdown — shared by the card and the insight signal
+// that points at it.
+function openProjectedServicesModal(data, cmpData, cmpLabel) {
+  const { svcProjectedItems, svcProjectedTotal, pendingPipeline } = data;
+  const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+  const svcProjCols = [
+    { label: 'Stream', tip: 'Service stream (Customer Success or Marketing Services) the projection belongs to.' },
+    { label: 'Month', right: true, tip: 'Forecasted month.' },
+    { label: 'Status', right: true, tip: 'Whether the forecasted month has already passed with no invoice raised, or is still a future projection.' },
+    { label: 'Amount', right: true, tip: 'Forecasted service revenue for the month, converted to EUR — not yet invoiced.' }
+  ];
+  const svcProjRows = items => items
+    .slice()
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+    .map(i => [i.label, i.detail, i.overdue ? 'Past — no invoice raised' : 'Future projection', formatEUR(i.amountEUR)]);
+
+  if (cmpData) {
+    body.appendChild(mkCmpGrid([
+      { label: 'Projected Total',
+        curVal: mkDrillValue(svcProjectedTotal > 0 ? formatEUR(svcProjectedTotal) : '—', () => drillDownModal('Projected Services', svcProjRows(svcProjectedItems), svcProjCols)),
+        cmpVal: mkDrillValue(cmpData.svcProjectedTotal > 0 ? formatEUR(cmpData.svcProjectedTotal) : '—', () => drillDownModal(`Projected Services — ${cmpLabel}`, svcProjRows(cmpData.svcProjectedItems), svcProjCols)),
+        curSub: `${svcProjectedItems.length} month${svcProjectedItems.length !== 1 ? 's' : ''}`,
+        cmpSub: `${cmpData.svcProjectedItems.length} month${cmpData.svcProjectedItems.length !== 1 ? 's' : ''}` },
+      { label: 'Pipeline + Projected', curVal: formatEUR(pendingPipeline + svcProjectedTotal), cmpVal: formatEUR(cmpData.pendingPipeline + cmpData.svcProjectedTotal) },
+    ], 'Current Period', cmpLabel));
+  } else {
+    body.appendChild(mkSummaryGrid([
+      { label: 'Projected Total',       value: svcProjectedTotal > 0 ? formatEUR(svcProjectedTotal) : '—', sub: `${svcProjectedItems.length} month${svcProjectedItems.length !== 1 ? 's' : ''}`,
+        explain: {
+          title: 'Projected Services', formula: 'Sum of forecasted service-stream revenue (Customer Success, Marketing Services) for months with no invoice raised yet, converted to EUR.',
+          inputs: [
+            { label: 'Months', value: String(svcProjectedItems.length) },
+            { label: 'Total', value: formatEUR(svcProjectedTotal) }
+          ],
+          source: 'analytics-forecast.js:406 calculateDashboardData() (getServicesProjectedItems())',
+          note: 'This is a typed-in target, not a signed contract, confirmed booking, or invoice — a different confidence level from Pending Pipeline. A month already invoiced (draft/sent/paid/overdue) is excluded so it isn\'t double counted.'
+        }
+      },
+      { label: 'Pipeline + Projected',  value: formatEUR(pendingPipeline + svcProjectedTotal),
+        explain: {
+          title: 'Pipeline + Projected', formula: 'Pending Pipeline (confirmed) + Projected Services (forecasted, not yet invoiced).',
+          inputs: [
+            { label: 'Pending Pipeline', value: formatEUR(pendingPipeline) },
+            { label: 'Projected Services', value: formatEUR(svcProjectedTotal) },
+            { label: 'Total', value: formatEUR(pendingPipeline + svcProjectedTotal) }
+          ],
+          source: 'analytics-forecast.js:835 buildKpiGrid()'
+        }
+      }
+    ], 2));
+  }
+
+  if (svcProjectedItems.length > 0) {
+    body.appendChild(mkSectionLabel('Services — Forecasted, Not Yet Invoiced'));
+    body.appendChild(mkModalTable(svcProjCols, svcProjRows(svcProjectedItems), { highlight: 3 }));
+  } else {
+    body.appendChild(mkEmptyState('No forecasted service revenue is missing an invoice for the selected period.'));
+  }
+
+  openModal({ title: 'Projected Services — Forecasted Revenue', body, large: true });
+}
+
 // ── KPI grid ──────────────────────────────────────────────────────────────────
 function buildKpiGrid(data, cmpData, cmpRange) {
   const {
@@ -1002,7 +1189,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
   grid.appendChild(mkKpiCard({
     label: 'Forecast Revenue',
     value: forecastRev > 0 ? formatEUR(forecastRev) : '—',
-    onClick: () => drillDownModal('Monthly Forecast', monthDrillRows(monthlyBreakdown), MO_COLS),
+    onClick: () => openForecastRevenueDrill(data),
     delta: cmpData ? safePct(forecastRev, cmpData.forecastRev) : null,
     invertDelta: false, compLabel: cmpLabel,
     compValue: cmpData ? formatEUR(cmpData.forecastRev) : undefined,
@@ -1058,23 +1245,18 @@ function buildKpiGrid(data, cmpData, cmpRange) {
       const clientMap = new Map();
       actPayments.forEach(p => {
         const propName = byId('properties', p.propertyId)?.name || '—';
-        clientMap.set(propName, (clientMap.get(propName) || 0) + toEUR(p.amount, p.currency, p.date));
+        addToGroup(clientMap, propName, toEUR(p.amount, p.currency, p.date));
       });
       actInvoices.forEach(i => {
         const clientName = byId('clients', i.clientId)?.name || byId('clients', i.clientId)?.company || i.clientId || '—';
-        clientMap.set(clientName, (clientMap.get(clientName) || 0) + toEUR((i.subtotal ?? i.total) || i.amount, i.currency, i.issueDate || i.date));
+        addToGroup(clientMap, clientName, toEUR(i.subtotal ?? i.total, i.currency, i.issueDate));
       });
-      const clientRows = [...clientMap.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .map(([name, val]) => [name, formatEUR(val)]);
-      if (clientRows.length > 0) {
+      if (clientMap.size > 0) {
         body.appendChild(mkSectionLabel('By Client / Property'));
-        body.appendChild(mkModalTable(
-          [
-            { label: 'Client / Property', tip: 'Client (services) or property (rentals) the actual revenue is attributed to.' },
-            { label: 'Amount', right: true, tip: 'Sum of actual revenue (paid payments + paid invoices) for this client/property in the selected period.' }
-          ],
-          clientRows
+        body.appendChild(mkGroupTotalTable(
+          'Client / Property', 'Client (services) or property (rentals) the actual revenue is attributed to.',
+          'Amount', 'Paid payments + paid invoices (before VAT) for this client/property in the selected period.',
+          clientMap
         ));
       }
 
@@ -1099,7 +1281,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     label: 'Forecast Variance',
     value: forecastRev > 0 ? fmtVar(actualRev, forecastRevToDate) : '—',
     variant: varVariant,
-    onClick: () => drillDownModal('Monthly Forecast', monthDrillRows(monthlyBreakdown), MO_COLS),
+    onClick: () => openForecastVarianceDrill(data),
     delta: null, compLabel: '',
     explain: {
       title: 'Forecast Variance', formula: 'Actual Revenue − Forecast Revenue to date.',
@@ -1122,7 +1304,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     label: 'Forecast Variance %',
     value: varPctStr,
     variant: varVariant,
-    onClick: () => drillDownModal('Monthly Forecast', monthDrillRows(monthlyBreakdown), MO_COLS),
+    onClick: () => openForecastVariancePctDrill(data),
     delta: null, compLabel: '',
     explain: {
       title: 'Forecast Variance %', formula: '(Actual Revenue − Forecast Revenue to date) ÷ |Forecast Revenue to date| × 100.',
@@ -1141,7 +1323,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     label: 'Forecast OpEx',
     subtitle: 'Excl. CapEx',
     value: forecastExp > 0 ? formatEUR(forecastExp) : '—',
-    onClick: () => drillDownModal('Forecast vs Actual OpEx', expMoDrillRows(monthlyBreakdown), EXP_MO_COLS),
+    onClick: () => openForecastOpexDrill(data),
     delta: cmpData ? safePct(forecastExp, cmpData.forecastExp) : null,
     invertDelta: true, compLabel: cmpLabel,
     compValue: cmpData ? formatEUR(cmpData.forecastExp) : undefined,
@@ -1196,19 +1378,14 @@ function buildKpiGrid(data, cmpData, cmpRange) {
       const propMap = new Map();
       actOpExpenses.forEach(e => {
         const propName = e.propertyId ? (byId('properties', e.propertyId)?.name || e.propertyId) : (e.source || '—');
-        propMap.set(propName, (propMap.get(propName) || 0) + toEUR(e.amount, e.currency, e.date));
+        addToGroup(propMap, propName, toEUR(e.amount, e.currency, e.date));
       });
-      const propRows = [...propMap.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .map(([name, val]) => [name, formatEUR(val)]);
-      if (propRows.length > 0) {
+      if (propMap.size > 0) {
         body.appendChild(mkSectionLabel('By Property'));
-        body.appendChild(mkModalTable(
-          [
-            { label: 'Property', tip: 'Property the operating expense is attributed to (or expense source if no property).' },
-            { label: 'Amount', right: true, tip: 'Sum of actual operating expenses for this property in the selected period.' }
-          ],
-          propRows
+        body.appendChild(mkGroupTotalTable(
+          'Property', 'Property the operating expense is attributed to (or expense source if no property).',
+          'Amount', 'Sum of actual operating expenses for this property in the selected period.',
+          propMap
         ));
       }
 
@@ -1233,7 +1410,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     label: 'Forecast Net',
     value: forecastNet !== 0 || forecastRev > 0 ? formatEUR(forecastNet) : '—',
     variant: forecastNet >= 0 ? 'success' : 'danger',
-    onClick: () => drillDownModal('Forecast Net Breakdown', netMoDrillRows(monthlyBreakdown), NET_MO_COLS),
+    onClick: () => openForecastNetDrill(data),
     delta: cmpData ? safePct(forecastNet, cmpData.forecastNet) : null,
     invertDelta: false, compLabel: cmpLabel,
     compValue: cmpData ? formatEUR(cmpData.forecastNet) : undefined,
@@ -1253,19 +1430,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     label: 'Actual Net',
     value: formatEUR(actualNet),
     variant: actualNet >= 0 ? 'success' : 'danger',
-    onClick: () => {
-      if (cmpData) {
-        const body = el('div');
-        body.appendChild(mkCmpGrid([
-          { label: 'Actual Net',
-            curVal: mkDrillValue(formatEUR(actualNet), () => drillDownModal('Actual Net Breakdown', netMoDrillRows(monthlyBreakdown), NET_MO_COLS)),
-            cmpVal: mkDrillValue(formatEUR(cmpData.actualNet), () => drillDownModal(`Actual Net Breakdown — ${cmpLabel}`, netMoDrillRows(cmpData.monthlyBreakdown), NET_MO_COLS)) },
-        ], 'Current Period', cmpLabel));
-        openModal({ title: 'Actual Net Breakdown', body, large: true });
-      } else {
-        drillDownModal('Actual Net Breakdown', netMoDrillRows(monthlyBreakdown), NET_MO_COLS);
-      }
-    },
+    onClick: () => openActualNetDrill(data),
     delta: cmpData ? safePct(actualNet, cmpData.actualNet) : null,
     invertDelta: false, compLabel: cmpLabel,
     compValue: cmpData ? formatEUR(cmpData.actualNet) : undefined,
@@ -1416,64 +1581,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     subtitle: 'Forecasted — not yet invoiced',
     value: svcProjectedTotal > 0 ? formatEUR(svcProjectedTotal) : '—',
     variant: '',
-    onClick: () => {
-      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-      const svcProjCols = [
-        { label: 'Stream', tip: 'Service stream (Customer Success or Marketing Services) the projection belongs to.' },
-        { label: 'Month', right: true, tip: 'Forecasted month.' },
-        { label: 'Status', right: true, tip: 'Whether the forecasted month has already passed with no invoice raised, or is still a future projection.' },
-        { label: 'Amount', right: true, tip: 'Forecasted service revenue for the month, converted to EUR — not yet invoiced.' }
-      ];
-      const svcProjRows = items => items
-        .slice()
-        .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-        .map(i => [i.label, i.detail, i.overdue ? 'Past — no invoice raised' : 'Future projection', formatEUR(i.amountEUR)]);
-
-      if (cmpData) {
-        body.appendChild(mkCmpGrid([
-          { label: 'Projected Total',
-            curVal: mkDrillValue(svcProjectedTotal > 0 ? formatEUR(svcProjectedTotal) : '—', () => drillDownModal('Projected Services', svcProjRows(svcProjectedItems), svcProjCols)),
-            cmpVal: mkDrillValue(cmpData.svcProjectedTotal > 0 ? formatEUR(cmpData.svcProjectedTotal) : '—', () => drillDownModal(`Projected Services — ${cmpLabel}`, svcProjRows(cmpData.svcProjectedItems), svcProjCols)),
-            curSub: `${svcProjectedItems.length} month${svcProjectedItems.length !== 1 ? 's' : ''}`,
-            cmpSub: `${cmpData.svcProjectedItems.length} month${cmpData.svcProjectedItems.length !== 1 ? 's' : ''}` },
-          { label: 'Pipeline + Projected', curVal: formatEUR(pendingPipeline + svcProjectedTotal), cmpVal: formatEUR(cmpData.pendingPipeline + cmpData.svcProjectedTotal) },
-        ], 'Current Period', cmpLabel));
-      } else {
-        body.appendChild(mkSummaryGrid([
-          { label: 'Projected Total',       value: svcProjectedTotal > 0 ? formatEUR(svcProjectedTotal) : '—', sub: `${svcProjectedItems.length} month${svcProjectedItems.length !== 1 ? 's' : ''}`,
-            explain: {
-              title: 'Projected Services', formula: 'Sum of forecasted service-stream revenue (Customer Success, Marketing Services) for months with no invoice raised yet, converted to EUR.',
-              inputs: [
-                { label: 'Months', value: String(svcProjectedItems.length) },
-                { label: 'Total', value: formatEUR(svcProjectedTotal) }
-              ],
-              source: 'analytics-forecast.js:406 calculateDashboardData() (getServicesProjectedItems())',
-              note: 'This is a typed-in target, not a signed contract, confirmed booking, or invoice — a different confidence level from Pending Pipeline. A month already invoiced (draft/sent/paid/overdue) is excluded so it isn\'t double counted.'
-            }
-          },
-          { label: 'Pipeline + Projected',  value: formatEUR(pendingPipeline + svcProjectedTotal),
-            explain: {
-              title: 'Pipeline + Projected', formula: 'Pending Pipeline (confirmed) + Projected Services (forecasted, not yet invoiced).',
-              inputs: [
-                { label: 'Pending Pipeline', value: formatEUR(pendingPipeline) },
-                { label: 'Projected Services', value: formatEUR(svcProjectedTotal) },
-                { label: 'Total', value: formatEUR(pendingPipeline + svcProjectedTotal) }
-              ],
-              source: 'analytics-forecast.js:835 buildKpiGrid()'
-            }
-          }
-        ], 2));
-      }
-
-      if (svcProjectedItems.length > 0) {
-        body.appendChild(mkSectionLabel('Services — Forecasted, Not Yet Invoiced'));
-        body.appendChild(mkModalTable(svcProjCols, svcProjRows(svcProjectedItems), { highlight: 3 }));
-      } else {
-        body.appendChild(mkEmptyState('No forecasted service revenue is missing an invoice for the selected period.'));
-      }
-
-      openModal({ title: 'Projected Services — Forecasted Revenue', body, large: true });
-    },
+    onClick: () => openProjectedServicesModal(data, cmpData, cmpLabel),
     delta: cmpData ? safePct(svcProjectedTotal, cmpData.svcProjectedTotal) : null,
     invertDelta: false, compLabel: cmpLabel,
     compValue: cmpData ? formatEUR(cmpData.svcProjectedTotal) : undefined,
@@ -1530,19 +1638,14 @@ function buildKpiGrid(data, cmpData, cmpRange) {
       const propMap = new Map();
       actCapExpenses.forEach(e => {
         const propName = e.propertyId ? (byId('properties', e.propertyId)?.name || e.propertyId) : (e.source || '—');
-        propMap.set(propName, (propMap.get(propName) || 0) + toEUR(e.amount, e.currency, e.date));
+        addToGroup(propMap, propName, toEUR(e.amount, e.currency, e.date));
       });
-      const propRows = [...propMap.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .map(([name, val]) => [name, formatEUR(val)]);
-      if (propRows.length > 0) {
+      if (propMap.size > 0) {
         body.appendChild(mkSectionLabel('By Property'));
-        body.appendChild(mkModalTable(
-          [
-            { label: 'Property', tip: 'Property the CapEx is attributed to (or expense source if no property).' },
-            { label: 'CapEx Amount', right: true, tip: 'Sum of actual capital expenditure for this property in the selected period.' }
-          ],
-          propRows
+        body.appendChild(mkGroupTotalTable(
+          'Property', 'Property the CapEx is attributed to (or expense source if no property).',
+          'CapEx Amount', 'Sum of actual capital expenditure for this property in the selected period.',
+          propMap
         ));
       }
 
@@ -1648,7 +1751,13 @@ function buildKpiGrid(data, cmpData, cmpRange) {
             { label: 'Abs Error', right: true, tip: 'Absolute difference between Actual and Forecast revenue.' },
             { label: '% Error', right: true, tip: 'Absolute Error as a percentage of Forecast revenue — the per-month term averaged into MAPE.' }
           ],
-          mapeRows.map(r => [r.month, r.fcRev, r.actRev, r.absErr, r.pctErr])
+          [
+            ...mapeRows.map(r => [r.month, r.fcRev, r.actRev, r.absErr, r.pctErr]),
+            ...(mapeRows.length > 1 ? [[
+              el('strong', {}, `Average (${mapeRows.length} months)`), '', '', '',
+              el('strong', {}, mapeValue)
+            ]] : [])
+          ]
         ));
       } else {
         body.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted)' }, 'No months with forecast data in the selected period.'));
@@ -1687,16 +1796,16 @@ function buildForecastInsights(data, cmpData, cmpRange) {
         title: 'Forecast Gap',
         text: `Actual revenue is ${Math.abs(variancePct).toFixed(0)}% below forecast to date (${fmtVar(actualRev, forecastRevToDate)} variance).`,
         severity: 'At Risk',
-        inspect: 'Monthly Forecast Breakdown',
-        onClick: () => drillDownModal('Monthly Forecast', monthDrillRows(monthlyBreakdown), MO_COLS)
+        inspect: 'Forecast Variance',
+        onClick: () => openForecastVarianceDrill(data)
       });
     } else if (variancePct < -10) {
       signals.push({
         title: 'Forecast Gap',
         text: `Actual revenue is ${Math.abs(variancePct).toFixed(0)}% below forecast to date (${fmtVar(actualRev, forecastRevToDate)} variance).`,
         severity: 'Watch',
-        inspect: 'Monthly Forecast Breakdown',
-        onClick: () => drillDownModal('Monthly Forecast', monthDrillRows(monthlyBreakdown), MO_COLS)
+        inspect: 'Forecast Variance',
+        onClick: () => openForecastVarianceDrill(data)
       });
     }
   } else if (actualRev > 0 && forecastRev === 0) {
@@ -1704,8 +1813,8 @@ function buildForecastInsights(data, cmpData, cmpRange) {
       title: 'Missing Forecast',
       text: `Actual revenue of ${formatEUR(actualRev)} exists but no forecast was set for the selected period.`,
       severity: 'Watch',
-      inspect: 'Monthly Forecast Breakdown',
-      onClick: () => drillDownModal('Monthly Forecast', monthDrillRows(monthlyBreakdown), MO_COLS)
+      inspect: 'Forecast Variance',
+      onClick: () => openForecastVarianceDrill(data)
     });
   } else if (forecastRev > 0 && actualRev === 0) {
     signals.push({
@@ -1772,8 +1881,8 @@ function buildForecastInsights(data, cmpData, cmpRange) {
       title: 'Projected Services',
       text: `${formatEUR(svcProjectedTotal)} in forecasted service revenue has no invoice raised yet — not included in the confirmed Pending Pipeline total.`,
       severity: 'info',
-      inspect: 'Pending Pipeline',
-      onClick: () => openPendingPipelineModal(data, cmpData, cmpLabel)
+      inspect: 'Projected Services',
+      onClick: () => openProjectedServicesModal(data, cmpData, cmpLabel)
     });
   }
 
@@ -2441,28 +2550,14 @@ function renderMonthlyCharts(data) {
         body.appendChild(mkSectionLabel('Actual vs Budget'));
         body.appendChild(summaryBoxes);
 
-        // Stream breakdown for this month
+        // Stream breakdown for this month — adds up to the month's actual revenue
         const streamMap = new Map();
-        m.payments.forEach(p => {
-          const s = resolveStream(p) || 'other';
-          streamMap.set(s, (streamMap.get(s) || 0) + toEUR(p.amount, p.currency, p.date));
-        });
-        m.invoices.forEach(i => {
-          const s = resolveStream(i) || 'other';
-          streamMap.set(s, (streamMap.get(s) || 0) + toEUR((i.subtotal ?? i.total) || i.amount, i.currency, i.issueDate || i.date));
-        });
-        const streamRows = [...streamMap.entries()]
-          .sort((a, b) => b[1] - a[1])
-          .map(([key, val]) => [STREAMS[key]?.label || key, formatEUR(val)]);
-        if (streamRows.length > 0) {
-          body.appendChild(mkSectionLabel('Breakdown by Stream'));
-          body.appendChild(mkModalTable(
-            [
-              { label: 'Stream' },
-              { label: 'Actual Revenue', right: true, tip: 'Sum of actual payments and invoices for this stream in the selected month.' }
-            ],
-            streamRows
-          ));
+        m.payments.forEach(p => addToGroup(streamMap, STREAMS[resolveStream(p) || 'other']?.label || resolveStream(p) || 'Other', toEUR(p.amount, p.currency, p.date)));
+        m.invoices.forEach(i => addToGroup(streamMap, STREAMS[resolveStream(i) || 'other']?.label || resolveStream(i) || 'Other', toEUR(i.subtotal ?? i.total, i.currency, i.issueDate)));
+        if (streamMap.size > 0) {
+          body.appendChild(mkSectionLabel('Actual Revenue by Stream'));
+          body.appendChild(mkGroupTotalTable('Stream', 'Revenue stream.', 'Actual Revenue',
+            'Paid payments + paid invoices (before VAT) for this stream in the month.', streamMap));
         }
 
         openModal({ title: `${m.label} — Revenue Detail`, body, large: true });
@@ -2500,29 +2595,20 @@ function renderMonthlyCharts(data) {
         body.appendChild(mkSectionLabel('Variance Detail'));
         body.appendChild(summaryBoxes);
 
-        // Stream breakdown for this month
-        const streamMap = new Map();
-        m.payments.forEach(p => {
-          const s = resolveStream(p) || 'other';
-          streamMap.set(s, (streamMap.get(s) || 0) + toEUR(p.amount, p.currency, p.date));
-        });
-        m.invoices.forEach(i => {
-          const s = resolveStream(i) || 'other';
-          streamMap.set(s, (streamMap.get(s) || 0) + toEUR((i.subtotal ?? i.total) || i.amount, i.currency, i.issueDate || i.date));
-        });
-        const streamRows = [...streamMap.entries()]
-          .sort((a, b) => b[1] - a[1])
-          .map(([key, val]) => [STREAMS[key]?.label || key, formatEUR(val)]);
-        if (streamRows.length > 0) {
-          body.appendChild(mkSectionLabel('Breakdown by Stream'));
-          body.appendChild(mkModalTable(
-            [
-              { label: 'Stream' },
-              { label: 'Actual Revenue', right: true, tip: 'Sum of actual payments and invoices for this stream in the selected month.' }
-            ],
-            streamRows
-          ));
-        }
+        // How the month's variance % is worked out
+        const fcToDate = m.fcRevCmp;
+        body.appendChild(mkSectionLabel('How the Variance % Is Worked Out'));
+        body.appendChild(mkModalTable(
+          [{ label: 'Step' }, { label: 'Value', right: true }],
+          [
+            ['Forecast revenue for the month', formatEUR(m.fcRev)],
+            ['× Share of the month elapsed', `${(m.elapsedFrac * 100).toFixed(0)}%`],
+            ['= Forecast to date', formatEUR(fcToDate)],
+            ['Actual revenue', formatEUR(m.actRev)],
+            ['Variance (actual − forecast to date)', fmtVar(m.actRev, fcToDate)],
+            [el('strong', {}, 'Variance % (variance ÷ forecast to date)'), el('strong', {}, fmtVarPct(m.actRev, fcToDate))]
+          ]
+        ));
 
         openModal({ title: `${m.label} — Variance Detail`, body, large: true });
       }
@@ -2649,29 +2735,19 @@ function renderMonthlyCharts(data) {
         body.appendChild(mkSectionLabel(`${m.label} — Accuracy Detail`));
         body.appendChild(summaryBoxes);
 
-        // Stream breakdown for this month
-        const streamMap = new Map();
-        m.payments.forEach(p => {
-          const s = resolveStream(p) || 'other';
-          streamMap.set(s, (streamMap.get(s) || 0) + toEUR(p.amount, p.currency, p.date));
-        });
-        m.invoices.forEach(i => {
-          const s = resolveStream(i) || 'other';
-          streamMap.set(s, (streamMap.get(s) || 0) + toEUR((i.subtotal ?? i.total) || i.amount, i.currency, i.issueDate || i.date));
-        });
-        const streamRows = [...streamMap.entries()]
-          .sort((a, b) => b[1] - a[1])
-          .map(([key, val]) => [STREAMS[key]?.label || key, formatEUR(val)]);
-        if (streamRows.length > 0) {
-          body.appendChild(mkSectionLabel('Actual Revenue by Stream'));
-          body.appendChild(mkModalTable(
-            [
-              { label: 'Stream' },
-              { label: 'Actual Revenue', right: true, tip: 'Sum of actual payments and invoices for this stream in the selected month.' }
-            ],
-            streamRows
-          ));
-        }
+        // How this month's error feeds the MAPE average
+        const n = accuracyTrendMonths.length;
+        const mapeAvg = accuracyTrendMonths.reduce((s2, x) => s2 + Math.abs(x.actRev - x.fcRev) / x.fcRev * 100, 0) / n;
+        body.appendChild(mkSectionLabel('Share of Forecast Accuracy (MAPE)'));
+        body.appendChild(mkModalTable(
+          [{ label: 'Step' }, { label: 'Value', right: true }],
+          [
+            ['This month\'s % error', pctErr !== null ? pctErr.toFixed(1) + '%' : '—'],
+            ['÷ Completed months measured', String(n)],
+            ['= Adds to MAPE', pctErr !== null ? (pctErr / n).toFixed(1) + ' pp' : '—'],
+            [el('strong', {}, 'MAPE (average of all measured months)'), el('strong', {}, mapeAvg.toFixed(1) + '%')]
+          ]
+        ));
 
         openModal({ title: `${m.label} — Forecast Accuracy`, body, large: true });
       }
