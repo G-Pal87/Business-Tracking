@@ -1,5 +1,6 @@
 // Vendors module
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, buildMultiSelect, searchBox, matchesSearch } from '../core/ui.js';
+import { historyButton } from './activity.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, toEUR, formatEUR, normalizeWebsite } from '../core/data.js';
 import { VENDOR_ROLES, PROPERTY_TYPES, CURRENCIES } from '../core/config.js';
 import { navigate } from '../core/router.js';
@@ -446,5 +447,5 @@ function openForm(existing) {
     }
   });
   const cancelBtn = button('Cancel', { onClick: closeModal });
-  openModal({ title: existing ? 'Edit Vendor' : 'New Vendor', body, footer: [cancelBtn, saveBtn] });
+  openModal({ title: existing ? 'Edit Vendor' : 'New Vendor', body, footer: [historyButton('vendors', existing), cancelBtn, saveBtn].filter(Boolean) });
 }

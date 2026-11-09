@@ -1,6 +1,7 @@
 // Invoices module - builder + repository
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, confirmDeleteTwice, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, addDays, drillDownModal, attachSortFilter, buildMultiSelect } from '../core/ui.js';
+import { historyButton } from './activity.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, getPeopleOwners, getPersonName } from '../core/data.js';
 import { CURRENCIES, INVOICE_STATUSES, OWNERS, STREAMS, SERVICE_UNITS } from '../core/config.js';
 const _pdfMod = () => import(`../core/pdf.js?v=${window._appV || ''}`);
@@ -1026,7 +1027,7 @@ export function openBuilder(existing, { onSaved, defaults = null } = {}) {
   }});
   const cancel = button('Cancel', { onClick: closeModal });
 
-  openModal({ title: existing ? 'Edit Invoice' : 'New Invoice', body, footer: [cancel, preview, save], large: true });
+  openModal({ title: existing ? 'Edit Invoice' : 'New Invoice', body, footer: [historyButton('invoices', existing), cancel, preview, save].filter(Boolean), large: true });
 }
 
 export function openPreview(id) {

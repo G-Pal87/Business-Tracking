@@ -1,6 +1,7 @@
 // Properties module
 import { state, runBatch } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, buildMultiSelect, searchBox, matchesSearch } from '../core/ui.js';
+import { historyButton } from './activity.js';
 import {
   upsert, softDelete, listActive, listActivePayments, byId, newId, formatEUR, formatMoney, toEUR,
   propertyRevenueEUR, propertyExpensesEUR, renovationCapexEUR, propertyROI, applyFilters, isCapEx,
@@ -1491,6 +1492,6 @@ function openForm(existing) {
   }
   const cancelBtn = button('Cancel', { onClick: closeModal });
 
-  openModal({ title: existing ? 'Edit Property' : 'New Property', body, footer: [cancelBtn, saveBtn], large: true });
+  openModal({ title: existing ? 'Edit Property' : 'New Property', body, footer: [historyButton('properties', existing), cancelBtn, saveBtn].filter(Boolean), large: true });
 }
 

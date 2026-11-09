@@ -1,6 +1,7 @@
 // Expenses module
 import { state, runBatch } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, buildMultiSelect } from '../core/ui.js';
+import { historyButton } from './activity.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, resolveExpenseFields, totalRemaining, fifoDeduct, restoreInventoryStock, findVendorRateByPeriod, getPeopleOwners, getPersonName, isDeductibleExpense, expenseDeleteWarning } from '../core/data.js';
 import * as charts from '../core/charts.js';
 import { CURRENCIES, EXPENSE_CATEGORIES, EXPENSE_CATEGORY_GROUPS, ACCOUNTING_TYPES, COST_CATEGORIES, RECURRENCE_TYPES, STREAMS } from '../core/config.js';
@@ -1263,5 +1264,5 @@ function openForm(existing, defaults = {}, onSave = null) {
     }
   }
   const cancel = button('Cancel', { onClick: closeModal });
-  openModal({ title: existing ? 'Edit Expense' : 'New Expense', body, footer: [cancel, save] });
+  openModal({ title: existing ? 'Edit Expense' : 'New Expense', body, footer: [historyButton('expenses', existing), cancel, save].filter(Boolean) });
 }

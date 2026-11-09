@@ -1,6 +1,7 @@
 // Payments module: manual payments, LT rental schedule, Airbnb CSV import
 import { state, runBatch } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, attachSortFilter, attachDataTable, buildMultiSelect } from '../core/ui.js';
+import { historyButton } from './activity.js';
 import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, getForecastEntries, upsertForecastEntry, applyReservationExpenseRules, removeReservationExpenses, deletePayment, setVendorCollection, vendorUsualCategory, buildGeneratedExpenseIndex, buildGeneratedExpenseCategoryIndex, buildReservationExpenseRefMap, formatRuleConflictWarning, getPeopleOwners, getPersonName, getContractExpiryFlag, dataStamp, sameDataStamp } from '../core/data.js';
 import { CURRENCIES, PAYMENT_STATUSES, STREAMS, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, EXPENSE_CATEGORIES } from '../core/config.js';
 import { bookingFeeModel } from '../core/airbnb-fees.js';
@@ -1740,7 +1741,7 @@ export function openPaymentForm(existing, { defaults = {}, onSaved } = {}) {
     if (onSaved) onSaved(r);
     else setTimeout(() => navigate('payments'), 200);
   }});
-  openModal({ title: existing ? 'Edit Payment' : 'New Payment', body, footer: [button('Cancel', { onClick: closeModal }), save] });
+  openModal({ title: existing ? 'Edit Payment' : 'New Payment', body, footer: [historyButton('payments', existing), button('Cancel', { onClick: closeModal }), save].filter(Boolean) });
 }
 
 // ===== Airbnb CSV Import =====

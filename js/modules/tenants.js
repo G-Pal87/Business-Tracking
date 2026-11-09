@@ -1,5 +1,6 @@
 // Tenants module – CRUD for long-term rental tenants
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, attachSortFilter, buildMultiSelect } from '../core/ui.js';
+import { historyButton } from './activity.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, generatePaymentSchedule, getContractExpiryFlag, getTenantDisplayStatus, getPeopleOwners, getPersonName, syncPropertyStatus } from '../core/data.js';
 import { CURRENCIES, PROPERTY_STATUSES } from '../core/config.js';
 import { isHungary, MESSAGE_LANGUAGES } from '../core/electricity.js';
@@ -567,7 +568,7 @@ function openForm(existing, onSave, defaults = {}) {
   openModal({
     title: existing ? 'Edit Tenant' : 'New Tenant',
     body,
-    footer: [button('Cancel', { onClick: closeModal }), save],
+    footer: [historyButton('tenants', existing), button('Cancel', { onClick: closeModal }), save].filter(Boolean),
     large: true
   });
 }

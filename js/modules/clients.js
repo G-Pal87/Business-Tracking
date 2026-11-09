@@ -1,6 +1,7 @@
 // Clients module
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, buildMultiSelect, searchBox, matchesSearch } from '../core/ui.js';
+import { historyButton } from './activity.js';
 import { upsert, softDelete, listActive, newId, formatMoney, formatEUR, toEUR, byId, getPeopleOwners, getPersonName } from '../core/data.js';
 import { CURRENCIES, OWNERS, STREAMS, SERVICE_STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
@@ -539,5 +540,5 @@ function openForm(existing) {
     setTimeout(() => navigate('clients'), 200);
   }
   const cancel = button('Cancel', { onClick: closeModal });
-  openModal({ title: existing ? 'Edit Client' : 'New Client', body, footer: [cancel, save] });
+  openModal({ title: existing ? 'Edit Client' : 'New Client', body, footer: [historyButton('clients', existing), cancel, save].filter(Boolean) });
 }

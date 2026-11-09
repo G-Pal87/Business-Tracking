@@ -189,6 +189,185 @@ export function newId(prefix) {
   return `${prefix}_${crypto.randomUUID().replace(/-/g, '')}`;
 }
 
+// ============== Activity log (per-record change history) ==============
+// Every local user edit made through upsert / softDelete / restoreRecord(s)
+// appends one compact entry to state.db.activityLog — an ordinary synced
+// collection of immutable { id } records, so it travels encrypted with the
+// rest of the db and merges like any other collection (entries never change:
+// createdAt lets mergeLocalPending keep an offline entry, updatedAt lets
+// mergeDb propagate a local cap/prune). Sync merges and setDb() loads never
+// go through these functions, so they are never logged.
+//
+// Appending deliberately does NOT call markDirty('activityLog'): the edit
+// being logged already marked its own collection dirty (so the entry rides
+// along in the same push), and bumping another revision would only drop
+// caches for nothing. Read the log with activityEntries() — never with
+// listActive('activityLog'), whose memo this never invalidates.
+export const ACTIVITY_COLLECTION = 'activityLog';
+export const ACTIVITY_MAX_ENTRIES = 2000;   // the log rides in the encrypted db pushed on every save — keep it small
+export const ACTIVITY_MAX_AGE_DAYS = 365; // 12 months
+const ACTIVITY_UNLOGGED = new Set([ACTIVITY_COLLECTION, 'syncConflicts']);
+// Bookkeeping fields that change on every save — never a "change".
+const ACTIVITY_NOISE = new Set(['updatedAt', 'updatedBy', 'createdAt', 'createdBy', 'deletedAt', 'deletedBy', 'restoredAt']);
+// Credentials: the change is recorded, the values are not.
+const ACTIVITY_SECRET = /pass(word)?|hash|salt|token|secret|apikey|privatekey/i;
+const ACTIVITY_VALUE_MAX = 80;
+const ACTIVITY_MAX_CHANGES = 25;
+const _MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+let _activitySuspended = 0;
+let _activityLastAgePrune = 0;
+
+// Runs fn() with activity logging off (machine-generated bulk rewrites,
+// migrations). Supports nesting; returns fn's result.
+export function withoutActivityLog(fn) {
+  _activitySuspended++;
+  try { return fn(); } finally { _activitySuspended--; }
+}
+
+function _actDay(ymd) {
+  const m = typeof ymd === 'string' && /^(\d{4})-(\d{2})-(\d{2})/.exec(ymd);
+  return m ? `${Number(m[3])} ${_MON[Number(m[2]) - 1] || ''} ${m[1]}` : '';
+}
+function _actMoney(amount, currency) {
+  const n = Number(amount);
+  if (amount === '' || amount == null || !Number.isFinite(n)) return '';
+  try { return formatMoney(n, currency || 'EUR', { maxFrac: 2, minFrac: 0 }); } catch { return String(n); }
+}
+function _actName(collection, id) {
+  if (!id) return '';
+  const r = byId(collection, id);
+  return r ? String(r.name || r.title || '') : '';
+}
+
+// A human name for a record, frozen into the entry at log time (the record
+// may later be renamed or purged).
+export function activityRecordLabel(collection, r) {
+  if (!r) return '';
+  const join = (...parts) => parts.filter(Boolean).join(' · ');
+  let label;
+  switch (collection) {
+    case 'payments':
+      label = join(`Payment ${_actDay(r.date)}`.trim(), _actMoney(r.amount, r.currency), r.guestName || _actName('tenants', r.tenantId) || _actName('properties', r.propertyId));
+      break;
+    case 'expenses':
+      label = join(`Expense ${_actDay(r.date)}`.trim(), _actMoney(r.amount, r.currency), r.description || _actName('vendors', r.vendorId) || r.vendor || r.category);
+      break;
+    case 'invoices':
+      label = join(`Invoice ${r.number || ''}`.trim(), _actMoney(r.total, r.currency), _actName('clients', r.clientId));
+      break;
+    case 'electricityCycles':
+      label = join('Electricity', _actName('properties', r.propertyId), _actDay(r.endDate || r.startDate));
+      break;
+    case 'timeOff':
+      label = join('Time off', r.personName || _actName('people', r.personId), _actDay(r.startDate));
+      break;
+    case 'dividends':
+      label = join('Dividend', _actDay(r.date), _actMoney(r.amount, r.currency));
+      break;
+    case 'forecasts':
+      label = join('Forecast', r.year, _actName(r.type === 'client' ? 'clients' : 'properties', r.entityId) || r.type);
+      break;
+    default:
+      label = r.name || r.title || r.label || r.description || r.username || '';
+  }
+  label = String(label || r.id || '');
+  return label.length > 120 ? label.slice(0, 119) + '…' : label;
+}
+
+function _actValue(v) {
+  if (v === undefined) return null;
+  if (v === null || typeof v === 'number' || typeof v === 'boolean') return v;
+  let s = typeof v === 'string' ? v : JSON.stringify(v);
+  if (s === undefined) return null;
+  return s.length > ACTIVITY_VALUE_MAX ? s.slice(0, ACTIVITY_VALUE_MAX - 1) + '…' : s;
+}
+function _actSame(a, b) {
+  if (a === b) return true;
+  if (a == null || b == null || typeof a !== 'object' || typeof b !== 'object') {
+    // '' and a missing field read the same in every form.
+    return (a == null || a === '') && (b == null || b === '');
+  }
+  try { return JSON.stringify(a) === JSON.stringify(b); } catch { return false; }
+}
+
+// Field-level diff of two versions of a record: [{ field, from, to }].
+export function activityDiff(prev, next) {
+  const out = [];
+  if (!prev || !next || prev === next) return out;
+  const keys = new Set([...Object.keys(prev), ...Object.keys(next)]);
+  for (const k of keys) {
+    if (ACTIVITY_NOISE.has(k) || k.startsWith('_') || k === 'id') continue;
+    const a = prev[k], b = next[k];
+    if (_actSame(a, b)) continue;
+    if (ACTIVITY_SECRET.test(k)) out.push({ field: k, from: null, to: null, hidden: true });
+    else out.push({ field: k, from: _actValue(a), to: _actValue(b) });
+    if (out.length >= ACTIVITY_MAX_CHANGES) break;
+  }
+  return out;
+}
+
+function _logActivity(collection, action, record, changes) {
+  if (_activitySuspended > 0 || ACTIVITY_UNLOGGED.has(collection) || !record?.id) return null;
+  if (action === 'update' && changes && changes.length === 0) return null; // saved without changes
+  const now = Date.now();
+  const s = state.session;
+  const entry = {
+    id: newId('act'),
+    at: new Date(now).toISOString(),
+    by: (s && (s.name || s.username)) || 'system',
+    collection,
+    recordId: record.id,
+    action,
+    label: activityRecordLabel(collection, record)
+  };
+  if (changes && changes.length) entry.changes = changes;
+  if (record.currency && typeof record.currency === 'string') entry.cur = record.currency;
+  entry.createdAt = now;
+  entry.updatedAt = now;
+  let arr = state.db[ACTIVITY_COLLECTION];
+  if (!Array.isArray(arr)) arr = state.db[ACTIVITY_COLLECTION] = [];
+  arr.push(entry);
+  let ix = state._ix?.get(ACTIVITY_COLLECTION);
+  if (state._ix && !ix) { ix = new Map(arr.map(x => [x.id, x])); state._ix.set(ACTIVITY_COLLECTION, ix); }
+  else ix?.set(entry.id, entry);
+  // Amortised: trim only once the cap is overshot by a margin, and age-prune
+  // at most hourly — a bulk import never pays a sort per record.
+  if (arr.length > ACTIVITY_MAX_ENTRIES + 250 || now - _activityLastAgePrune > 3600e3) pruneActivityLog({ now });
+  return entry;
+}
+
+// Keeps the newest ACTIVITY_MAX_ENTRIES entries no older than
+// ACTIVITY_MAX_AGE_DAYS. Returns how many were dropped. Doesn't mark the db
+// dirty: the drop rides along with the next edit's push.
+export function pruneActivityLog({ now = Date.now(), maxEntries = ACTIVITY_MAX_ENTRIES, maxAgeDays = ACTIVITY_MAX_AGE_DAYS } = {}) {
+  _activityLastAgePrune = now;
+  const arr = state.db[ACTIVITY_COLLECTION];
+  if (!Array.isArray(arr) || arr.length === 0) return 0;
+  const cutoff = now - maxAgeDays * 864e5;
+  const oldest = arr.reduce((m, e) => Math.min(m, e?.createdAt || 0), Infinity);
+  if (arr.length <= maxEntries && oldest >= cutoff) return 0;
+  let kept = arr.filter(e => e && (e.createdAt || 0) >= cutoff);
+  if (kept.length > maxEntries) {
+    kept.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    kept = kept.slice(kept.length - maxEntries);
+  }
+  const dropped = arr.length - kept.length;
+  state.db[ACTIVITY_COLLECTION] = kept;
+  if (state._ix) state._ix.set(ACTIVITY_COLLECTION, new Map(kept.map(e => [e.id, e])));
+  return dropped;
+}
+
+// Log entries, newest first. Optional filter by collection / recordId.
+export function activityEntries({ collection = null, recordId = null } = {}) {
+  const arr = state.db[ACTIVITY_COLLECTION];
+  if (!Array.isArray(arr)) return [];
+  const out = arr.filter(e => e && !e.deletedAt && (!collection || e.collection === collection) && (!recordId || e.recordId === recordId));
+  // Reversed first: the array is append-ordered, and the stable sort then
+  // keeps same-millisecond entries newest-first too.
+  out.reverse().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  return out;
+}
+
 // ============== Generic CRUD ==============
 // Derived caches invalidate per collection (state.js dataRev): upsert/remove
 // bump only `collection`. So never edit a record of ANOTHER collection (or
@@ -229,6 +408,12 @@ export function upsert(collection, item) {
   const prev = isNew ? null : (ix?.get(item.id) || arr.find(x => x.id === item.id));
   item.updatedAt = nextStamp(prev?.updatedAt, now);
   item.updatedBy = actor;
+  if (!_activitySuspended && !ACTIVITY_UNLOGGED.has(collection)) {
+    // prev === item: the caller edited the stored object in place — the
+    // old values are gone, so the entry records the edit without a diff.
+    if (isNew) _logActivity(collection, 'create', item);
+    else _logActivity(collection, 'update', item, prev && prev !== item ? activityDiff(prev, item) : undefined);
+  }
   if (isNew) {
     arr.push(item);
   } else {
@@ -263,10 +448,12 @@ export function softDelete(collection, id) {
   if (!item) return false;
   const now = Date.now();
   const actor = state.session?.username || 'system';
+  const wasDeleted = !!item.deletedAt;
   item.deletedAt = now;
   item.deletedBy = actor;
   item.updatedAt = nextStamp(item.updatedAt, now);
   item.updatedBy = actor;
+  if (!wasDeleted) _logActivity(collection, 'delete', item);
   markDirty(collection);
   // Rent collected by a vendor: the payment and its expense go together.
   if (collection === 'payments' && item.linkedExpenseId) {
@@ -1675,6 +1862,7 @@ export function listDeletedRecords() {
   Object.keys(state.db).forEach(collection => {
     if (!Array.isArray(state.db[collection])) return;
     if (collection === 'syncConflicts') return; // dismissed conflict notes, not user records
+    if (collection === ACTIVITY_COLLECTION) return; // change history, not user records
     state.db[collection]
       .filter(item => item && item.deletedAt)
       .forEach(item => records.push({ key: `${collection}:${item.id}`, collection, item }));
@@ -1691,6 +1879,7 @@ export function restoreRecord(collection, id) {
   delete item.deletedBy;
   item.updatedAt = nextStamp(item.updatedAt);
   item.updatedBy = state.session?.username || 'system';
+  _logActivity(collection, 'restore', item);
   markDirty(collection);
   return true;
 }
@@ -1755,6 +1944,7 @@ export function restoreRecords(records) {
     delete item.deletedBy;
     item.updatedAt = nextStamp(item.updatedAt);
     item.updatedBy = state.session?.username || 'system';
+    _logActivity(collection, 'restore', item);
     count++;
   });
   if (count > 0) markDirty();
@@ -1823,6 +2013,9 @@ export function autoPurgeOldDeleted({ maxAgeDays = 90 } = {}) {
   for (const col of Object.keys(state.db)) {
     const arr = state.db[col];
     if (!Array.isArray(arr)) continue;
+    // History entries name records by id but are not references: a deleted
+    // record must still be purgeable while the log mentions it.
+    if (col === ACTIVITY_COLLECTION) continue;
     for (const rec of arr) {
       if (rec && rec.deletedAt) continue; // only active records can hold live refs
       _collectStringValues(rec, referenced);
