@@ -22,8 +22,7 @@ import { calendarSyncProblems, propertySyncStatus, calSyncSettings, lastPull, re
 import { classifyInvoice, invoiceDueDate, invoiceGrossEUR, invoiceNetEUR } from './analytics-helpers.js';
 
 const WEEK_DAYS = 7;          // "This week" = today + the next 6 days
-const ATTN_PER_GROUP = 3;     // rows per attention group before "+N more"
-const WEEK_MAX_ROWS = 12;
+const WEEK_MAX_ROWS = 8;
 
 let _container = null;
 let _onCalsync = null;
@@ -68,9 +67,10 @@ function openExecAttention() {
 
 // ── Building blocks ──────────────────────────────────────────────────────────
 // A tappable row: [badge] title / sub ........ right ›
-function row({ title, sub = '', right = null, rightTone = '', badge = null, tone = '', onClick, testid = '' }) {
+function row({ title, sub = '', right = null, rightTone = '', badge = null, icon = null, tone = '', onClick, testid = '' }) {
   const kids = [];
-  if (badge) kids.push(el('span', { class: `home-badge${tone ? ` tone-${tone}` : ''}` }, badge));
+  const mark = icon || badge;
+  if (mark) kids.push(el('span', { class: `home-icon${tone ? ` tone-${tone}` : ''}`, 'aria-hidden': 'true' }, mark));
   kids.push(el('span', { class: 'home-row-main' },
     el('span', { class: 'home-row-title' }, title),
     sub ? el('span', { class: 'home-row-sub' }, sub) : null));
@@ -91,57 +91,86 @@ function card(id, title, { sub = '', link = null, tone = '' } = {}, ...body) {
   return el('section', { class: `card home-card${tone ? ` home-card--${tone}` : ''}`, id: `home-${id}`, 'data-card': id }, head, ...body);
 }
 const groupLabel = (text, tone = '') => el('div', { class: `home-group${tone ? ` tone-${tone}` : ''}` }, text);
-const moreRow = (n, onClick) => el('button', { class: 'home-more', type: 'button', onclick: onClick }, `+ ${n} more`);
 
-// ── 1. Needs attention ───────────────────────────────────────────────────────
+// ── 1. To do ─────────────────────────────────────────────────────────────────
+// One list, three clearly separate parts — what needs doing comes first, data
+// tidying and plain information are folded underneath so they never mix with
+// it:  Action needed · Data to tidy · For your information.
+// Each row: an icon for its kind, a plain-language title ("Collect rent ·
+// Flat"), the detail and the amount. "Show all" expands in place.
+const TODO_LIMIT = 5;
+const _expanded = new Set();     // sections opened by the user (kept across redraws)
+
 function attentionData(props, today) {
   const it = getAttentionItems(props, () => 1, today);
-  // Calendar sync problems get their own card below.
+  // Calendar sync problems show in the status pill / sync card.
   it.checks = it.checks.filter(c => c.kind !== 'calsync');
   return it;
 }
 
-function buildAttention(it, rerender) {
-  const groups = [];
-  const add = (key, label, tone, rows) => { if (rows.length) groups.push({ key, label, tone, rows }); };
-  add('overdue', 'Uncollected rent', 'danger', it.overdue.map(o => ({
-    title: o.prop.name, sub: `${plural(o.months, 'month')} unpaid · ${o.days} days late`,
-    right: eur0(o.eur), rightTone: 'danger', onClick: () => navigate('payments') })));
-  add('electricity', 'Electricity', 'warning', it.electricity.map(o => ({
-    title: o.prop.name,
+function todoItems(it, rerender) {
+  const act = [], tidy = [], info = [];
+  for (const o of it.overdue) act.push({ key: 'overdue', icon: '€', tone: 'danger', rank: 0,
+    title: `Collect rent · ${o.prop.name}`, sub: `${plural(o.months, 'month')} unpaid · ${o.days} days late`,
+    right: eur0(o.eur), rightTone: 'danger', onClick: () => navigate('payments') });
+  for (const o of it.electricity) act.push({ key: 'electricity', icon: '⚡', tone: 'warning', rank: 1,
+    title: `${o.kind === 'reading' ? 'Submit meter reading' : 'Check & pay electricity'} · ${o.prop.name}`,
     sub: o.kind === 'reading'
-      ? `Meter reading ${o.c.period} — ${o.c.reading === 'overdue' ? `window closed ${fmtDate(o.c.windowTo)}` : `submit by ${fmtDate(o.c.windowTo)}`}`
-      : `Invoice ${o.c.period} — check & pay`,
-    onClick: () => navigate('electricity') })));
-  add('ending', 'Leases ending', 'info', it.ending.map(o => ({
-    title: o.prop.name, sub: `${o.tenant.name || 'Tenant'} · ends ${fmtDate(o.end)} (${o.days} days) · no next lease`,
-    onClick: () => navigate('tenants') })));
-  add('empty', 'Empty — no tenant', 'warning', it.empty.map(o => ({
-    title: o.prop.name, sub: o.since ? `Empty since ${fmtDate(o.since)} (${o.days} days)` : 'No tenant recorded',
-    right: o.missedEUR ? `≈ ${eur0(o.missedEUR)}` : null, rightTone: 'warning', onClick: () => navigate('tenants') })));
-  add('idle', 'Idle / renovation', '', it.idle.map(o => ({
-    title: o.prop.name,
-    sub: o.kind === 'renovation' ? `In renovation${o.since ? ` since ${fmtDate(o.since)}` : ''}`
-      : (o.since ? `No bookings for ${o.days} days, none upcoming` : 'No bookings recorded, none upcoming'),
-    onClick: () => navigate(o.kind === 'renovation' ? 'properties' : 'str-rates') })));
-  add('checks', 'Data to check', 'accent', it.checks.map(c => ({
+      ? `${o.c.period} — ${o.c.reading === 'overdue' ? `window closed ${fmtDate(o.c.windowTo)}` : `by ${fmtDate(o.c.windowTo)}`}`
+      : `Invoice ${o.c.period}`,
+    onClick: () => navigate('electricity') });
+  for (const o of it.ending) act.push({ key: 'ending', icon: '⌛', tone: 'info', rank: 2,
+    title: `Lease ending · ${o.prop.name}`, sub: `${o.tenant.name || 'Tenant'} · ${fmtDate(o.end)} (in ${plural(o.days, 'day')}) · no next lease`,
+    onClick: () => navigate('tenants') });
+  for (const o of it.empty) act.push({ key: 'empty', icon: '⌂', tone: 'warning', rank: 3,
+    title: `Find a tenant · ${o.prop.name}`, sub: o.since ? `Empty since ${fmtDate(o.since)} (${plural(o.days, 'day')})` : 'No tenant recorded',
+    right: o.missedEUR ? `≈ ${eur0(o.missedEUR)} missed` : null, rightTone: 'warning', onClick: () => navigate('tenants') });
+  for (const c of it.checks) tidy.push({ key: 'checks', icon: '✎', tone: 'accent',
     title: c.prop.name, sub: c.text,
     onClick: c.kind === 'rent' ? () => openRentCheckModal(c.issue, rerender)
-      : c.kind === 'overlap' ? () => navigate('tenants') : () => navigate('properties') })));
+      : c.kind === 'overlap' ? () => navigate('tenants') : () => navigate('properties') });
+  for (const o of it.idle) info.push({ key: 'idle', icon: o.kind === 'renovation' ? '⚒' : '☾', tone: 'muted',
+    title: o.prop.name,
+    sub: o.kind === 'renovation' ? `In renovation${o.since ? ` since ${fmtDate(o.since)}` : ''}`
+      : (o.since ? `No bookings for ${plural(o.days, 'day')}, none upcoming` : 'No bookings recorded, none upcoming'),
+    onClick: () => navigate(o.kind === 'renovation' ? 'properties' : 'str-rates') });
+  act.sort((a, b) => a.rank - b.rank);
+  return { act, tidy, info };
+}
 
-  const total = groups.reduce((s, g) => s + g.rows.length, 0);
-  if (!total) return null;
-  const body = el('div', { class: 'home-list' });
-  // Counts strip: one chip per group.
-  body.appendChild(el('div', { class: 'home-counts' }, ...groups.map(g =>
-    el('span', { class: `home-count${g.tone ? ` tone-${g.tone}` : ''}` }, el('b', {}, String(g.rows.length)), ` ${g.label}`))));
-  for (const g of groups) {
-    body.appendChild(groupLabel(`${g.label} (${g.rows.length})`, g.tone));
-    for (const r of g.rows.slice(0, ATTN_PER_GROUP)) body.appendChild(row({ ...r, testid: `attn-${g.key}` }));
-    if (g.rows.length > ATTN_PER_GROUP) body.appendChild(moreRow(g.rows.length - ATTN_PER_GROUP, openExecAttention));
+function section(id, title, items, { tone = '', collapsed = false, hint = '' } = {}) {
+  if (!items.length) return null;
+  const open = collapsed ? _expanded.has(id) : true;
+  const showAll = _expanded.has(`${id}:all`);
+  const wrap = el('div', { class: `home-section${tone ? ` tone-${tone}` : ''}`, 'data-section': id });
+  const head = el(collapsed ? 'button' : 'div', { class: 'home-section-head', type: collapsed ? 'button' : undefined, 'aria-expanded': collapsed ? String(open) : undefined },
+    el('span', { class: 'home-section-title' }, title),
+    el('span', { class: 'home-section-count' }, String(items.length)),
+    hint ? el('span', { class: 'home-section-hint' }, hint) : null,
+    collapsed ? el('span', { class: 'home-section-caret', 'aria-hidden': 'true' }, open ? '▾' : '▸') : null);
+  if (collapsed) head.addEventListener('click', () => { open ? _expanded.delete(id) : _expanded.add(id); draw(); });
+  wrap.appendChild(head);
+  if (!open) return wrap;
+  const shown = showAll ? items : items.slice(0, TODO_LIMIT);
+  for (const r of shown) wrap.appendChild(row({ ...r, testid: `attn-${r.key}` }));
+  if (items.length > TODO_LIMIT) {
+    wrap.appendChild(el('button', { class: 'home-more', type: 'button', onclick: () => { showAll ? _expanded.delete(`${id}:all`) : _expanded.add(`${id}:all`); draw(); } },
+      showAll ? 'Show fewer' : `Show all ${items.length}`));
   }
-  return { total, node: card('attention', 'Needs attention', {
-    sub: plural(total, 'item'), tone: it.overdue.length ? 'danger' : 'warning',
+  return wrap;
+}
+
+function buildAttention(it, rerender) {
+  const { act, tidy, info } = todoItems(it, rerender);
+  const total = act.length + tidy.length + info.length;
+  if (!total) return null;
+  const body = el('div', { class: 'home-list' },
+    section('act', 'Action needed', act, { tone: act.some(a => a.tone === 'danger') ? 'danger' : 'warning' }),
+    act.length ? null : el('div', { class: 'home-allclear' }, '✓ Nothing urgent'),
+    section('tidy', 'Data to tidy', tidy, { tone: 'accent', collapsed: true, hint: 'records that don’t add up' }),
+    section('info', 'For your information', info, { collapsed: true }));
+  return { total, actions: act.length, urgent: act.some(a => a.tone === 'danger'), node: card('attention', 'To do', {
+    sub: [act.length && plural(act.length, 'action'), tidy.length && `${tidy.length} to tidy`, info.length && `${info.length} FYI`].filter(Boolean).join(' · '),
     link: { label: 'Executive ›', onClick: openExecAttention } }, body) };
 }
 
@@ -185,9 +214,9 @@ function weekEvents(props, strProps, stays, today) {
     for (const s of stays.get(p.id) || []) {
       const who = s.guest || (s.source === 'calendar' ? 'Airbnb booking' : 'Guest');
       const go = () => navigate(s.source === 'calendar' ? 'str-rates' : 'payments');
-      if (inWin(s.ci)) ev.push({ date: s.ci, order: 1, kind: 'checkin', badge: 'Check-in', tone: 'success', title: p.name,
+      if (inWin(s.ci)) ev.push({ date: s.ci, order: 1, kind: 'checkin', badge: '↘', label: 'Check-in', tone: 'success', title: p.name,
         sub: `${who} · ${plural(diffDaysYmd(s.ci, s.co), 'night')}${s.source === 'calendar' ? ' · from the Airbnb calendar' : ''}`, onClick: go });
-      if (inWin(s.co)) ev.push({ date: s.co, order: 0, kind: 'checkout', badge: 'Check-out', tone: 'muted', title: p.name, sub: who, onClick: go });
+      if (inWin(s.co)) ev.push({ date: s.co, order: 0, kind: 'checkout', badge: '↗', label: 'Check-out', tone: 'muted', title: p.name, sub: who, onClick: go });
     }
   }
   for (const p of props) {
@@ -195,23 +224,23 @@ function weekEvents(props, strProps, stays, today) {
     const tenants = new Map(listActive('tenants').filter(t => t.propertyId === p.id).map(t => [t.id, t]));
     for (const e of generatePaymentSchedule(p)) {
       if (e.paid || !inWin(e.date)) continue;
-      ev.push({ date: e.date, order: 2, kind: 'rent', badge: 'Rent due', tone: 'info', title: p.name,
+      ev.push({ date: e.date, order: 2, kind: 'rent', badge: '€', label: 'Rent due', tone: 'info', title: p.name,
         sub: `${tenants.get(e.tenantId)?.name || 'Tenant'} · ${monthName(e.monthKey)} rent`, right: eur0(e.amountEUR || 0), onClick: () => navigate('payments') });
     }
   }
   const propName = new Map(props.map(p => [p.id, p.name]));
   for (const t of listActive('tenants')) {
     if (!propName.has(t.propertyId)) continue;
-    if (t.status !== 'past' && inWin(t.leaseStartDate)) ev.push({ date: t.leaseStartDate, order: 3, kind: 'lease-start', badge: 'Move-in', tone: 'success', title: propName.get(t.propertyId), sub: `${t.name || 'Tenant'} · lease starts`, onClick: () => navigate('tenants') });
+    if (t.status !== 'past' && inWin(t.leaseStartDate)) ev.push({ date: t.leaseStartDate, order: 3, kind: 'lease-start', badge: '⌂', label: 'Move-in', tone: 'success', title: propName.get(t.propertyId), sub: `${t.name || 'Tenant'} · lease starts`, onClick: () => navigate('tenants') });
     const leaseEnd = t.terminationDate && (!t.leaseEndDate || t.terminationDate < t.leaseEndDate) ? t.terminationDate : t.leaseEndDate;
-    if (t.status !== 'prospective' && inWin(leaseEnd)) ev.push({ date: leaseEnd, order: 3, kind: 'lease-end', badge: 'Move-out', tone: 'warning', title: propName.get(t.propertyId), sub: `${t.name || 'Tenant'} · lease ${t.terminationDate === leaseEnd ? 'terminates' : 'ends'}`, onClick: () => navigate('tenants') });
+    if (t.status !== 'prospective' && inWin(leaseEnd)) ev.push({ date: leaseEnd, order: 3, kind: 'lease-end', badge: '⌂', label: 'Move-out', tone: 'warning', title: propName.get(t.propertyId), sub: `${t.name || 'Tenant'} · lease ${t.terminationDate === leaseEnd ? 'terminates' : 'ends'}`, onClick: () => navigate('tenants') });
   }
   const clients = new Map(listActive('clients').map(c => [c.id, c.name]));
   for (const i of listActive('invoices')) {
     if (classifyInvoice(i, today) !== 'outstanding') continue;
     const due = invoiceDueDate(i);
     if (!inWin(due)) continue;
-    ev.push({ date: due, order: 4, kind: 'invoice', badge: 'Invoice due', tone: 'accent', title: `#${i.number || '—'} · ${clients.get(i.clientId) || i.clientName || 'Client'}`,
+    ev.push({ date: due, order: 4, kind: 'invoice', badge: '#', label: 'Invoice due', tone: 'accent', title: `#${i.number || '—'} · ${clients.get(i.clientId) || i.clientName || 'Client'}`,
       sub: 'payment due', right: eur0(invoiceGrossEUR(i)), onClick: () => navigate('invoices') });
   }
   ev.sort((a, b) => a.date.localeCompare(b.date) || a.order - b.order || a.title.localeCompare(b.title));
@@ -229,11 +258,13 @@ function buildWeek(ev, today) {
     counts.invoice && plural(counts.invoice, 'invoice')
   ].filter(Boolean).join(' · ');
   let last = '';
-  for (const e of ev.slice(0, WEEK_MAX_ROWS)) {
+  const showAll = _expanded.has('week:all');
+  for (const e of showAll ? ev : ev.slice(0, WEEK_MAX_ROWS)) {
     if (e.date !== last) { body.appendChild(groupLabel(dayLabel(e.date, today), e.date === today ? 'accent' : '')); last = e.date; }
-    body.appendChild(row({ ...e, testid: `week-${e.kind}` }));
+    body.appendChild(row({ ...e, title: `${e.label} · ${e.title}`, testid: `week-${e.kind}` }));
   }
-  if (ev.length > WEEK_MAX_ROWS) body.appendChild(el('div', { class: 'home-note' }, `+ ${ev.length - WEEK_MAX_ROWS} more this week`));
+  if (ev.length > WEEK_MAX_ROWS) body.appendChild(el('button', { class: 'home-more', type: 'button', onclick: () => { showAll ? _expanded.delete('week:all') : _expanded.add('week:all'); draw(); } },
+    showAll ? 'Show fewer' : `Show all ${ev.length} this week`));
   return card('week', 'This week', { sub: sum }, body);
 }
 
@@ -278,10 +309,9 @@ function buildMoney(m) {
   if (!tot(cur) && !tot(last) && !m.overdueInv && !m.overdueRent) return null;
   const d = delta(tot(cur), tot(lastToDate));
   const hero = el('button', { class: 'home-money-hero', type: 'button', 'data-row': 'money-total', onclick: () => navigate('analytics-revenue') },
-    el('span', { class: 'home-money-label' }, `Collected in ${monthName(m.ym)} so far`),
     el('span', { class: 'home-money-value' }, eur0(tot(cur)),
       d ? el('span', { class: `home-delta tone-${d.tone}` }, d.text) : null),
-    el('span', { class: 'home-money-label' }, `${eur0(tot(lastToDate))} by this day in ${monthName(m.prev)} · ${eur0(tot(last))} all ${monthName(m.prev)}`));
+    el('span', { class: 'home-money-label' }, `collected so far · ${eur0(tot(lastToDate))} by this day in ${monthName(m.prev)} · ${eur0(tot(last))} all ${monthName(m.prev)}`));
   const body = el('div', { class: 'home-list' }, hero);
   const line = (label, k, route) => {
     if (!cur[k] && !last[k]) return;
@@ -292,7 +322,7 @@ function buildMoney(m) {
   line('Invoices paid', 'inv', 'analytics-revenue');
   if (m.overdueRent) body.appendChild(row({ title: 'Rent overdue', sub: plural(m.overdueRentN, 'property', 'properties'), right: eur0(m.overdueRent), rightTone: 'danger', onClick: () => navigate('payments'), testid: 'money-overdue-rent' }));
   if (m.overdueInv) body.appendChild(row({ title: 'Invoices overdue', sub: plural(m.overdueN, 'invoice'), right: eur0(m.overdueInv), rightTone: 'danger', onClick: () => navigate('invoices'), testid: 'money-overdue-inv' }));
-  return card('money', 'Money', { sub: 'Paid, cash basis, EUR', link: { label: 'Executive ›', onClick: () => navigate('analytics') } }, body);
+  return card('money', `Money · ${monthName(m.ym)}`, { sub: 'Paid, cash basis, EUR', link: { label: 'Executive ›', onClick: () => navigate('analytics') } }, body);
 }
 
 // ── 4. Airbnb calendar sync ──────────────────────────────────────────────────
@@ -327,14 +357,14 @@ function buildSync(strProps, rerender) {
     summary = `${linked.length === 1 ? 'Calendar' : `All ${linked.length} calendars`} synced${latest ? ` ${ago(latest)}` : ''}`;
   }
   const icon = tone === 'ok' ? '✓' : '⚠';
-  body.appendChild(el('div', { class: `home-sync tone-${tone === 'ok' ? 'success' : tone}`, 'data-row': 'sync-status' },
+  // A small status pill in the page header; a card only when something's wrong.
+  const pill = el('div', { class: `home-sync tone-${tone === 'ok' ? 'success' : tone}`, 'data-row': 'sync-status' },
     el('span', { class: 'home-sync-icon', 'aria-hidden': 'true' }, icon),
     el('button', { class: 'home-sync-text', type: 'button', onclick: () => navigate('str-rates') }, summary),
-    calSyncSettings().secretKey ? refreshBtn : null));
-  for (const x of problems.filter(p => p.prop)) {
-    body.appendChild(row({ title: x.prop.name, sub: x.text.replace(/^Airbnb calendar /, ''), onClick: () => navigate('str-rates'), testid: 'sync-problem' }));
-  }
-  return { tone, node: card('sync', 'Airbnb calendars', {}, body) };
+    calSyncSettings().secretKey ? refreshBtn : null);
+  const rows = problems.filter(p => p.prop);
+  for (const x of rows) body.appendChild(row({ icon: '⚠', tone: 'warning', title: x.prop.name, sub: x.text.replace(/^Airbnb calendar /, ''), onClick: () => navigate('str-rates'), testid: 'sync-problem' }));
+  return { tone, pill, node: tone === 'ok' || !rows.length ? null : card('sync', 'Airbnb calendars', { sub: summary }, body) };
 }
 
 // ── 5. Short-term nights ─────────────────────────────────────────────────────
@@ -362,27 +392,6 @@ function buildNights(strProps, stays, today) {
   return card('nights', 'Short-term nights booked', { sub: 'Recorded stays + Airbnb calendar', link: { label: 'STR ›', onClick: () => navigate('analytics-str') } }, body);
 }
 
-// Masonry: 1 column on phones, 2–3 on wider screens. Cards go, in priority
-// order, into whichever column is shortest so far — no empty column and no
-// gaps under short cards. Re-laid out only when the column count changes.
-const columnsFor = w => (w >= 900 ? 3 : w >= 600 ? 2 : 1);
-let _ro = null;
-function layoutGrid(grid, cards) {
-  const place = () => {
-    const n = columnsFor(grid.clientWidth || window.innerWidth);
-    if (grid.dataset.cols === String(n) && grid.childNodes.length) return;
-    grid.dataset.cols = String(n);
-    grid.style.setProperty('--home-cols', n);
-    grid.innerHTML = '';
-    const cols = Array.from({ length: n }, () => grid.appendChild(el('div', { class: 'home-col' })));
-    for (const c of cards) cols.reduce((a, b) => (b.offsetHeight < a.offsetHeight ? b : a)).appendChild(c);
-  };
-  place();
-  _ro?.disconnect();
-  _ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { if (grid.isConnected) place(); else _ro?.disconnect(); }) : null;
-  _ro?.observe(grid);
-}
-
 // ── Page ─────────────────────────────────────────────────────────────────────
 function draw() {
   if (!_container) return;
@@ -403,30 +412,39 @@ function draw() {
   const nightsCard = safe('nights', () => buildNights(strProps, stays, today));
 
   const view = el('div', { class: 'view active home' });
-  // Greeting + glance chips (each scrolls to its card).
-  const chips = [];
-  const chip = (target, text, tone) => chips.push(el('button', { class: `home-chip tone-${tone}`, type: 'button',
-    onclick: () => document.getElementById(`home-${target}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, text));
-  if (attn) chip('attention', plural(attn.total, 'thing') + ' to check', it.overdue.length ? 'danger' : 'warning');
-  const checkins = ev.filter(e => e.kind === 'checkin');
-  if (checkins.length) chip('week', plural(checkins.length, 'check-in') + ' this week', 'success');
-  else if (ev.length) chip('week', plural(ev.length, 'event') + ' this week', 'info');
-  if (sync && sync.tone !== 'ok') chip('sync', 'Calendar sync needs a look', sync.tone);
-  if (!attn && !ev.length) chips.push(el('span', { class: 'home-chip tone-success' }, '✓ All clear today'));
-  const weekday = parseYmd(today).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const m = safe('money data', () => moneyData(it, today));
+  const scrollTo = target => () => document.getElementById(`home-${target}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Header: date, greeting, the calendar-sync pill, then four glance tiles.
+  const weekday = parseYmd(today).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
   view.appendChild(el('header', { class: 'home-hero' },
-    el('div', { class: 'home-date' }, weekday),
-    el('h1', { class: 'home-greeting' }, greeting()),
-    chips.length ? el('div', { class: 'home-chips' }, ...chips) : null));
+    el('div', { class: 'home-hero-text' },
+      el('div', { class: 'home-date' }, weekday),
+      el('h1', { class: 'home-greeting' }, greeting())),
+    sync?.pill || null));
+  const tile = (label, value, sub, tone, onClick, id) => el('button', { class: `home-tile${tone ? ` tone-${tone}` : ''}`, type: 'button', 'data-tile': id, onclick: onClick },
+    el('span', { class: 'home-tile-label' }, label),
+    el('span', { class: 'home-tile-value' }, value),
+    sub ? el('span', { class: 'home-tile-sub' }, sub) : null);
+  const checkins = ev.filter(e => e.kind === 'checkin').length, checkouts = ev.filter(e => e.kind === 'checkout').length;
+  const overdue = (m?.overdueRent || 0) + (m?.overdueInv || 0);
+  const d = m ? delta(m.tot(m.cur), m.tot(m.lastToDate)) : null;
+  view.appendChild(el('div', { class: 'home-tiles' },
+    tile('To do', attn ? String(attn.actions) : '0', attn ? (attn.actions ? (attn.total > attn.actions ? `+${attn.total - attn.actions} to tidy / FYI` : 'actions') : 'nothing urgent') : 'all clear',
+      attn?.urgent ? 'danger' : attn?.actions ? 'warning' : 'success', scrollTo('attention'), 'todo'),
+    tile('This week', String(ev.length), ev.length ? [checkins && plural(checkins, 'check-in'), checkouts && plural(checkouts, 'check-out')].filter(Boolean).join(' · ') || plural(ev.length, 'event') : 'quiet week', '', scrollTo('week'), 'week'),
+    tile(`Collected · ${m ? monthName(m.ym) : ''}`, m ? eur0(m.tot(m.cur)) : '—', d ? `${d.text} vs same day last month` : '', d?.tone === 'danger' ? '' : '', scrollTo('money'), 'collected'),
+    tile('Overdue', eur0(overdue), overdue ? [m.overdueRentN && plural(m.overdueRentN, 'rent'), m.overdueN && plural(m.overdueN, 'invoice')].filter(Boolean).join(' · ') : 'nothing overdue', overdue ? 'danger' : 'success', scrollTo('money'), 'overdue')));
 
-  const grid = el('div', { class: 'home-grid' });
-  const cards = [attn?.node, week, money, sync?.node, nightsCard].filter(Boolean);
-  if (!cards.length) cards.push(el('div', { class: 'card home-empty' }, 'Nothing here yet — add properties, tenants or invoices and today’s to-dos show up here.'));
-  view.appendChild(grid);
+  // Two columns on wide screens: what to do (to-dos, this week) on the left,
+  // the figures (money, occupancy, sync problems) on the right; one column on phones.
+  const main = [attn?.node, week].filter(Boolean), side = [money, nightsCard, sync?.node].filter(Boolean);
+  if (!main.length && !side.length) main.push(el('div', { class: 'card home-empty' }, 'Nothing here yet — add properties, tenants or invoices and today’s to-dos show up here.'));
+  view.appendChild(el('div', { class: 'home-grid' },
+    el('div', { class: 'home-col home-col--main' }, ...main),
+    el('div', { class: 'home-col home-col--side' }, ...side)));
 
   _container.innerHTML = '';
   _container.appendChild(view);
-  layoutGrid(grid, cards);
   const ms = performance.now() - t0;
   if (ms > 150) console.info(`[home] rendered in ${Math.round(ms)} ms`);
 }
@@ -447,8 +465,6 @@ export default {
   destroy() {
     if (_onCalsync) globalThis.removeEventListener('calsync-updated', _onCalsync);
     _onCalsync = null;
-    _ro?.disconnect();
-    _ro = null;
     _container = null;
   }
 };
