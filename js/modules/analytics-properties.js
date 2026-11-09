@@ -399,6 +399,27 @@ function rebuildView() {
   c.appendChild(buildView());
 }
 
+// ── Total rows ────────────────────────────────────────────────────────────────
+// drillDownModal has no total row of its own: a row flagged `_total` is
+// rendered in bold in every column, so a breakdown ends on the card's figure.
+function boldTotalCols(cols) {
+  return cols.map(c => ({ ...c, format: (v, row) => {
+    const out = c.format ? c.format(v, row) : (v ?? '—');
+    if (!row?._total) return out;
+    return el('strong', {}, out instanceof Node ? out : String(out ?? ''));
+  } }));
+}
+function drillWithTotal(title, rows, cols, total) {
+  drillDownModal(title, rows.length && total ? [...rows, { ...total, _total: true }] : rows, boldTotalCols(cols));
+}
+// mkModalTable with a bold last row (cells given as plain values).
+function tableWithTotal(headers, rows, totalCells, opts) {
+  if (!rows.length) return mkModalTable(headers, rows, opts);
+  return mkModalTable(headers, [...rows, totalCells.map(c => el('strong', {}, c == null ? '' : String(c)))], opts);
+}
+const sumBy = (rows, k) => rows.reduce((s, r) => s + (r[k] || 0), 0);
+const pctOf = (a, b) => b > 0 ? (a / b * 100).toFixed(1) + '%' : '—';
+
 // ── Drill-down row builders ───────────────────────────────────────────────────
 function toRevDrillRows(payments) {
   return payments.map(p => ({
@@ -420,23 +441,6 @@ function toExpDrillRows(expenses) {
     eur:      toEUR(e.amount, e.currency, e.date)
   })).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 }
-
-const REV_DRILL_COLS = [
-  { key: 'date',     label: 'Date',     format: v => fmtDate(v) },
-  { key: 'property', label: 'Property' },
-  { key: 'type',     label: 'Type'     },
-  { key: 'stream',   label: 'Stream'   },
-  { key: 'status',   label: 'Status'   },
-  { key: 'eur',      label: 'EUR',      right: true, format: v => formatEUR(v) }
-];
-
-const EXP_DRILL_COLS = [
-  { key: 'date',     label: 'Date',     format: v => fmtDate(v) },
-  { key: 'property', label: 'Property' },
-  { key: 'type',     label: 'Type'     },
-  { key: 'category', label: 'Category' },
-  { key: 'eur',      label: 'EUR',      right: true, format: v => formatEUR(v) }
-];
 
 const MIXED_DRILL_COLS = [
   { key: 'date',     label: 'Date',     format: v => fmtDate(v) },
@@ -462,14 +466,25 @@ function toPropValueRows(propData) {
     invested: d.totalInvested
   })).sort((a, b) => b.invested - a.invested);
 }
-const PROP_VALUE_COLS = [
-  { key: 'name',     label: 'Property'        },
-  { key: 'stream',   label: 'Stream'          },
-  { key: 'owner',    label: 'Owner'           },
-  { key: 'pdate',    label: 'Purchase Date',   format: v => fmtDate(v) },
-  { key: 'purchase', label: 'Purchase (EUR)',  right: true, format: v => formatEUR(v) },
-  { key: 'reno',     label: 'All-Time CapEx',  right: true, format: v => formatEUR(v) },
-  { key: 'invested', label: 'Total Invested',  right: true, format: v => formatEUR(v) }
+// Portfolio Units: which properties make up the count (one unit each,
+// whatever the owner share).
+const UNITS_COLS = [
+  { key: 'name',   label: 'Property' },
+  { key: 'status', label: 'Status' },
+  { key: 'pdate',  label: 'Purchased', format: v => v ? fmtDate(v) : '' },
+  { key: 'owner',  label: 'Owner' },
+  { key: 'stream', label: 'Stream' },
+  { key: 'share',  label: 'Your Share', right: true, format: v => v == null ? '' : `${Math.round(v * 100)}%`, tip: 'Amounts elsewhere are counted at this share; the unit still counts as one' },
+  { key: 'units',  label: 'Units', right: true }
+];
+// Invested-capital donut slice: purchase + all-time CapEx per property.
+const INVESTED_SPLIT_COLS = [
+  { key: 'name',     label: 'Property' },
+  { key: 'pdate',    label: 'Purchased', format: v => v && v !== '—' ? fmtDate(v) : '' },
+  { key: 'purchase', label: 'Purchase', right: true, format: v => formatEUR(v) },
+  { key: 'reno',     label: '+ All-Time CapEx', right: true, format: v => formatEUR(v) },
+  { key: 'invested', label: '= Invested', right: true, format: v => formatEUR(v) },
+  { key: 'pct',      label: '% of Slice', right: true, format: v => v == null ? '' : `${v.toFixed(1)}%` }
 ];
 
 function toROIDrillRows(propData) {
@@ -500,6 +515,90 @@ function mixedRows(pays, exps) {
     ...toRevDrillRows(pays) .map(r => ({ ...r, kind: 'Revenue', category: '—' })),
     ...toExpDrillRows(exps) .map(r => ({ ...r, kind: r.type,   status:   '—' }))
   ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
+// Per-property drill-downs (property summary boxes): each one lists the
+// records behind that figure, with the arithmetic in its columns and a Total.
+const fmtDateOrBlank = v => v ? fmtDate(v) : '';
+const eurOrBlank = v => v == null || v === '' ? '' : formatEUR(v);
+function toPropExpRows(expenses) {
+  return expenses.map(e => ({
+    date: e.date, category: e.category || '—', description: e.description || e.notes || '—',
+    eur: toEUR(e.amount, e.currency, e.date)
+  })).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+const PROP_REV_COLS = [
+  { key: 'date',   label: 'Date',   format: fmtDateOrBlank },
+  { key: 'type',   label: 'Type' },
+  { key: 'stream', label: 'Stream' },
+  { key: 'eur',    label: 'Paid (EUR)', right: true, format: v => formatEUR(v), tip: 'Paid amount, at this property\'s owner share' }
+];
+const PROP_OPEX_COLS = [
+  { key: 'date',        label: 'Date', format: fmtDateOrBlank },
+  { key: 'category',    label: 'Category' },
+  { key: 'description', label: 'Description' },
+  { key: 'eur',         label: 'Operating Expense', right: true, format: v => formatEUR(v) },
+  { key: 'pctRev',      label: '% of Revenue', right: true, format: v => v == null ? '' : `${v.toFixed(1)}%`, tip: 'This expense ÷ the property\'s revenue for the period' }
+];
+const PROP_CAPEX_COLS = [
+  { key: 'date',        label: 'Date', format: fmtDateOrBlank },
+  { key: 'category',    label: 'Category' },
+  { key: 'description', label: 'Description' },
+  { key: 'eur',         label: 'CapEx (period)', right: true, format: v => formatEUR(v) },
+  { key: 'pct',         label: '% of Period CapEx', right: true, format: v => v == null ? '' : `${v.toFixed(1)}%` }
+];
+const PROP_ALLTIME_CAPEX_COLS = [
+  { key: 'date',        label: 'Date', format: fmtDateOrBlank },
+  { key: 'category',    label: 'Category' },
+  { key: 'description', label: 'Description' },
+  { key: 'eur',         label: 'CapEx', right: true, format: v => formatEUR(v) },
+  { key: 'running',     label: 'Running Total', right: true, format: eurOrBlank, tip: 'All-time CapEx up to and including this record' }
+];
+function openPropExpDrill(title, expenses, kind, base) {
+  const rows = toPropExpRows(expenses);
+  const total = { date: '', category: 'Total', description: '', eur: sumBy(rows, 'eur') };
+  if (kind === 'opex') {
+    rows.forEach(r => { r.pctRev = base > 0 ? r.eur / base * 100 : null; });
+    total.pctRev = base > 0 ? total.eur / base * 100 : null;
+    return drillWithTotal(title, rows, PROP_OPEX_COLS, total);
+  }
+  if (kind === 'capex') {
+    rows.forEach(r => { r.pct = total.eur > 0 ? r.eur / total.eur * 100 : null; });
+    total.pct = total.eur > 0 ? 100 : null;
+    return drillWithTotal(title, rows, PROP_CAPEX_COLS, total);
+  }
+  // all-time: oldest first, with a running total
+  rows.reverse();
+  let run = 0;
+  rows.forEach(r => { run += r.eur; r.running = run; });
+  return drillWithTotal(title, rows, PROP_ALLTIME_CAPEX_COLS, { ...total, running: null });
+}
+// Revenue (+), operating expenses (−) and, for Net, CapEx (−) side by side.
+function toSignedRows(pays, opExps, capExps = []) {
+  return [
+    ...pays.map(p => ({ date: p.date, kind: 'Revenue', detail: [p.type, STREAMS[p.stream]?.short].filter(Boolean).join(' · ') || '—', rev: toEUR(p.amount, p.currency, p.date) })),
+    ...opExps.map(e => ({ date: e.date, kind: 'OpEx', detail: e.category || '—', opex: toEUR(e.amount, e.currency, e.date) })),
+    ...capExps.map(e => ({ date: e.date, kind: 'CapEx', detail: e.category || '—', capex: toEUR(e.amount, e.currency, e.date) }))
+  ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+const PROFIT_COLS = [
+  { key: 'date',   label: 'Date', format: fmtDateOrBlank },
+  { key: 'kind',   label: 'Kind' },
+  { key: 'detail', label: 'Detail' },
+  { key: 'rev',    label: '+ Revenue', right: true, format: eurOrBlank },
+  { key: 'opex',   label: '− Operating Exp.', right: true, format: eurOrBlank },
+  { key: 'profit', label: '= Operating Profit', right: true, format: eurOrBlank }
+];
+const NET_AFTER_CAPEX_COLS = [
+  ...PROFIT_COLS.slice(0, 5),
+  { key: 'capex',  label: '− CapEx', right: true, format: eurOrBlank },
+  { key: 'net',    label: '= Net after CapEx', right: true, format: eurOrBlank }
+];
+function openSignedDrill(title, pays, opExps, capExps) {
+  const rows = toSignedRows(pays, opExps, capExps || []);
+  const rev = sumBy(rows, 'rev'), opex = sumBy(rows, 'opex'), capex = sumBy(rows, 'capex');
+  if (!capExps) return drillWithTotal(title, rows, PROFIT_COLS, { kind: 'Total', detail: '', rev, opex, profit: rev - opex });
+  return drillWithTotal(title, rows, NET_AFTER_CAPEX_COLS, { kind: 'Total', detail: '', rev, opex, capex, net: rev - opex - capex });
 }
 
 function formatMonthKey(mk) {
@@ -759,6 +858,105 @@ const FINANCING_DRILL_COLS = [
   { key: 'status',    label: 'Status'                                                        }
 ];
 
+// Financing KPI cards — each opens the figures behind its own number.
+const yrs = v => v == null ? '—' : v.toFixed(1);
+const FIN_CARD = {
+  debt: {
+    title: 'Total Outstanding Debt',
+    cols: [
+      { key: 'name',      label: 'Property' },
+      { key: 'principal', label: 'Original Loan', right: true, format: v => v == null ? '' : formatEUR(v) },
+      { key: 'monthly',   label: 'Monthly Payment', right: true, format: v => v ? formatEUR(v) : '—' },
+      { key: 'rate',      label: 'Rate', right: true, format: v => v ? `${v}%` : '—' },
+      { key: 'remaining', label: 'Est. Remaining', right: true, format: v => formatEUR(v), tip: 'Amortised balance as of the end of the period' },
+      { key: 'pct',       label: '% of Debt', right: true, format: v => v == null ? '' : `${v.toFixed(1)}%` }
+    ],
+    sort: 'remaining'
+  },
+  leverage: {
+    title: 'Leverage Ratio',
+    cols: [
+      { key: 'name',      label: 'Property' },
+      { key: 'purchase',  label: 'Purchase Price', right: true, format: v => formatEUR(v), tip: 'The leverage ratio is measured against purchase price' },
+      { key: 'remaining', label: 'Est. Remaining Debt', right: true, format: v => formatEUR(v) },
+      { key: 'ratio',     label: '= Debt ÷ Price', right: true, format: v => v == null ? '—' : `${v.toFixed(1)}%` }
+    ],
+    sort: 'ratio'
+  },
+  monthly: {
+    title: 'Monthly Debt Burden',
+    cols: [
+      { key: 'name',    label: 'Property' },
+      { key: 'monthly', label: 'Monthly Payment', right: true, format: v => formatEUR(v) },
+      { key: 'annual',  label: 'Per Year (× 12)', right: true, format: v => formatEUR(v) },
+      { key: 'rate',    label: 'Rate', right: true, format: v => v ? `${v}%` : '—' },
+      { key: 'pct',     label: '% of Burden', right: true, format: v => v == null ? '' : `${v.toFixed(1)}%` }
+    ],
+    sort: 'monthly'
+  },
+  payoff: {
+    title: 'Years to Payoff',
+    cols: [
+      { key: 'name',      label: 'Property' },
+      { key: 'remaining', label: 'Est. Remaining', right: true, format: v => v == null ? '' : formatEUR(v) },
+      { key: 'monthly',   label: 'Monthly Payment', right: true, format: v => v == null ? '' : (v ? formatEUR(v) : '—') },
+      { key: 'rate',      label: 'Rate', right: true, format: v => v == null ? '' : (v ? `${v}%` : '—') },
+      { key: 'months',    label: 'Months Left', right: true, format: v => v == null ? '—' : String(v) },
+      { key: 'yearsLeft', label: 'Years Left', right: true, format: yrs }
+    ],
+    sort: 'yearsLeft'
+  },
+  mortgaged: { cols: FINANCING_DRILL_COLS, sort: 'remaining' },
+  none: {
+    cols: [
+      { key: 'name',     label: 'Property' },
+      { key: 'owner',    label: 'Owner' },
+      { key: 'stream',   label: 'Stream' },
+      { key: 'pdate',    label: 'Purchased', format: v => v ? fmtDate(v) : '' },
+      { key: 'purchase', label: 'Purchase Price', right: true, format: v => formatEUR(v) },
+      { key: 'note',     label: 'Mortgage' }
+    ],
+    sort: 'purchase'
+  }
+};
+function openFinancingCard(kind, finData, title) {
+  const spec = FIN_CARD[kind];
+  const t = finData.totals;
+  const priceOf = p => p.purchasePrice ? toEUR(p.purchasePrice, p.currency, p.purchaseDate) * ownerWeight(p) : 0;
+  const base = d => ({
+    name: shareName(d.prop, ownerWeight(d.prop)), owner: OWNERS[d.prop.owner] || d.prop.owner || '—',
+    stream: STREAMS[propStream(d.prop)]?.short || propStream(d.prop), pdate: d.prop.purchaseDate || '',
+    principal: d.principalEUR || 0, remaining: d.remaining || 0, monthly: d.monthlyDebt || 0,
+    rate: d.prop.mortgageRate || 0, yearsLeft: d.yearsLeft, purchase: priceOf(d.prop)
+  });
+  let rows, total;
+  if (kind === 'debt') {
+    rows = finData.finData.filter(d => d.financed).map(base);
+    rows.forEach(r => { r.pct = t.totalDebt > 0 ? r.remaining / t.totalDebt * 100 : null; });
+    total = { name: 'Total', principal: sumBy(rows, 'principal'), monthly: null, rate: null, remaining: t.totalDebt, pct: t.totalDebt > 0 ? 100 : null };
+  } else if (kind === 'leverage') {
+    rows = finData.finData.map(base);
+    rows.forEach(r => { r.ratio = r.purchase > 0 ? r.remaining / r.purchase * 100 : null; });
+    total = { name: 'Total', purchase: sumBy(rows, 'purchase'), remaining: sumBy(rows, 'remaining'), ratio: t.leverageRatio };
+  } else if (kind === 'monthly') {
+    rows = finData.finData.filter(d => d.financed && !d.paidOff).map(base);
+    rows.forEach(r => { r.annual = r.monthly * 12; r.pct = t.totalMonthly > 0 ? r.monthly / t.totalMonthly * 100 : null; });
+    total = { name: 'Total', monthly: t.totalMonthly, annual: t.totalMonthly * 12, rate: null, pct: t.totalMonthly > 0 ? 100 : null };
+  } else if (kind === 'payoff') {
+    rows = finData.finData.filter(d => d.financed && !d.paidOff).map(base);
+    rows.forEach(r => { r.months = r.yearsLeft != null ? Math.round(r.yearsLeft * 12) : null; });
+    total = { name: 'Average (properties with payment data)', remaining: null, monthly: null, rate: null,
+      months: t.avgYearsLeft != null ? Math.round(t.avgYearsLeft * 12) : null, yearsLeft: t.avgYearsLeft };
+  } else if (kind === 'mortgaged') {
+    return drillWithTotal(title, toFinancingDrillRows(finData.finData.filter(d => d.financed)), FINANCING_DRILL_COLS, null);
+  } else {
+    rows = finData.finData.filter(d => !d.financed).map(d => ({ ...base(d), note: 'None recorded (cash purchase or no mortgage data)' }));
+    total = { name: 'Total', owner: '', stream: '', pdate: '', purchase: sumBy(rows, 'purchase'), note: `${rows.length} propert${rows.length === 1 ? 'y' : 'ies'}` };
+  }
+  rows.sort((a, b) => (b[spec.sort] ?? -Infinity) - (a[spec.sort] ?? -Infinity));
+  drillWithTotal(title || spec.title, rows, spec.cols, total);
+}
+
 function toMortgageDetailRows(d) {
   if (!d.financed) {
     return [
@@ -796,9 +994,10 @@ function openOperatingProfitModal({ totals, propData, cmpTotals, cmpPropData, cm
   const sorted = [...propData].filter(d => d.rev > 0 || d.opEx > 0).sort((a, b) => b.profit - a.profit);
   if (sorted.length) {
     body.appendChild(mkSectionLabel('P&L by Property'));
-    body.appendChild(mkModalTable(
-      ['Property', 'Revenue', 'OpEx', 'Profit', 'Margin'],
-      sorted.map(d => [d.prop.name, formatEUR(d.rev), formatEUR(d.opEx), formatEUR(d.profit), d.rev > 0 ? (d.profit / d.rev * 100).toFixed(0) + '%' : '—'])
+    body.appendChild(tableWithTotal(
+      ['Property', 'Revenue', '− OpEx', '= Operating Profit', 'Margin'],
+      sorted.map(d => [shareName(d.prop, d.share), formatEUR(d.rev), formatEUR(d.opEx), formatEUR(d.profit), d.rev > 0 ? (d.profit / d.rev * 100).toFixed(0) + '%' : '—']),
+      ['Total', formatEUR(totals.rev), formatEUR(totals.opEx), formatEUR(totals.profit), totals.rev > 0 ? (totals.profit / totals.rev * 100).toFixed(0) + '%' : '—']
     ));
   }
   if (cmpPropData && cmpTotals) {
@@ -806,9 +1005,10 @@ function openOperatingProfitModal({ totals, propData, cmpTotals, cmpPropData, cm
     if (cmpSorted.length) {
       body.appendChild(el('div', { style: 'margin-top:20px' }));
       body.appendChild(mkSectionLabel(`P&L by Property — ${cmpLabel}`));
-      body.appendChild(mkModalTable(
-        ['Property', 'Revenue', 'OpEx', 'Profit', 'Margin'],
-        cmpSorted.map(d => [d.prop.name, formatEUR(d.rev), formatEUR(d.opEx), formatEUR(d.profit), d.rev > 0 ? (d.profit / d.rev * 100).toFixed(0) + '%' : '—'])
+      body.appendChild(tableWithTotal(
+        ['Property', 'Revenue', '− OpEx', '= Operating Profit', 'Margin'],
+        cmpSorted.map(d => [shareName(d.prop, d.share), formatEUR(d.rev), formatEUR(d.opEx), formatEUR(d.profit), d.rev > 0 ? (d.profit / d.rev * 100).toFixed(0) + '%' : '—']),
+        ['Total', formatEUR(cmpTotals.rev), formatEUR(cmpTotals.opEx), formatEUR(cmpTotals.profit), cmpTotals.rev > 0 ? (cmpTotals.profit / cmpTotals.rev * 100).toFixed(0) + '%' : '—']
       ));
     }
   }
@@ -822,9 +1022,10 @@ function openOperatingExpensesModal({ totals, opExpenses, cmpTotals, cmpOpExpens
   const cats = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
   if (cats.length) {
     body.appendChild(mkSectionLabel('By Category'));
-    body.appendChild(mkModalTable(
-      ['Category', 'Amount', '% of OpEx'],
-      cats.map(([c, v]) => [c, formatEUR(v), totals.opEx > 0 ? (v / totals.opEx * 100).toFixed(1) + '%' : '—'])
+    body.appendChild(tableWithTotal(
+      ['Category', 'Operating Expense', '% of OpEx'],
+      cats.map(([c, v]) => [c, formatEUR(v), pctOf(v, totals.opEx)]),
+      ['Total', formatEUR(totals.opEx), totals.opEx > 0 ? '100%' : '—']
     ));
   }
   const propOpMap = new Map();
@@ -833,9 +1034,10 @@ function openOperatingExpensesModal({ totals, opExpenses, cmpTotals, cmpOpExpens
   if (props.length) {
     body.appendChild(el('div', { style: 'margin-top:20px' }));
     body.appendChild(mkSectionLabel('By Property'));
-    body.appendChild(mkModalTable(
-      ['Property', 'Amount', '% of OpEx'],
-      props.map(p => [p.n, formatEUR(p.v), totals.opEx > 0 ? (p.v / totals.opEx * 100).toFixed(1) + '%' : '—'])
+    body.appendChild(tableWithTotal(
+      ['Property', 'Operating Expense', '% of OpEx'],
+      props.map(p => [p.n, formatEUR(p.v), pctOf(p.v, totals.opEx)]),
+      ['Total', formatEUR(totals.opEx), totals.opEx > 0 ? '100%' : '—']
     ));
   }
   if (cmpOpExpenses && cmpTotals) {
@@ -845,9 +1047,10 @@ function openOperatingExpensesModal({ totals, opExpenses, cmpTotals, cmpOpExpens
     if (cmpCats.length) {
       body.appendChild(el('div', { style: 'margin-top:20px' }));
       body.appendChild(mkSectionLabel(`By Category — ${cmpLabel}`));
-      body.appendChild(mkModalTable(
-        ['Category', 'Amount', '% of OpEx'],
-        cmpCats.map(([c, v]) => [c, formatEUR(v), cmpTotals.opEx > 0 ? (v / cmpTotals.opEx * 100).toFixed(1) + '%' : '—'])
+      body.appendChild(tableWithTotal(
+        ['Category', 'Operating Expense', '% of OpEx'],
+        cmpCats.map(([c, v]) => [c, formatEUR(v), pctOf(v, cmpTotals.opEx)]),
+        ['Total', formatEUR(cmpTotals.opEx), cmpTotals.opEx > 0 ? '100%' : '—']
       ));
     }
     const cmpPropOpMap = new Map();
@@ -856,9 +1059,10 @@ function openOperatingExpensesModal({ totals, opExpenses, cmpTotals, cmpOpExpens
     if (cmpProps.length) {
       body.appendChild(el('div', { style: 'margin-top:20px' }));
       body.appendChild(mkSectionLabel(`By Property — ${cmpLabel}`));
-      body.appendChild(mkModalTable(
-        ['Property', 'Amount', '% of OpEx'],
-        cmpProps.map(p => [p.n, formatEUR(p.v), cmpTotals.opEx > 0 ? (p.v / cmpTotals.opEx * 100).toFixed(1) + '%' : '—'])
+      body.appendChild(tableWithTotal(
+        ['Property', 'Operating Expense', '% of OpEx'],
+        cmpProps.map(p => [p.n, formatEUR(p.v), pctOf(p.v, cmpTotals.opEx)]),
+        ['Total', formatEUR(cmpTotals.opEx), cmpTotals.opEx > 0 ? '100%' : '—']
       ));
     }
   }
@@ -872,9 +1076,10 @@ function openPropertyCapExModal({ totals, capExpenses, cmpTotals, cmpCapExpenses
   const props = [...propCapMap.values()].sort((a, b) => b.v - a.v);
   if (props.length) {
     body.appendChild(mkSectionLabel('CapEx by Property'));
-    body.appendChild(mkModalTable(
-      ['Property', 'Records', 'Amount', '% of Total'],
-      props.map(p => [p.n, String(p.cnt), formatEUR(p.v), totals.capEx > 0 ? (p.v / totals.capEx * 100).toFixed(1) + '%' : '—'])
+    body.appendChild(tableWithTotal(
+      ['Property', 'Records', 'CapEx', '% of CapEx'],
+      props.map(p => [p.n, String(p.cnt), formatEUR(p.v), pctOf(p.v, totals.capEx)]),
+      ['Total', String(capExpenses.length), formatEUR(totals.capEx), totals.capEx > 0 ? '100%' : '—']
     ));
   }
   const catMap = new Map();
@@ -883,9 +1088,10 @@ function openPropertyCapExModal({ totals, capExpenses, cmpTotals, cmpCapExpenses
   if (cats.length) {
     body.appendChild(el('div', { style: 'margin-top:20px' }));
     body.appendChild(mkSectionLabel('By Category'));
-    body.appendChild(mkModalTable(
-      [{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of Total', right: true, muted: true }],
-      cats.map(([c, v]) => [c, formatEUR(v), totals.capEx > 0 ? (v / totals.capEx * 100).toFixed(1) + '%' : '—'])
+    body.appendChild(tableWithTotal(
+      [{ label: 'Category' }, { label: 'CapEx', right: true }, { label: '% of CapEx', right: true, muted: true }],
+      cats.map(([c, v]) => [c, formatEUR(v), pctOf(v, totals.capEx)]),
+      ['Total', formatEUR(totals.capEx), totals.capEx > 0 ? '100%' : '—']
     ));
   }
   if (cmpCapExpenses && cmpTotals) {
@@ -895,9 +1101,10 @@ function openPropertyCapExModal({ totals, capExpenses, cmpTotals, cmpCapExpenses
     if (cmpProps.length) {
       body.appendChild(el('div', { style: 'margin-top:20px' }));
       body.appendChild(mkSectionLabel(`CapEx by Property — ${cmpLabel}`));
-      body.appendChild(mkModalTable(
-        ['Property', 'Records', 'Amount', '% of Total'],
-        cmpProps.map(p => [p.n, String(p.cnt), formatEUR(p.v), cmpTotals.capEx > 0 ? (p.v / cmpTotals.capEx * 100).toFixed(1) + '%' : '—'])
+      body.appendChild(tableWithTotal(
+        ['Property', 'Records', 'CapEx', '% of CapEx'],
+        cmpProps.map(p => [p.n, String(p.cnt), formatEUR(p.v), pctOf(p.v, cmpTotals.capEx)]),
+        ['Total', String(cmpCapExpenses.length), formatEUR(cmpTotals.capEx), cmpTotals.capEx > 0 ? '100%' : '—']
       ));
     }
     const cmpCatMap = new Map();
@@ -906,9 +1113,10 @@ function openPropertyCapExModal({ totals, capExpenses, cmpTotals, cmpCapExpenses
     if (cmpCats.length) {
       body.appendChild(el('div', { style: 'margin-top:20px' }));
       body.appendChild(mkSectionLabel(`By Category — ${cmpLabel}`));
-      body.appendChild(mkModalTable(
-        [{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of Total', right: true, muted: true }],
-        cmpCats.map(([c, v]) => [c, formatEUR(v), cmpTotals.capEx > 0 ? (v / cmpTotals.capEx * 100).toFixed(1) + '%' : '—'])
+      body.appendChild(tableWithTotal(
+        [{ label: 'Category' }, { label: 'CapEx', right: true }, { label: '% of CapEx', right: true, muted: true }],
+        cmpCats.map(([c, v]) => [c, formatEUR(v), pctOf(v, cmpTotals.capEx)]),
+        ['Total', formatEUR(cmpTotals.capEx), cmpTotals.capEx > 0 ? '100%' : '—']
       ));
     }
   }
@@ -936,7 +1144,7 @@ function openPropertySummaryModal(d) {
     {
       label: 'Revenue',
       value: mkDrillValue(formatEUR(d.rev), () =>
-        drillDownModal(`${prop.name} — Revenue`, toRevDrillRows(d.propPayments), REV_DRILL_COLS)),
+        drillWithTotal(`${prop.name} — Revenue`, toRevDrillRows(d.propPayments), PROP_REV_COLS, { type: 'Total', stream: '', eur: d.rev })),
       explain: {
         title: 'Revenue', formula: 'Sum of paid payments for this property, dated within the selected period.',
         inputs: [
@@ -949,7 +1157,7 @@ function openPropertySummaryModal(d) {
     },
     { label: 'Operating Expenses',
       value: mkDrillValue(formatEUR(d.opEx), () =>
-        drillDownModal(`${prop.name} — Operating Expenses`, toExpDrillRows(d.propOpExpenses), EXP_DRILL_COLS)),
+        openPropExpDrill(`${prop.name} — Operating Expenses`, d.propOpExpenses, 'opex', d.rev)),
       sub: d.rev > 0 ? `${(d.opEx / d.rev * 100).toFixed(0)}% of revenue` : null,
       explain: {
         title: 'Operating Expenses', formula: 'Sum of expenses in the selected period, excluding CapEx/renovation.',
@@ -959,7 +1167,7 @@ function openPropertySummaryModal(d) {
     },
     { label: 'Operating Profit',
       value: mkDrillValue(formatEUR(d.profit), () =>
-        drillDownModal(`${prop.name} — Operating Profit`, mixedRows(d.propPayments, d.propOpExpenses), MIXED_DRILL_COLS)),
+        openSignedDrill(`${prop.name} — Operating Profit`, d.propPayments, d.propOpExpenses)),
       sub: d.rev > 0 ? `Margin ${(d.profit / d.rev * 100).toFixed(0)}%` : null,
       explain: {
         title: 'Operating Profit', formula: 'Revenue − Operating Expenses',
@@ -969,11 +1177,11 @@ function openPropertySummaryModal(d) {
     },
     { label: 'CapEx (period)',
       value: mkDrillValue(formatEUR(d.capEx), () =>
-        drillDownModal(`${prop.name} — CapEx (period)`, toExpDrillRows(d.propCapExpenses), EXP_DRILL_COLS))
+        openPropExpDrill(`${prop.name} — CapEx (period)`, d.propCapExpenses, 'capex'))
     },
     { label: 'Net (after CapEx)',
       value: mkDrillValue(formatEUR(d.net), () =>
-        drillDownModal(`${prop.name} — Net (after CapEx)`, mixedRows(d.propPayments, [...d.propOpExpenses, ...d.propCapExpenses]), MIXED_DRILL_COLS)),
+        openSignedDrill(`${prop.name} — Net (after CapEx)`, d.propPayments, d.propOpExpenses, d.propCapExpenses)),
       explain: {
         title: 'Net (after CapEx)', formula: 'Revenue − Operating Expenses − CapEx',
         inputs: [{ label: 'Revenue', value: formatEUR(d.rev) }, { label: 'Operating Expenses', value: formatEUR(d.opEx) }, { label: 'CapEx (period)', value: formatEUR(d.capEx) }],
@@ -982,7 +1190,7 @@ function openPropertySummaryModal(d) {
     },
     { label: 'All-time CapEx',
       value: mkDrillValue(formatEUR(d.allTimeCapEx), () =>
-        drillDownModal(`${prop.name} — All-time CapEx`, toExpDrillRows(listActive('expenses').filter(e => isCapEx(e) && e.propertyId === prop.id)), EXP_DRILL_COLS))
+        openPropExpDrill(`${prop.name} — All-time CapEx`, listActive('expenses').filter(e => isCapEx(e) && e.propertyId === prop.id).map(e => d.share < 1 ? { ...e, amount: (Number(e.amount) || 0) * d.share } : e), 'alltime'))
     }
   ];
   if (d.expectedBookedEUR !== null) {
@@ -1176,7 +1384,8 @@ function computePropertyInsights({ totals, propData, opExpenses, capExpenses, av
       title: 'NEGATIVE ROI',
       text: `Portfolio average Simple ROI is ${avgROI.toFixed(1)}% — net losses exceed invested capital.`,
       inspect: 'ROI Overview',
-      onClick: () => drillDownModal('Portfolio ROI Overview', toROIDrillRows(propData), ROI_DRILL_COLS)
+      onClick: () => drillWithTotal('Portfolio ROI Overview', toROIDrillRows(propData), ROI_DRILL_COLS,
+        { name: 'Average (properties with an ROI)', rev: null, expenses: null, net: null, invested: null, roi: avgROI, annRoi: null, cocRoi: null })
     });
   } else if (worst && avgROI !== null && worst.simpleROI !== null && worst.simpleROI < avgROI - 15) {
     signals.push({
@@ -1205,11 +1414,32 @@ function computePropertyInsights({ totals, propData, opExpenses, capExpenses, av
       title: 'BEST & WEAKEST',
       text: `Best: "${best.prop.name}" (ROI ${best.simpleROI != null ? best.simpleROI.toFixed(1) + '%' : '—'}) · Weakest: "${worst.prop.name}" (ROI ${worst.simpleROI != null ? worst.simpleROI.toFixed(1) + '%' : '—'})${avgROI != null ? ` · portfolio avg ${avgROI.toFixed(1)}%` : ''}${spread > 20 ? ` — a ${spread.toFixed(0)} pp spread, review allocation.` : '.'}`,
       inspect: 'Property Comparison',
-      onClick: () => drillDownModal('Property Comparison — Best vs Weakest', toROIDrillRows([best, worst]), ROI_DRILL_COLS)
+      onClick: () => openBestWorstModal(best, worst, avgROI)
     });
   }
 
   return signals;
+}
+
+// Best vs Weakest insight: the two properties side by side, metric by metric.
+function openBestWorstModal(best, worst, avgROI) {
+  const p = v => v == null ? '—' : `${v.toFixed(1)}%`;
+  const gapP = (a, b) => a == null || b == null ? '—' : `${(a - b).toFixed(1)} pp`;
+  const rows = [
+    { metric: 'Simple ROI',      best: p(best.simpleROI),     worst: p(worst.simpleROI),     gap: gapP(best.simpleROI, worst.simpleROI), avg: p(avgROI) },
+    { metric: 'Annualized ROI',  best: p(best.annualizedROI), worst: p(worst.annualizedROI), gap: gapP(best.annualizedROI, worst.annualizedROI), avg: '' },
+    { metric: 'Revenue',         best: formatEUR(best.rev),    worst: formatEUR(worst.rev),    gap: formatEUR(best.rev - worst.rev), avg: '' },
+    { metric: 'Operating Exp.',  best: formatEUR(best.opEx),   worst: formatEUR(worst.opEx),   gap: formatEUR(best.opEx - worst.opEx), avg: '' },
+    { metric: 'Operating Profit', best: formatEUR(best.profit), worst: formatEUR(worst.profit), gap: formatEUR(best.profit - worst.profit), avg: '' },
+    { metric: 'Total Invested',  best: formatEUR(best.totalInvested), worst: formatEUR(worst.totalInvested), gap: formatEUR(best.totalInvested - worst.totalInvested), avg: '' }
+  ];
+  drillDownModal('Property Comparison — Best vs Weakest', rows, [
+    { key: 'metric', label: 'Measure' },
+    { key: 'best',   label: `Best: ${shareName(best.prop, best.share)}`, right: true },
+    { key: 'worst',  label: `Weakest: ${shareName(worst.prop, worst.share)}`, right: true },
+    { key: 'gap',    label: 'Gap', right: true },
+    { key: 'avg',    label: 'Portfolio Avg', right: true }
+  ]);
 }
 
 // ── Property Lifecycle Timeline ────────────────────────────────────────────────
@@ -1578,7 +1808,16 @@ function buildView() {
     label: 'Portfolio Units',
     value: String(heldData.length),
     subtitle: `held on ${fmtDate(asOf)}${sharedHeld ? ` · ${sharedHeld} shared (amounts at 50%)` : ''}`,
-    onClick: () => drillDownModal('Portfolio Properties', [...toPropValueRows(heldData)].sort((a, b) => a.name.localeCompare(b.name)), PROP_VALUE_COLS)
+    onClick: () => drillWithTotal('Portfolio Units', heldData.map(d => ({
+      name: d.prop.name,
+      status: PROPERTY_STATUSES[d.prop.status || 'active']?.label || d.prop.status || '—',
+      pdate: d.prop.purchaseDate || '',
+      owner: OWNERS[d.prop.owner] || d.prop.owner || '—',
+      stream: STREAMS[propStream(d.prop)]?.short || propStream(d.prop),
+      share: d.share,
+      units: 1
+    })).sort((a, b) => (a.pdate || '').localeCompare(b.pdate || '') || a.name.localeCompare(b.name)), UNITS_COLS,
+    { name: 'Total', status: '', pdate: '', owner: '', stream: '', share: null, units: heldData.length })
   });
 
   // ── Section 2: Period Performance ─────────────────────────────────────────
@@ -1599,9 +1838,10 @@ function buildView() {
       const sorted = [...propData].filter(d => d.rev > 0).sort((a, b) => b.rev - a.rev);
       if (sorted.length) {
         body.appendChild(mkSectionLabel('Revenue by Property'));
-        body.appendChild(mkModalTable(
-          ['Property', 'Revenue', '% of Total'],
-          sorted.map(d => [d.prop.name, formatEUR(d.rev), totals.rev > 0 ? (d.rev / totals.rev * 100).toFixed(1) + '%' : '—'])
+        body.appendChild(tableWithTotal(
+          ['Property', 'Paid Payments', 'Revenue', '% of Total'],
+          sorted.map(d => [shareName(d.prop, d.share), String(d.propPayments.length), formatEUR(d.rev), pctOf(d.rev, totals.rev)]),
+          ['Total', String(sorted.reduce((s, d) => s + d.propPayments.length, 0)), formatEUR(totals.rev), totals.rev > 0 ? '100%' : '—']
         ));
       }
       if (cmpData) {
@@ -1609,9 +1849,10 @@ function buildView() {
         if (cmpSorted.length) {
           body.appendChild(el('div', { style: 'margin-top:20px' }));
           body.appendChild(mkSectionLabel(`Revenue by Property — ${cmpRange.label}`));
-          body.appendChild(mkModalTable(
-            ['Property', 'Revenue', '% of Total'],
-            cmpSorted.map(d => [d.prop.name, formatEUR(d.rev), cmpData.totals.rev > 0 ? (d.rev / cmpData.totals.rev * 100).toFixed(1) + '%' : '—'])
+          body.appendChild(tableWithTotal(
+            ['Property', 'Paid Payments', 'Revenue', '% of Total'],
+            cmpSorted.map(d => [shareName(d.prop, d.share), String(d.propPayments.length), formatEUR(d.rev), pctOf(d.rev, cmpData.totals.rev)]),
+            ['Total', String(cmpSorted.reduce((s, d) => s + d.propPayments.length, 0)), formatEUR(cmpData.totals.rev), cmpData.totals.rev > 0 ? '100%' : '—']
           ));
         }
       }
@@ -1688,26 +1929,27 @@ function buildView() {
         sgrid.appendChild(mkSummaryBox('Net Yield (avg)', avgNetYield !== null ? avgNetYield.toFixed(1) + '%' : '—', `${yieldLabel} net income ÷ total invested`));
         body.appendChild(sgrid);
         body.appendChild(mkSectionLabel('Per Property — Gross vs Net Yield'));
-        // Build per-property net yield
-        const perPropWithNet = [...ryData.perProp].map(y => {
-          const pd = propData.find(d => d.prop.name === y.name);
-          let netYieldPct = null;
-          if (pd && pd.totalInvested > 0) {
-            const annualNet = annualizeForProperty(pd.prop, pd.netIncome, curRange);
-            netYieldPct = (annualNet / pd.totalInvested) * 100;
-          }
-          return { ...y, netYieldPct };
-        }).sort((a, b) => (b.yieldPct ?? -Infinity) - (a.yieldPct ?? -Infinity));
-        body.appendChild(mkModalTable(
-          [{ label: 'Property' }, { label: curRange.isIncomplete ? 'Revenue (actual)' : 'Annual Rev (est.)', right: true }, { label: 'Purchase Price', right: true }, { label: 'Gross Yield', right: true }, { label: 'Net Yield', right: true }],
-          perPropWithNet.map(y => [
-            y.name,
-            formatEUR(y.annualRev),
-            formatEUR(y.purchase),
-            y.yieldPct !== null ? y.yieldPct.toFixed(1) + '%' : '—',
-            y.netYieldPct !== null ? y.netYieldPct.toFixed(1) + '%' : '—'
-          ])
+        // Rebuilt from propData (matching by name missed shared properties,
+        // whose yield rows carry a "(50% share)" suffix).
+        const rows = propData.filter(d => d.purchaseEUR > 0).map(d => {
+          const annualRev = annualizeForProperty(d.prop, d.rev, curRange);
+          const annualNet = annualizeForProperty(d.prop, d.netIncome, curRange);
+          return {
+            name: shareName(d.prop, d.share), annualRev, purchase: d.purchaseEUR, gross: annualRev / d.purchaseEUR * 100,
+            annualNet, invested: d.totalInvested, net: d.totalInvested > 0 ? annualNet / d.totalInvested * 100 : null
+          };
+        }).sort((a, b) => b.gross - a.gross);
+        const revLabel = curRange.isIncomplete ? 'Revenue (actual)' : 'Annual Rev (est.)';
+        const netLabel = curRange.isIncomplete ? 'Net Income (actual)' : 'Annual Net (est.)';
+        const yp = v => v == null ? '—' : v.toFixed(1) + '%';
+        body.appendChild(tableWithTotal(
+          [{ label: 'Property' }, { label: revLabel, right: true }, { label: '÷ Purchase Price', right: true }, { label: '= Gross Yield', right: true },
+           { label: netLabel, right: true }, { label: '÷ Total Invested', right: true, tip: 'Purchase price + all-time CapEx' }, { label: '= Net Yield', right: true }],
+          rows.map(y => [y.name, formatEUR(y.annualRev), formatEUR(y.purchase), yp(y.gross), formatEUR(y.annualNet), formatEUR(y.invested), yp(y.net)]),
+          ['Average (card)', '', '', yp(ryData.avg), '', '', yp(avgNetYield)]
         ));
+        body.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:8px' },
+          'The card shows the simple average of each property\'s yield, so every property counts equally regardless of its price.'));
       }
       openModal({ title: 'Rental Yield by Property', body, large: true });
     }
@@ -1727,12 +1969,15 @@ function buildView() {
           'All properties had revenue in every month of the selected period.'
         ));
       } else {
-        body.appendChild(mkSectionLabel('Zero-Revenue Property-Months'));
-        body.appendChild(mkModalTable(
-          [{ label: 'Property' }, { label: 'Month' }],
-          [...vacData.details]
-            .sort((a, b) => a.month.localeCompare(b.month) || a.property.localeCompare(b.property))
-            .map(v => [v.property, formatMonthKey(v.month)])
+        body.appendChild(mkSectionLabel('Zero-Revenue Months by Property'));
+        const nMonths = getMonthKeysForRange(start, end).keys.length;
+        const byProp = new Map();
+        for (const v of vacData.details) { const a = byProp.get(v.property) || []; a.push(v.month); byProp.set(v.property, a); }
+        const rows = [...byProp.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+        body.appendChild(tableWithTotal(
+          [{ label: 'Property' }, { label: 'Dead Months', right: true }, { label: 'Months in Period', right: true }, { label: 'Months with no paid revenue' }],
+          rows.map(([name, months]) => [name, String(months.length), String(nMonths), months.sort().map(formatMonthKey).join(', ')]),
+          ['Total', String(vacData.count), String(nMonths * propData.length), `${byProp.size} of ${propData.length} propert${propData.length === 1 ? 'y' : 'ies'}`]
         ));
       }
       openModal({ title: `Vacancy — ${vacData.count} Dead Property-Month${vacData.count !== 1 ? 's' : ''}`, body, large: true });
@@ -1792,7 +2037,7 @@ function buildView() {
     wrap.appendChild(el('div', { class: 'card mb-16' },
       el('div', { class: 'card-header' },
         el('div', { class: 'card-title' }, 'Per-Property Monthly P&L Trend'),
-        el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Top 5 by revenue · Click a point for that month\'s breakdown')
+        el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Top 5 by revenue · Click a point for that property\'s records that month')
       ),
       el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'prop-single-trend' }))
     ));
@@ -1891,9 +2136,10 @@ function renderMonthBar({ payments, opExpenses }, monthKeys) {
       const props = [...propMap.values()].sort((a, b) => (b.rev - b.opEx) - (a.rev - a.opEx));
       if (props.length) {
         body.appendChild(mkSectionLabel('By Property'));
-        body.appendChild(mkModalTable(
-          [{ label: 'Property' }, { label: 'Revenue', right: true }, { label: 'OpEx', right: true }, { label: 'Profit', right: true }],
-          props.map(p => [p.n, formatEUR(p.rev), formatEUR(p.opEx), formatEUR(p.rev - p.opEx)])
+        body.appendChild(tableWithTotal(
+          [{ label: 'Property' }, { label: 'Revenue', right: true }, { label: '− OpEx', right: true }, { label: '= Profit', right: true }],
+          props.map(p => [p.n, formatEUR(p.rev), formatEUR(p.opEx), formatEUR(p.rev - p.opEx)]),
+          ['Total', formatEUR(mRev), formatEUR(mOpEx), formatEUR(mRev - mOpEx)]
         ));
       }
       openModal({ title: `${label} — P&L Summary`, body, large: true });
@@ -2234,7 +2480,11 @@ function renderInvestedSplitDonut({ propData }) {
     colors: entries.map((_, i) => PALETTE[i % PALETTE.length]),
     onClickItem: (_label, idx) => {
       const [groupLabel] = entries[idx];
-      drillDownModal(`Invested Capital — ${groupLabel}`, toPropValueRows(propData.filter(d => keyOf(d) === groupLabel)), PROP_VALUE_COLS);
+      const rows = toPropValueRows(propData.filter(d => keyOf(d) === groupLabel && d.totalInvested > 0));
+      const total = sumBy(rows, 'invested');
+      rows.forEach(r => { r.pct = total > 0 ? r.invested / total * 100 : null; });
+      drillWithTotal(`Invested Capital — ${groupLabel}`, rows, INVESTED_SPLIT_COLS,
+        { name: 'Total', pdate: '', purchase: sumBy(rows, 'purchase'), reno: sumBy(rows, 'reno'), invested: total, pct: total > 0 ? 100 : null });
     }
   });
 }
@@ -2270,7 +2520,7 @@ const ACQ_COLS = [
   { key: 'name',     label: 'Property' },
   { key: 'owner',    label: 'Owner' },
   { key: 'stream',   label: 'Stream' },
-  { key: 'pdate',    label: 'Purchase Date', format: v => fmtDate(v) },
+  { key: 'pdate',    label: 'Purchase Date', format: v => v ? fmtDate(v) : '' },
   { key: 'purchase', label: 'Purchase (EUR)', right: true, format: v => formatEUR(v) },
   { key: 'value',    label: 'Current Value (EUR)', right: true, format: (v, r) => r.sold ? `Sold ${fmtDate(r.sold)}` : formatEUR(v), tip: 'Latest valuation on/before today, else the purchase price' }
 ];
@@ -2313,7 +2563,8 @@ function renderAcquisitionsBar(propData, asOf, from) {
           sold
         };
       });
-      drillDownModal(`Acquisitions — ${label}`, rows, ACQ_COLS);
+      drillWithTotal(`Acquisitions — ${label}`, rows, ACQ_COLS,
+        { name: 'Total', owner: '', stream: '', pdate: '', purchase: sumBy(rows, 'purchase'), value: sumBy(rows.filter(r => !r.sold), 'value'), sold: '' });
     }
   });
 }
@@ -2328,7 +2579,13 @@ function renderMarketValueLine({ timeline }) {
     ],
     onClickItem: (_label, idx) => {
       const t = timeline[idx];
-      if (t?.rows.length) drillDownModal(`Portfolio Value — ${t.label}`, toMarketValueRows(t.rows), MV_COLS);
+      if (!t?.rows.length) return;
+      const rows = toMarketValueRows(t.rows);
+      const inv = sumBy(rows, 'invested'), gain = sumBy(rows, 'gain');
+      drillWithTotal(`Portfolio Value — ${t.label}`, rows, MV_COLS, {
+        name: 'Total', purchase: sumBy(rows, 'purchase'), invested: inv, value: sumBy(rows, 'value'), asOf: '',
+        gain, gainPct: inv > 0 ? gain / inv * 100 : null, cagr: null, totalRet: null
+      });
     }
   });
 }
@@ -2351,9 +2608,28 @@ function renderMarketValueByProp({ timeline, current }) {
       fill: false,
       tension: 0,
       spanGaps: false
-    }))
+    })),
+    // A point opens that property's value history across the chart's points.
+    onClickItem: (_label, _idx, dsIdx) => {
+      const prop = all[dsIdx];
+      if (!prop) return;
+      const rows = timeline.map(t => {
+        const r = t.rows.find(x => x.prop.id === prop.id);
+        return r ? { point: t.label, value: r.m.valueEUR, invested: r.m.investedEUR, gain: r.m.gainEUR, asOf: r.m.isPurchaseValue ? '' : r.m.valueDate } : null;
+      }).filter(Boolean);
+      rows.forEach((r, i) => { r.change = i > 0 ? r.value - rows[i - 1].value : null; });
+      drillDownModal(`${shareName(prop, ownerWeight(prop))} — Market Value over Time`, rows, MV_HISTORY_COLS);
+    }
   });
 }
+const MV_HISTORY_COLS = [
+  { key: 'point',    label: 'Point' },
+  { key: 'value',    label: 'Market Value', right: true, format: v => formatEUR(v) },
+  { key: 'change',   label: 'Change vs Previous', right: true, format: v => v == null ? '—' : `${v >= 0 ? '+' : ''}${formatEUR(v)}` },
+  { key: 'asOf',     label: 'Valuation Used', format: v => v ? fmtDate(v) : 'purchase price' },
+  { key: 'invested', label: 'Invested', right: true, format: v => formatEUR(v), tip: 'Purchase + CapEx up to that date' },
+  { key: 'gain',     label: 'Unrealised Gain', right: true, format: v => formatEUR(v) }
+];
 
 // ── Financing & Payoff section ────────────────────────────────────────────────
 function buildFinancingSection(finData) {
@@ -2372,28 +2648,29 @@ function buildFinancingSection(finData) {
   const kpiRow = el('div', { class: 'grid grid-4 mb-16' });
   kpiRow.appendChild(mkKpiCard({
     label: 'Total Outstanding Debt', value: formatEUR(t.totalDebt),
-    onClick: () => drillDownModal('Debt by Property', toFinancingDrillRows(finData.finData), FINANCING_DRILL_COLS)
+    onClick: () => openFinancingCard('debt', finData)
   }));
   kpiRow.appendChild(mkKpiCard({
     label: 'Leverage Ratio',
     value: t.leverageRatio != null ? t.leverageRatio.toFixed(1) + '%' : '—',
     variant: t.leverageRatio != null && t.leverageRatio > 60 ? 'danger' : t.leverageRatio != null && t.leverageRatio > 30 ? 'warning' : undefined,
-    onClick: () => drillDownModal('Portfolio Leverage', toFinancingDrillRows(finData.finData), FINANCING_DRILL_COLS)
+    onClick: () => openFinancingCard('leverage', finData)
   }));
   kpiRow.appendChild(mkKpiCard({
     label: 'Monthly Debt Burden', value: formatEUR(t.totalMonthly),
-    onClick: () => drillDownModal('Active Mortgages', toFinancingDrillRows(active), FINANCING_DRILL_COLS)
+    onClick: () => openFinancingCard('monthly', finData)
   }));
   kpiRow.appendChild(mkKpiCard({
     label: 'Avg Years to Payoff',
     value: t.avgYearsLeft != null ? t.avgYearsLeft.toFixed(1) + ' yrs' : '—',
-    onClick: () => drillDownModal('Years to Payoff', toFinancingDrillRows(active), FINANCING_DRILL_COLS)
+    onClick: () => openFinancingCard('payoff', finData)
   }));
   section.appendChild(kpiRow);
 
   const statsWrap = el('div', { style: 'display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px' });
+  const mortgaged = finData.finData.filter(d => d.financed);
   [
-    [String(t.nFinanced), 'Mortgaged Properties', `${t.nActive} active · ${t.nFinanced - t.nActive} paid off`, finData.finData.filter(d => d.financed)],
+    [String(t.nFinanced), 'Mortgaged Properties', `${t.nActive} active · ${t.nFinanced - t.nActive} paid off`, mortgaged],
     [String(t.nPaidOff),  'No Mortgage',          'Cash purchase or fully paid',                                finData.finData.filter(d => !d.financed)]
   ].forEach(([count, label, sub, bucket]) => {
     const box = el('div', {
@@ -2405,7 +2682,7 @@ function buildFinancingSection(finData) {
       el('div', { style: 'font-size:12px;font-weight:600' }, label),
       el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, sub)
     );
-    box.onclick = () => drillDownModal(label, toFinancingDrillRows(bucket), FINANCING_DRILL_COLS);
+    box.onclick = () => openFinancingCard(bucket === mortgaged ? 'mortgaged' : 'none', finData, label);
     statsWrap.appendChild(box);
   });
   section.appendChild(statsWrap);
@@ -2552,38 +2829,14 @@ function renderSingleTrend({ propData, payments, opExpenses }, monthKeys) {
   charts.line('prop-single-trend', {
     labels:   monthKeys.map(m => m.label),
     datasets,
-    onClickItem: (_label, idx) => {
+    // A point is one property's net for one month: open that property's
+    // records for the month, revenue minus operating expenses = the point.
+    onClickItem: (_label, idx, dsIdx) => {
       const mk = monthKeys[idx]?.key;
-      if (!mk) return;
-      const body = el('div');
-      const allRevByProp  = new Map();
-      const allOpExByProp = new Map();
-      payments   .filter(p => p.date?.slice(0, 7) === mk).forEach(p => { const n = byId('properties', p.propertyId)?.name || 'Unknown'; allRevByProp .set(n, (allRevByProp .get(n) || 0) + toEUR(p.amount,   p.currency, p.date)); });
-      opExpenses .filter(e => e.date?.slice(0, 7) === mk).forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; allOpExByProp.set(n, (allOpExByProp.get(n) || 0) + toEUR(e.amount, e.currency, e.date)); });
-
-      const propNames = new Set([...allRevByProp.keys(), ...allOpExByProp.keys()]);
-      const rows = [...propNames].map(n => {
-        const rev  = allRevByProp .get(n) || 0;
-        const opEx = allOpExByProp.get(n) || 0;
-        return { name: n, rev, opEx, net: rev - opEx };
-      }).sort((a, b) => b.net - a.net);
-
-      const mRev   = rows.reduce((s, r) => s + r.rev,  0);
-      const mOpEx  = rows.reduce((s, r) => s + r.opEx, 0);
-      const sgrid  = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px' });
-      sgrid.appendChild(mkSummaryBox('Revenue',        formatEUR(mRev),  null));
-      sgrid.appendChild(mkSummaryBox('Operating Exp.', formatEUR(mOpEx), null));
-      sgrid.appendChild(mkSummaryBox('Net Profit',     formatEUR(mRev - mOpEx), mRev > 0 ? `Margin: ${((mRev - mOpEx) / mRev * 100).toFixed(0)}%` : null));
-      body.appendChild(sgrid);
-
-      if (rows.length) {
-        body.appendChild(mkSectionLabel('All Properties'));
-        body.appendChild(mkModalTable(
-          [{ label: 'Property' }, { label: 'Revenue', right: true }, { label: 'OpEx', right: true }, { label: 'Net', right: true }],
-          rows.map(r => [r.name, formatEUR(r.rev), formatEUR(r.opEx), formatEUR(r.net)])
-        ));
-      }
-      openModal({ title: `${formatMonthKey(mk)} — Property P&L Breakdown`, body, large: true });
+      const d = topData[dsIdx];
+      if (!mk || !d) return;
+      const inMonth = r => r.date?.slice(0, 7) === mk;
+      openSignedDrill(`${shareName(d.prop, d.share)} — ${formatMonthKey(mk)} Net`, d.propPayments.filter(inMonth), d.propOpExpenses.filter(inMonth));
     }
   });
 }

@@ -49,6 +49,50 @@ const BOOKING_COLS_WITH_PROPERTY = [
   AMOUNT_COL
 ];
 
+// Booking list behind a nights figure: the nights each stay contributes to
+// the period (a stay crossing the period edge only counts the nights inside).
+const nightsCols = range => [
+  { key: 'airbnbCheckIn', label: 'Check-in', format: (_v, row) => row._total ? '' : fmtDate(stayDates(row).ci || row.date) },
+  { key: 'airbnbCheckOut', label: 'Check-out', format: (_v, row) => row._total ? '' : (stayDates(row).co ? fmtDate(stayDates(row).co) : '—') },
+  { key: 'propertyId', label: 'Property', format: (v, row) => row._total ? 'Total' : shortName(byId('properties', v)?.name || '—') },
+  { key: 'airbnbNights', label: 'Nights Booked', right: true, tip: 'Nights on the whole stay', format: (v, row) => row._total ? '' : String(bookedNights(row)) },
+  { key: '_inRange', label: 'Nights in Period', right: true, tip: 'Nights of the stay that fall inside the period (what the figure counts)', format: (_v, row) => String(row._total ? row._sum : nightsInRange(row, range)) }
+];
+function openNightsDrill(title, pays, range) {
+  const rows = pays.filter(p => nightsInRange(p, range) > 0).sort((a, b) => (a.airbnbCheckIn || a.date || '').localeCompare(b.airbnbCheckIn || b.date || ''));
+  drillWithTotal(title, rows, nightsCols(range), rows.length ? { _sum: sumNights(rows, range) } : null);
+}
+// Revenue list with a Total row equal to the revenue figure clicked.
+function openRevenueDrill(title, pays, withProperty = true) {
+  const rows = [...pays].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const cols = withProperty ? BOOKING_COLS_WITH_PROPERTY : BOOKING_COLS;
+  drillWithTotal(title, rows, cols.map(c => c.key === 'date' ? { ...c, format: (v, row) => row._total ? 'Total' : fmtDate(v) } :
+    c.key === 'propertyId' ? { ...c, format: (v, row) => row._total ? '' : c.format(v, row) } :
+    c.key === 'airbnbNights' ? { ...c, format: (v, row) => row._total ? '' : c.format(v, row) } :
+    c.key === 'amount' ? { ...c, format: (v, row) => row._total ? formatEUR(row._sum) : c.format(v, row) } : c),
+    rows.length ? { _sum: rows.reduce((s, p) => s + payEUR(p), 0) } : null);
+}
+
+// ── Total rows ────────────────────────────────────────────────────────────────
+// drillDownModal has no total row of its own: a row flagged `_total` is
+// rendered in bold in every column.
+function boldTotalCols(cols) {
+  return cols.map(c => ({ ...c, format: (v, row) => {
+    const out = c.format ? c.format(v, row) : (v ?? '—');
+    if (!row?._total) return out;
+    return el('strong', {}, out instanceof Node ? out : String(out ?? ''));
+  } }));
+}
+function drillWithTotal(title, rows, cols, total) {
+  drillDownModal(title, rows.length && total ? [...rows, { ...total, _total: true }] : rows, boldTotalCols(cols));
+}
+// mkModalTable with a bold last row (cells given as plain values).
+function tableWithTotal(headers, rows, totalCells, opts) {
+  if (!rows.length) return mkModalTable(headers, rows, opts);
+  return mkModalTable(headers, [...rows, totalCells.map(c => el('strong', {}, c == null ? '' : String(c)))], opts);
+}
+const pctOf = (a, b) => b > 0 ? (a / b * 100).toFixed(1) + '%' : '—';
+
 // ── State ─────────────────────────────────────────────────────────────────────
 let gF = createFilterState({ period: 'this-year', compareTo: 'prev-year' });
 let gScope = 'company'; // 'company' | 'all' — same Scope rule as the other dashboards
@@ -1110,7 +1154,7 @@ function buildSpotlightContent(propId, curRange) {
     charts.bar('str-spotlight-adr', {
       labels: months.map(m => m.label),
       datasets: adrDatasets,
-      onClickItem: (label, idx) => openMonthSpotlightModal(idx, propId, months, curRange)
+      onClickItem: (label, idx) => openMonthSpotlightModal(idx, propId, months, curRange, 'adr')
     });
 
     charts.bar('str-spotlight-occ', {
@@ -1123,7 +1167,7 @@ function buildSpotlightContent(propId, curRange) {
           m.occ >= 70 ? '#22c55ecc' : m.occ >= 40 ? '#6366f1cc' : '#f59e0bcc'
         )
       }],
-      onClickItem: (label, idx) => openMonthSpotlightModal(idx, propId, months, curRange)
+      onClickItem: (label, idx) => openMonthSpotlightModal(idx, propId, months, curRange, 'occ')
     });
   });
 
@@ -1150,7 +1194,7 @@ function buildForwardPipelineCard() {
   const sumGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px' });
   sumGrid.appendChild(mkSummaryBox('Locked Nights',
     mkDrillValue(totalLocked.toString(), () =>
-      openPipelineDetailModal(pipeline, { type: 'locked', title: 'Forward Pipeline — Locked Nights (Next 90 Days)' })),
+      openPipelineDetailModal(pipeline, { type: 'locked', metric: 'nights', title: 'Forward Pipeline — Locked Nights (Next 90 Days)' })),
     'confirmed bookings', {
     title: 'Locked Nights', formula: 'Count of the next 90 days that fall inside a real guest reservation (owner-blocks excluded).',
     inputs: [{ label: 'Locked nights', value: totalLocked.toString() }],
@@ -1168,11 +1212,11 @@ function buildForwardPipelineCard() {
   });
   lockedRevBox.style.cursor = 'pointer';
   lockedRevBox.title = 'Click for locked date ranges';
-  lockedRevBox.onclick = () => openPipelineDetailModal(pipeline, { type: 'locked', title: 'Forward Pipeline — Locked Nights (Next 90 Days)' });
+  lockedRevBox.onclick = () => openPipelineDetailModal(pipeline, { type: 'locked', metric: 'rev', title: 'Forward Pipeline — Locked Revenue (Next 90 Days)' });
   sumGrid.appendChild(lockedRevBox);
   sumGrid.appendChild(mkSummaryBox('Open Nights',
     mkDrillValue(totalOpen.toString(), () =>
-      openPipelineDetailModal(pipeline, { type: 'open', title: 'Forward Pipeline — Open Nights (Next 90 Days)' })),
+      openPipelineDetailModal(pipeline, { type: 'open', metric: 'nights', title: 'Forward Pipeline — Open Nights (Next 90 Days)' })),
     'available to book', {
     title: 'Open Nights', formula: 'Count of the next 90 days not covered by a guest reservation or owner-block.',
     inputs: [{ label: 'Open nights', value: totalOpen.toString() }],
@@ -1189,7 +1233,7 @@ function buildForwardPipelineCard() {
   });
   potRevBox.style.cursor = 'pointer';
   potRevBox.title = 'Click for open date ranges';
-  potRevBox.onclick = () => openPipelineDetailModal(pipeline, { type: 'open', title: 'Forward Pipeline — Open Nights (Next 90 Days)' });
+  potRevBox.onclick = () => openPipelineDetailModal(pipeline, { type: 'open', metric: 'rev', title: 'Forward Pipeline — Revenue Potential (Next 90 Days)' });
   sumGrid.appendChild(potRevBox);
   body.appendChild(sumGrid);
 
@@ -1236,8 +1280,31 @@ function buildForwardPipelineCard() {
 // rate used for each) behind the Forward Pipeline totals — filterable by
 // property and/or segment type so both the summary boxes and table rows can
 // drill into the same data.
-function openPipelineDetailModal(pipeline, { propId = null, type = null, title } = {}) {
+function openPipelineDetailModal(pipeline, { propId = null, type = null, metric = null, title } = {}) {
   const rows = [];
+  // A summary box opens its own per-property arithmetic first (nights out of
+  // the 90-night window, or nights × average rate = value), with a Total row
+  // equal to the box; the date-range segments follow.
+  const metricTable = (() => {
+    if (!metric || !type) return null;
+    const locked = type === 'locked';
+    const per = pipeline.map(r => ({
+      name: shortName(r.propName),
+      nights: locked ? r.lockedNights : r.openNights,
+      window: r.lockedNights + r.openNights,
+      value: locked ? r.lockedRevMin : r.potRevMax
+    })).sort((a, b) => metric === 'rev' ? b.value - a.value : b.nights - a.nights);
+    const tN = per.reduce((s, r) => s + r.nights, 0), tW = per.reduce((s, r) => s + r.window, 0), tV = per.reduce((s, r) => s + r.value, 0);
+    const word = locked ? 'Locked' : 'Open';
+    if (metric === 'nights') return tableWithTotal(
+      [{ label: 'Property' }, { label: `${word} Nights`, right: true }, { label: 'Nights in Window', right: true, tip: 'Today plus the next 90 days' }, { label: `% ${word}`, right: true }],
+      per.map(r => [r.name, String(r.nights), String(r.window), pctOf(r.nights, r.window)]),
+      ['Total', String(tN), String(tW), pctOf(tN, tW)], { highlight: 1 });
+    return tableWithTotal(
+      [{ label: 'Property' }, { label: `${word} Nights`, right: true }, { label: locked ? '× Avg Rate (after discount)' : '× Avg Full Rate', right: true }, { label: locked ? '= Locked Revenue' : '= Revenue Potential', right: true }],
+      per.map(r => [r.name, String(r.nights), r.nights > 0 ? formatEUR(r.value / r.nights) : '—', formatEUR(r.value, { maxFrac: 0 })]),
+      ['Total', String(tN), tN > 0 ? formatEUR(tV / tN) : '—', formatEUR(tV, { maxFrac: 0 })], { highlight: 3 });
+  })();
   pipeline.forEach(r => {
     if (propId && r.propId !== propId) return;
     r.segments.forEach(seg => {
@@ -1248,6 +1315,7 @@ function openPipelineDetailModal(pipeline, { propId = null, type = null, title }
   rows.sort((a, b) => a.start.localeCompare(b.start) || a.propName.localeCompare(b.propName));
 
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+  if (metricTable) { body.appendChild(mkSectionLabel('By Property')); body.appendChild(metricTable); body.appendChild(mkSectionLabel('Date Ranges')); }
   if (!rows.length) {
     body.appendChild(mkEmptyState('No dates in this category.'));
   } else {
@@ -1307,52 +1375,53 @@ function openRevenueModal(data) {
     body.appendChild(mkCmpGrid([
       { label: 'Total Revenue',
         curVal: mkDrillValue(formatEUR(totalRev), () =>
-          drillDownModal(`STR Revenue — ${data.rangeLabel}`, payments, BOOKING_COLS_WITH_PROPERTY)),
+          openRevenueDrill(`STR Revenue — ${data.rangeLabel}`, payments)),
         cmpVal: mkDrillValue(formatEUR(cmpTotalRev), () =>
-          drillDownModal(`STR Revenue — ${cmpLabel}`, cmpPayments, BOOKING_COLS_WITH_PROPERTY)),
+          openRevenueDrill(`STR Revenue — ${cmpLabel}`, cmpPayments)),
         explain: revExplain
       },
       { label: 'Bookings',
         curVal: mkDrillValue(payments.length.toString(), () =>
-          drillDownModal(`STR Revenue — ${data.rangeLabel}`, payments, BOOKING_COLS_WITH_PROPERTY)),
+          openRevenueDrill(`STR Revenue — ${data.rangeLabel}`, payments)),
         cmpVal: mkDrillValue(cmpPayments.length.toString(), () =>
-          drillDownModal(`STR Revenue — ${cmpLabel}`, cmpPayments, BOOKING_COLS_WITH_PROPERTY))
+          openRevenueDrill(`STR Revenue — ${cmpLabel}`, cmpPayments))
       }
     ], 'Current Period', cmpLabel));
   } else {
     body.appendChild(mkSummaryGrid([
       { label: 'Total Revenue',
         value: mkDrillValue(formatEUR(totalRev), () =>
-          drillDownModal(`STR Revenue — ${data.rangeLabel}`, payments, BOOKING_COLS_WITH_PROPERTY)),
+          openRevenueDrill(`STR Revenue — ${data.rangeLabel}`, payments)),
         explain: revExplain
       },
       { label: 'Bookings',
         value: mkDrillValue(payments.length.toString(), () =>
-          drillDownModal(`STR Revenue — ${data.rangeLabel}`, payments, BOOKING_COLS_WITH_PROPERTY))
+          openRevenueDrill(`STR Revenue — ${data.rangeLabel}`, payments))
       }
     ], 2));
   }
 
   body.appendChild(mkSectionLabel('Revenue by Property'));
-  body.appendChild(mkModalTable(
+  body.appendChild(tableWithTotal(
     [
       { label: 'Property', tip: 'Property name.' },
       { label: 'Revenue', tip: 'Sum of paid STR payments for this property in the selected period.' },
       { label: '% of Total', tip: 'This property\'s revenue ÷ portfolio total revenue.' },
       { label: 'Bookings', tip: 'Number of paid payment records for this property in the period.' }
     ],
-    props.map(p => {
+    [...props].sort((a, b) => (revByProp.get(b.id) || 0) - (revByProp.get(a.id) || 0)).map(p => {
       const rev  = revByProp.get(p.id) || 0;
       const pPays = rowsOfProp(payments, p.id);
       return [
         shortName(p.name),
         pPays.length
-          ? mkDrillValue(formatEUR(rev), () => drillDownModal(`${shortName(p.name)} — Revenue`, pPays, BOOKING_COLS))
+          ? mkDrillValue(formatEUR(rev), () => openRevenueDrill(`${shortName(p.name)} — Revenue`, pPays, false))
           : formatEUR(rev),
         totalRev > 0 ? (rev / totalRev * 100).toFixed(1) + '%' : '—',
         pPays.length.toString()
       ];
     }),
+    ['Total', formatEUR(totalRev), totalRev > 0 ? '100%' : '—', String(payments.length)],
     { highlight: 1 }
   ));
 
@@ -1388,9 +1457,9 @@ function openNightsModal(data) {
     body.appendChild(mkCmpGrid([
       { label: 'Nights Sold',
         curVal: mkDrillValue(totalNights.toString(), () =>
-          drillDownModal(`Nights Sold — ${data.rangeLabel}`, payments, BOOKING_COLS_WITH_PROPERTY)),
+          openNightsDrill(`Nights Sold — ${data.rangeLabel}`, payments, range)),
         cmpVal: mkDrillValue((prevNights ?? 0).toString(), () =>
-          drillDownModal(`Nights Sold — ${cmpLabel}`, cmpPayments, BOOKING_COLS_WITH_PROPERTY)),
+          openNightsDrill(`Nights Sold — ${cmpLabel}`, cmpPayments, data.cmpNightRange)),
         explain: {
           title: 'Nights Sold', formula: 'Nights of paid STR stays that fall inside the selected period, by stay date (a stay spanning two months is split across them).',
           inputs: [{ label: 'Total nights', value: totalNights.toLocaleString() }],
@@ -1400,9 +1469,9 @@ function openNightsModal(data) {
       },
       { label: 'Bookings',
         curVal: mkDrillValue(payments.length.toString(), () =>
-          drillDownModal(`Nights Sold — ${data.rangeLabel}`, payments, BOOKING_COLS_WITH_PROPERTY)),
+          openNightsDrill(`Nights Sold — ${data.rangeLabel}`, payments, range)),
         cmpVal: mkDrillValue(cmpPayments.length.toString(), () =>
-          drillDownModal(`Nights Sold — ${cmpLabel}`, cmpPayments, BOOKING_COLS_WITH_PROPERTY))
+          openNightsDrill(`Nights Sold — ${cmpLabel}`, cmpPayments, data.cmpNightRange))
       }
     ], 'Current Period', cmpLabel));
   }
@@ -1413,18 +1482,18 @@ function openNightsModal(data) {
     return [
       shortName(p.name),
       nights > 0
-        ? mkDrillValue(nights.toString(), () => drillDownModal(`${shortName(p.name)} — Nights Sold`, pPays, BOOKING_COLS))
+        ? mkDrillValue(nights.toString(), () => openNightsDrill(`${shortName(p.name)} — Nights Sold`, pPays, range))
         : nights.toString(),
       pPays.length.toString()
     ];
   });
-  body.appendChild(mkModalTable(
+  body.appendChild(tableWithTotal(
     [
       { label: 'Property', tip: 'Property name.' },
       { label: 'Nights Sold', tip: 'Sum of bookedNights(payment) for this property — 0 for Airbnb payout adjustments so nights aren\'t double-counted.' },
-      { label: 'Bookings', tip: 'Number of paid payment records for this property in the period.' }
+      { label: 'Bookings', tip: 'Stays overlapping the period.' }
     ],
-    rows, { highlight: 1 }
+    rows, ['Total', totalNights.toString(), payments.length.toString()], { highlight: 1 }
   ));
 
   body.appendChild(mkSectionLabel('Monthly Breakdown (All Properties)'));
@@ -1439,7 +1508,7 @@ function openNightsModal(data) {
       if (n > 0) { byMonth[idx] += n; byMonthPays[idx].push(p); }
     });
   });
-  body.appendChild(mkModalTable(
+  body.appendChild(tableWithTotal(
     [
       { label: 'Month', tip: 'Calendar month.' },
       { label: 'Nights Sold', tip: 'Nights stayed in this month across all properties (by stay date; Airbnb payout adjustments excluded).' }
@@ -1447,9 +1516,14 @@ function openNightsModal(data) {
     byMonth.map((n, i) => [
       monthKeys[i].label,
       n > 0
-        ? mkDrillValue(n.toString(), () => drillDownModal(`${monthKeys[i].label} — Nights Sold`, byMonthPays[i], BOOKING_COLS_WITH_PROPERTY))
+        ? mkDrillValue(n.toString(), () => {
+          const k = monthKeys[i].key;
+          const moEnd = `${k}-${String(daysInMonth(+k.slice(0, 4), +k.slice(5, 7) - 1)).padStart(2, '0')}`;
+          openNightsDrill(`${monthKeys[i].label} — Nights Sold`, byMonthPays[i], { start: `${k}-01` > range.start ? `${k}-01` : range.start, end: moEnd < range.end ? moEnd : range.end });
+        })
         : '—'
     ]),
+    ['Total', byMonth.reduce((s, n) => s + n, 0).toString()],
     { highlight: 1 }
   ));
 
@@ -1461,27 +1535,34 @@ function openADRModal(data) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
   body.appendChild(mkSectionLabel('ADR by Property'));
-  body.appendChild(mkModalTable(
+  // Same arithmetic as the card: nightly rate × nights in the period, summed,
+  // ÷ those nights — so the Total row's ADR equals the card.
+  const range = data.nightRange;
+  const adrOf = pays => {
+    let rev = 0, nights = 0;
+    pays.forEach(p => { const n = nightsInRange(p, range), rate = nightlyRate(p); if (n > 0 && rate) { rev += toEUR(rate * n, p.currency, p.date); nights += n; } });
+    return { rev, nights };
+  };
+  const rows = props.map(p => ({ p, pays: rowsOfProp(data.stayPays, p.id), ...adrOf(rowsOfProp(data.stayPays, p.id)) }))
+    .sort((a, b) => (b.nights ? b.rev / b.nights : 0) - (a.nights ? a.rev / a.nights : 0));
+  const tot = adrOf(data.stayPays);
+  body.appendChild(tableWithTotal(
     [
       { label: 'Property', tip: 'Property name.' },
-      { label: 'Avg ADR', tip: 'Revenue ÷ nights across this property\'s bookings.' },
-      { label: 'Nights', tip: 'Nights sold in the period (excludes Airbnb payout adjustments).' },
-      { label: 'Bookings', tip: 'Number of paid payment records for this property in the period.' }
+      { label: 'Nights (with a rate)', right: true, tip: 'Nights in the period of stays with a nightly rate (Airbnb payout adjustments excluded).' },
+      { label: 'Night Revenue', right: true, tip: 'Σ nightly rate × nights in the period.' },
+      { label: '= ADR', right: true, tip: 'Night Revenue ÷ Nights.' },
+      { label: 'Stays', right: true, tip: 'Stays overlapping the period.' }
     ],
-    props.map(p => {
-      const pPays = rowsOfProp(data.stayPays, p.id); // by stay date
-      const nights = sumNights(pPays, data.nightRange);
-      const adr = nights > 0 ? sumNightRevenue(pPays, data.nightRange) / nights : 0;
-      return [
-        shortName(p.name),
-        adr > 0 ? formatEUR(adr) : '—',
-        nights > 0
-          ? mkDrillValue(nights.toString(), () => drillDownModal(`${shortName(p.name)} — Nights Sold`, pPays, BOOKING_COLS))
-          : nights.toString(),
-        pPays.length.toString()
-      ];
-    }),
-    { highlight: 1 }
+    rows.map(r => [
+      shortName(r.p.name),
+      r.nights > 0 ? mkDrillValue(r.nights.toString(), () => openNightsDrill(`${shortName(r.p.name)} — Nights Sold`, r.pays, range)) : '0',
+      formatEUR(r.rev),
+      r.nights > 0 ? formatEUR(r.rev / r.nights) : '—',
+      r.pays.length.toString()
+    ]),
+    ['Total', tot.nights.toString(), formatEUR(tot.rev), tot.nights > 0 ? formatEUR(tot.rev / tot.nights) : '—', data.stayPays.length.toString()],
+    { highlight: 3 }
   ));
 
   openModal({ title: `ADR Breakdown — ${data.rangeLabel}`, body, large: true });
@@ -1491,7 +1572,8 @@ function openOccModal(data) {
   const { props, occByProp, monthKeys, occByMonth, availByMonth } = data;
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
-  body.appendChild(mkModalTable(
+  const occT = [...occByProp.values()].reduce((t, v) => ({ occupied: t.occupied + v.occupied, open: t.open + v.open, blocked: t.blocked + v.blocked, available: t.available + v.available }), { occupied: 0, open: 0, blocked: 0, available: 0 });
+  body.appendChild(tableWithTotal(
     [
       { label: 'Property', tip: 'Property name.' },
       { label: 'Occupancy %', tip: 'Occupied ÷ Available × 100.' },
@@ -1504,11 +1586,13 @@ function openOccModal(data) {
       const occ = occByProp.get(p.id) || { pct: 0, occupied: 0, available: 0, open: 0, blocked: 0 };
       return [shortName(p.name), occ.pct.toFixed(1) + '%', occ.occupied.toString(), occ.open.toString(), occ.blocked.toString(), occ.available.toString()];
     }),
+    ['Total', pctOf(occT.occupied, occT.available), occT.occupied, occT.open, occT.blocked, occT.available],
     { highlight: 1 }
   ));
 
   body.appendChild(mkSectionLabel('Monthly Occupancy Trend (All Properties)'));
-  body.appendChild(mkModalTable(
+  const moOcc = monthKeys.reduce((s, k) => s + (occByMonth.get(k.key) || 0), 0), moAvail = monthKeys.reduce((s, k) => s + (availByMonth.get(k.key) || 0), 0);
+  body.appendChild(tableWithTotal(
     [
       { label: 'Month', tip: 'Calendar month.' },
       { label: 'Occupied', right: true, tip: 'Occupied nights across all properties in this month.' },
@@ -1520,6 +1604,7 @@ function openOccModal(data) {
       const avail = availByMonth.get(k.key) || 0;
       return [k.label, occ.toString(), avail.toString(), avail > 0 ? (occ / avail * 100).toFixed(1) + '%' : '—'];
     }),
+    ['Total', moOcc, moAvail, pctOf(moOcc, moAvail)],
     { highlight: 3 }
   ));
 
@@ -1536,7 +1621,7 @@ function openTargetModal(data) {
   body.appendChild(mkSummaryGrid([
     { label: 'Actual Revenue',
       value: mkDrillValue(formatEUR(totalRev), () =>
-        drillDownModal(`Actual Revenue — ${data.rangeLabel}`, payments, BOOKING_COLS_WITH_PROPERTY)),
+        openRevenueDrill(`Actual Revenue — ${data.rangeLabel}`, payments)),
       explain: {
         title: 'Actual Revenue', formula: 'Sum of paid STR payments\' amount in the selected period.',
         inputs: [{ label: 'Total', value: formatEUR(totalRev) }],
@@ -1569,28 +1654,25 @@ function openTargetModal(data) {
 
   body.appendChild(mkSectionLabel('By Property'));
   const { targetRevByProp } = data;
-  body.appendChild(mkModalTable(
+  const tRows = props.map(p => ({ p, rev: revByProp.get(p.id) || 0, target: targetRevByProp.get(p.id) || 0, pays: rowsOfProp(payments, p.id) }))
+    .sort((a, b) => (b.target > 0 ? b.rev / b.target : -1) - (a.target > 0 ? a.rev / a.target : -1));
+  body.appendChild(tableWithTotal(
     [
       { label: 'Property', tip: 'Property name.' },
-      { label: 'Actual', tip: 'Actual revenue for this property in the selected period.' },
-      { label: 'Target', tip: 'Target revenue for this property (occupied nights × published rate).' },
-      { label: 'Achievement', tip: 'Actual ÷ Target × 100.' }
+      { label: 'Actual', right: true, tip: 'Actual revenue for this property in the selected period.' },
+      { label: 'Target', right: true, tip: 'Target revenue for this property (occupied nights × published rate).' },
+      { label: 'Variance', right: true, tip: 'Actual − Target.' },
+      { label: '= Achievement', right: true, tip: 'Actual ÷ Target × 100.' }
     ],
-    props.map(p => {
-      const rev = revByProp.get(p.id) || 0;
-      const propTarget = targetRevByProp.get(p.id) || 0;
-      const ach = propTarget > 0 ? (rev / propTarget * 100).toFixed(1) + '%' : '—';
-      const pPays = rowsOfProp(payments, p.id);
-      return [
-        shortName(p.name),
-        pPays.length
-          ? mkDrillValue(formatEUR(rev), () => drillDownModal(`${shortName(p.name)} — Actual Revenue`, pPays, BOOKING_COLS))
-          : formatEUR(rev),
-        propTarget > 0 ? formatEUR(propTarget) : '—',
-        ach
-      ];
-    }),
-    { highlight: 2 }
+    tRows.map(r => [
+      shortName(r.p.name),
+      r.pays.length ? mkDrillValue(formatEUR(r.rev), () => openRevenueDrill(`${shortName(r.p.name)} — Actual Revenue`, r.pays, false)) : formatEUR(r.rev),
+      r.target > 0 ? formatEUR(r.target) : '—',
+      formatEUR(r.rev - r.target),
+      r.target > 0 ? (r.rev / r.target * 100).toFixed(1) + '%' : '—'
+    ]),
+    ['Total', formatEUR(totalRev), formatEUR(targetRev), formatEUR(totalRev - targetRev), pctOf(totalRev, targetRev)],
+    { highlight: 4 }
   ));
 
   openModal({ title: `Revenue vs Target — ${data.rangeLabel}`, body, large: true });
@@ -1613,7 +1695,7 @@ function openPropertyRangeModal(propId, curRange) {
   body.appendChild(mkSummaryGrid([
     { label: 'Total Revenue',
       value: mkDrillValue(formatEUR(totalRev, { maxFrac: 0 }), () =>
-        drillDownModal(`${shortName(prop?.name || '')} — Revenue`, pays, BOOKING_COLS)),
+        openRevenueDrill(`${shortName(prop?.name || '')} — Revenue`, pays, false)),
       sub: curRange.label,
       explain: {
         title: 'Total Revenue', formula: 'Sum of this property\'s month.rev across the selected range (each month.rev = sum of its paid payments\' amount).',
@@ -1623,7 +1705,7 @@ function openPropertyRangeModal(propId, curRange) {
     },
     { label: 'Nights Sold',
       value: mkDrillValue(totalNights.toString(), () =>
-        drillDownModal(`${shortName(prop?.name || '')} — Nights Sold`, pays, BOOKING_COLS)),
+        openNightsDrill(`${shortName(prop?.name || '')} — Nights Sold`, getStayPaymentsInRange(curRange.start, curRange.end, new Set([propId])), { start: curRange.start, end: curRange.end })),
       explain: {
         title: 'Nights Sold', formula: 'Sum of bookedNights(payment) over this property\'s paid bookings in the range.',
         inputs: [{ label: 'Nights Sold', value: totalNights.toString() }],
@@ -1660,7 +1742,7 @@ function openPropertyRangeModal(propId, curRange) {
   ], 3));
 
   body.appendChild(mkSectionLabel('Monthly Breakdown'));
-  body.appendChild(mkModalTable(
+  body.appendChild(tableWithTotal(
     [
       { label: 'Month', tip: 'Calendar month.' },
       { label: 'Revenue', right: true, tip: 'Sum of paid payments for this property in this month.' },
@@ -1675,7 +1757,7 @@ function openPropertyRangeModal(propId, curRange) {
       return [
         m.label,
         m.rev > 0
-          ? mkDrillValue(formatEUR(m.rev, { maxFrac: 0 }), () => drillDownModal(`${shortName(prop?.name || '')} — ${m.label} Revenue`, moPays, BOOKING_COLS))
+          ? mkDrillValue(formatEUR(m.rev, { maxFrac: 0 }), () => openRevenueDrill(`${shortName(prop?.name || '')} — ${m.label} Revenue`, moPays, false))
           : '—',
         m.adr > 0 ? formatEUR(m.adr, { maxFrac: 0 }) : '—',
         m.target != null ? formatEUR(m.target, { maxFrac: 0 }) : '—',
@@ -1684,6 +1766,7 @@ function openPropertyRangeModal(propId, curRange) {
         m.available > 0 ? m.occ.toFixed(1) + '%' : '—'
       ];
     }),
+    ['Total', formatEUR(totalRev, { maxFrac: 0 }), avgADR > 0 ? formatEUR(avgADR, { maxFrac: 0 }) : '—', '', occupiedTotal, availTotal, availTotal > 0 ? periodOccPct.toFixed(1) + '%' : '—'],
     { highlight: 1 }
   ));
 
@@ -1701,7 +1784,7 @@ function openMonthRevenueModal(monthIdx, data) {
   body.appendChild(mkSummaryGrid([
     { label: 'Total Revenue',
       value: mkDrillValue(formatEUR(moRev), () =>
-        drillDownModal(`${k.label} — All Bookings`, moPays, BOOKING_COLS_WITH_PROPERTY)),
+        openRevenueDrill(`${k.label} — All Bookings`, moPays)),
       explain: {
         title: 'Total Revenue', formula: 'Sum of paid STR payments\' amount dated within this month, across all filtered properties.',
         inputs: [{ label: 'Bookings counted', value: String(moPays.length) }, { label: 'Total', value: formatEUR(moRev) }],
@@ -1710,7 +1793,7 @@ function openMonthRevenueModal(monthIdx, data) {
     },
     { label: 'Bookings',
       value: mkDrillValue(moPays.length.toString(), () =>
-        drillDownModal(`${k.label} — All Bookings`, moPays, BOOKING_COLS_WITH_PROPERTY))
+        openRevenueDrill(`${k.label} — All Bookings`, moPays))
     }
   ], 2));
 
@@ -1730,7 +1813,7 @@ function openMonthRevenueModal(monthIdx, data) {
     })).sort((a, b) => b.rev - a.rev);
 
     body.appendChild(mkSectionLabel('By Property'));
-    body.appendChild(mkModalTable(
+    body.appendChild(tableWithTotal(
       [
         { label: 'Property', tip: 'Property name.' },
         { label: 'Bookings', right: true, tip: 'Number of paid payment records this month.' },
@@ -1739,8 +1822,9 @@ function openMonthRevenueModal(monthIdx, data) {
       ],
       propRows.map(r => [
         r.name, r.count.toString(), r.nights > 0 ? r.nights.toString() : '—',
-        mkDrillValue(formatEUR(r.rev), () => drillDownModal(`${r.name} — ${k.label} Revenue`, r.pays, BOOKING_COLS))
+        mkDrillValue(formatEUR(r.rev), () => openRevenueDrill(`${r.name} — ${k.label} Revenue`, r.pays, false))
       ]),
+      ['Total', moPays.length.toString(), propRows.reduce((s, r) => s + r.nights, 0).toString(), formatEUR(moRev)],
       { highlight: 3 }
     ));
 
@@ -1768,7 +1852,7 @@ function openMonthRevenueModal(monthIdx, data) {
   openModal({ title: `${k.label} — STR Revenue`, body, large: true });
 }
 
-function openMonthSpotlightModal(monthIdx, propId, months, curRange) {
+function openMonthSpotlightModal(monthIdx, propId, months, curRange, focus = null) {
   const mo = months[monthIdx];
   if (!mo) return;
   const prop = byId('properties', propId);
@@ -1777,10 +1861,39 @@ function openMonthSpotlightModal(monthIdx, propId, months, curRange) {
   );
 
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+  // The bar clicked leads: the ADR chart opens the stays behind that month's
+  // ADR (rate × nights ÷ nights), the occupancy chart the night counts.
+  const moEnd = `${mo.mk}-${String(daysInMonth(+mo.mk.slice(0, 4), +mo.mk.slice(5, 7) - 1)).padStart(2, '0')}`;
+  const moRange = { start: `${mo.mk}-01` > curRange.start ? `${mo.mk}-01` : curRange.start, end: moEnd < curRange.end ? moEnd : curRange.end };
+  const stays = getStayPaymentsInRange(moRange.start, moRange.end, new Set([propId])).filter(p => nightsInRange(p, moRange) > 0)
+    .sort((a, b) => (stayDates(a).ci || a.date || '').localeCompare(stayDates(b).ci || b.date || ''));
+  if (focus === 'adr') {
+    const sRows = stays.map(p => { const n = nightsInRange(p, moRange); return { p, n, rev: toEUR(nightlyRate(p) * n, p.currency, p.date) }; });
+    const tn = sRows.reduce((s, r) => s + r.n, 0), tr = sRows.reduce((s, r) => s + r.rev, 0);
+    body.appendChild(mkSectionLabel(`Achieved ADR — ${mo.label}`));
+    body.appendChild(sRows.length ? tableWithTotal(
+      [{ label: 'Check-in' }, { label: 'Check-out' }, { label: 'Nights in Month', right: true }, { label: '× Nightly Rate', right: true }, { label: '= Night Revenue', right: true }],
+      sRows.map(r => [fmtDate(stayDates(r.p).ci || r.p.date), stayDates(r.p).co ? fmtDate(stayDates(r.p).co) : '—', String(r.n), formatEUR(r.n > 0 ? r.rev / r.n : 0), formatEUR(r.rev)]),
+      [`ADR = ${tn > 0 ? formatEUR(tr / tn) : '—'}`, '', String(tn), tn > 0 ? formatEUR(tr / tn) : '—', formatEUR(tr)], { highlight: 4 })
+      : mkEmptyState('No stays with nights in this month.'));
+  } else if (focus === 'occ') {
+    const sold = stays.reduce((s, p) => s + nightsInRange(p, moRange), 0);
+    body.appendChild(mkSectionLabel(`Occupancy — ${mo.label}`));
+    body.appendChild(tableWithTotal(
+      [{ label: 'Nights' }, { label: 'Count', right: true }, { label: 'Share of Available', right: true }],
+      [
+        ['Occupied (sold or reserved)', String(mo.occupied), pctOf(mo.occupied, mo.available)],
+        ['Open (available, not sold)', String(Math.max(0, mo.available - mo.occupied)), pctOf(Math.max(0, mo.available - mo.occupied), mo.available)]
+      ],
+      ['= Available (owner-blocked nights excluded)', String(mo.available), mo.available > 0 ? '100%' : '—']
+    ));
+    body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' },
+      `Occupancy ${mo.occ.toFixed(1)}% = occupied ÷ available. Paid stays account for ${sold} of the occupied nights; the rest are calendar reservations not yet paid out.`));
+  }
   body.appendChild(mkSummaryGrid([
     { label: 'Revenue',
       value: pays.length
-        ? mkDrillValue(formatEUR(mo.rev), () => drillDownModal(`${shortName(prop?.name || '')} — ${mo.label} Revenue`, pays, BOOKING_COLS))
+        ? mkDrillValue(formatEUR(mo.rev), () => openRevenueDrill(`${shortName(prop?.name || '')} — ${mo.label} Revenue`, pays, false))
         : formatEUR(mo.rev),
       explain: {
         title: 'Revenue', formula: 'Sum of this property\'s paid payments\' amount dated within this month.',
