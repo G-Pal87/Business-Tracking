@@ -144,3 +144,24 @@ test('autoPurgeOldDeleted ignores log references to deleted records', () => {
   assert.equal(data.autoPurgeOldDeleted({ maxAgeDays: 90 }), 1);
   assert.equal(data.byId('vendors', 'v9'), undefined);
 });
+
+test('Change history switched off: nothing is logged; clearing empties it', () => {
+  setDb(baseDb());
+  data.upsert('properties', { id: 'pOn', name: 'Logged' });
+  assert.equal(data.activityEntries().filter(e => e.recordId === 'pOn').length, 1);
+  data.setActivityLogEnabled(false);
+  assert.equal(data.activityLogEnabled(), false);
+  data.upsert('properties', { id: 'pOff', name: 'Not logged' });
+  data.upsert('properties', { id: 'pOn', name: 'Edited while off' });
+  data.softDelete('properties', 'pOff');
+  assert.equal(data.activityEntries().filter(e => e.recordId === 'pOff' || (e.recordId === 'pOn' && e.action !== 'create')).length, 0);
+  data.setActivityLogEnabled(true);
+  data.upsert('properties', { id: 'pOn', name: 'Edited again' });
+  assert.ok(data.activityEntries().some(e => e.recordId === 'pOn' && e.action === 'update'));
+  const n = data.activityEntries().length;
+  assert.equal(data.clearActivityLog(), n);
+  assert.equal(data.activityEntries().length, 0);
+  assert.equal(data.clearActivityLog(), 0);
+  // the records themselves are untouched
+  assert.equal(data.byId('properties', 'pOn').name, 'Edited again');
+});

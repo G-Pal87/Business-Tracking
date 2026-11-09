@@ -306,8 +306,11 @@ export function activityDiff(prev, next) {
   return out;
 }
 
+// Change history can be switched off in Settings → Data & sync (it rides in
+// the encrypted db uploaded on every save).
+export const activityLogEnabled = () => state.db?.settings?.activityLog?.enabled !== false;
 function _logActivity(collection, action, record, changes) {
-  if (_activitySuspended > 0 || ACTIVITY_UNLOGGED.has(collection) || !record?.id) return null;
+  if (_activitySuspended > 0 || ACTIVITY_UNLOGGED.has(collection) || !record?.id || !activityLogEnabled()) return null;
   if (action === 'update' && changes && changes.length === 0) return null; // saved without changes
   const now = Date.now();
   const s = state.session;
@@ -355,6 +358,20 @@ export function pruneActivityLog({ now = Date.now(), maxEntries = ACTIVITY_MAX_E
   state.db[ACTIVITY_COLLECTION] = kept;
   if (state._ix) state._ix.set(ACTIVITY_COLLECTION, new Map(kept.map(e => [e.id, e])));
   return dropped;
+}
+
+// Turn change history on/off (synced setting); off also stops new entries
+// immediately. clearActivityLog() empties it on every device after sync.
+export function setActivityLogEnabled(on) {
+  state.db.settings = { ...(state.db.settings || {}), activityLog: { ...(state.db.settings?.activityLog || {}), enabled: !!on } };
+  markDirty('settings');
+}
+export function clearActivityLog() {
+  const n = (state.db[ACTIVITY_COLLECTION] || []).length;
+  if (!n) return 0;
+  pruneActivityLog({ maxEntries: 0 });
+  markDirty(ACTIVITY_COLLECTION);
+  return n;
 }
 
 // Log entries, newest first. Optional filter by collection / recordId.

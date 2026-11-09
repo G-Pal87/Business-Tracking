@@ -10,7 +10,7 @@ import { navigate } from '../core/router.js';
 import { loadLib } from '../core/libs.js';
 import { redactForDebug } from '../core/redact.js';
 import { downloadBytes, fmtFileSize, MAX_UPLOAD_BYTES, storagePathWithExt } from '../core/files.js';
-import { patchSettings, upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments, runAllReservationExpenseRules, formatRuleConflictWarning } from '../core/data.js';
+import { patchSettings, upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments, runAllReservationExpenseRules, formatRuleConflictWarning, activityLogEnabled, setActivityLogEnabled, clearActivityLog, ACTIVITY_COLLECTION } from '../core/data.js';
 import { setDb } from '../core/state.js';
 import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS, EXPENSE_CATEGORIES, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
 import { strategySettings, STRATEGY_LABEL, DEFAULTS as STRATEGY_DEFAULTS } from '../core/pricing-strategy.js';
@@ -90,7 +90,7 @@ const SETTINGS_TABS = [
   { id: 'business', label: 'Business',            keys: ['business-info', 'service-catalog', 'huf-eur-rates', 'reservation-expense-rules'] },
   { id: 'str',      label: 'Short-term rentals',  keys: ['str-airbnb'] },
   { id: 'security', label: 'Security & devices',  keys: ['encryption', 'devices'] },
-  { id: 'data',     label: 'Data & sync',         keys: ['github', 'sync-conflicts', 'trash', 'repository-maintenance', 'debugExport', 'data'] }
+  { id: 'data',     label: 'Data & sync',         keys: ['github', 'sync-conflicts', 'trash', 'activity-log', 'repository-maintenance', 'debugExport', 'data'] }
 ];
 const TAB_STORE_KEY = 'bt.settings.tab';
 let _activeTab = null;
@@ -356,6 +356,7 @@ function build() {
     cards.push(buildDebugExportCard());
   }
   cards.push(buildTrashCard());
+  cards.push(buildActivityLogCard());
   cards.push(buildSyncConflictsCard());
   if (isAdmin) cards.push(buildDangerCard());
 
@@ -2308,6 +2309,50 @@ function buildSyncConflictsCard() {
     );
     body.appendChild(row);
   }
+  return card;
+}
+
+// Change history (Activity Log): on/off and clear. It's stored in the
+// encrypted database uploaded on every save, so it can be switched off.
+function buildActivityLogCard() {
+  const card = el('div', { class: 'card mb-16' });
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const subtitleEl = el('div', { class: 'card-subtitle' }, '');
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {}, el('div', { class: 'card-title' }, 'Change history'), subtitleEl),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' }, chevron));
+  card.appendChild(header);
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+  const sizeKB = () => Math.round(JSON.stringify(state.db[ACTIVITY_COLLECTION] || []).length / 1024);
+  const render = () => {
+    const n = (state.db[ACTIVITY_COLLECTION] || []).length;
+    const on = activityLogEnabled();
+    subtitleEl.textContent = `${on ? 'On' : 'Off'} · ${n} entr${n === 1 ? 'y' : 'ies'}${n ? ` · about ${sizeKB()} KB before compression` : ''}`;
+    body.innerHTML = '';
+    body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:12px;line-height:1.5' },
+      'Records who changed what and when (System → Activity Log, and History in each edit form). It is stored in the encrypted database, which is uploaded on every save — keeps the newest 2,000 changes from the last 12 months. Switch it off to keep saves as small as possible.'));
+    const chk = el('input', { type: 'checkbox', id: 'activity-log-enabled' });
+    chk.checked = on;
+    chk.onchange = () => {
+      setActivityLogEnabled(chk.checked);
+      toast(chk.checked ? 'Change history is on' : 'Change history is off — no new changes are recorded', 'success');
+      render();
+    };
+    body.appendChild(formRow('Change history', el('label', { style: 'display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;min-height:40px' }, chk, 'Record changes (Activity Log)')));
+    const clearBtn = button(`Clear history${n ? ` (${n})` : ''}`, { variant: 'sm danger', onClick: async () => {
+      const ok = await confirmDialog(`Delete all ${n} history entries? This can't be undone, and clears it on every device after sync. Your records themselves are not affected.`, { danger: true, okLabel: 'Clear history' });
+      if (!ok) return;
+      const cleared = clearActivityLog();
+      toast(`Cleared ${cleared} history entr${cleared === 1 ? 'y' : 'ies'}`, 'success');
+      render();
+    } });
+    if (!n) clearBtn.disabled = true;
+    body.appendChild(el('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;margin-top:8px' },
+      clearBtn, button('Open Activity Log', { variant: 'sm', onClick: () => { location.hash = 'activity'; } })));
+  };
+  render();
+  wireCollapsible('activity-log', header, body, chevron, () => render());
   return card;
 }
 
