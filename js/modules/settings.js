@@ -27,7 +27,8 @@ export default {
   label: 'Settings',
   icon: '⚙️',
   render(container) { container.appendChild(build()); },
-  refresh() { const c = document.getElementById('content'); c.innerHTML = ''; c.appendChild(build()); },
+  // build() runs before the old page is cleared so it can carry the search box's focus over.
+  refresh() { const c = document.getElementById('content'); const page = build(); c.innerHTML = ''; c.appendChild(page); },
   destroy() {}
 };
 
@@ -55,43 +56,317 @@ let _rerSortCol = -1, _rerSortDir = 1, _rerSearch = '';
 function wireCollapsible(key, header, body, chevron, onFirstOpen = null) {
   let built = !onFirstOpen;
   const ensureBuilt = () => { if (!built) { built = true; onFirstOpen(); } };
+  // Tagged so Settings search can find a field's enclosing collapsibles and
+  // open them; role/tabindex make the header reachable from the keyboard.
+  header.dataset.collapseKey = key;
+  body.dataset.collapseKey = key;
+  header.setAttribute('role', 'button');
+  header.setAttribute('tabindex', '0');
+  header.setAttribute('aria-expanded', 'false');
   if (_expandedCards.has(key)) {
     body.style.display = '';
     chevron.classList.add('open');
+    header.setAttribute('aria-expanded', 'true');
     ensureBuilt();
   }
   header.addEventListener('click', () => {
     const open = body.style.display !== 'none';
     body.style.display = open ? 'none' : '';
     chevron.classList.toggle('open', !open);
+    header.setAttribute('aria-expanded', String(!open));
     if (open) _expandedCards.delete(key); else { _expandedCards.add(key); ensureBuilt(); }
+  });
+  header.addEventListener('keydown', e => {
+    if (e.target !== header || (e.key !== 'Enter' && e.key !== ' ')) return;
+    e.preventDefault();
+    header.click();
   });
 }
 
-function build() {
-  const wrap = el('div', { class: 'view active' });
+// ── Tabs + search ────────────────────────────────────────────────────────
+// Cards are grouped into tabs by their wireCollapsible key. A card whose key
+// isn't listed falls into the last tab, so a new card is never lost.
+const SETTINGS_TABS = [
+  { id: 'business', label: 'Business',            keys: ['business-info', 'service-catalog', 'huf-eur-rates', 'reservation-expense-rules'] },
+  { id: 'str',      label: 'Short-term rentals',  keys: ['str-airbnb'] },
+  { id: 'security', label: 'Security & devices',  keys: ['encryption', 'devices'] },
+  { id: 'data',     label: 'Data & sync',         keys: ['github', 'sync-conflicts', 'trash', 'repository-maintenance', 'debugExport', 'data'] }
+];
+const TAB_STORE_KEY = 'bt.settings.tab';
+let _activeTab = null;
+let _searchQuery = '';
+let _highlightTimer = 0;
 
-  wrap.appendChild(buildGithubCard());
-  wrap.appendChild(buildEncryptionCard());
-  const devicesCard = buildDevicesCard();
-  if (devicesCard) wrap.appendChild(devicesCard);
-  wrap.appendChild(buildCurrencyCard());
-  wrap.appendChild(buildBusinessCard());
-  wrap.appendChild(buildStrSettingsCard());
-  wrap.appendChild(buildServicesCard());
-  wrap.appendChild(buildReservationExpenseRulesCard());
+function loadActiveTab() {
+  if (_activeTab) return _activeTab;
+  let t = null;
+  try { t = localStorage.getItem(TAB_STORE_KEY); } catch { /* storage blocked */ }
+  return SETTINGS_TABS.some(x => x.id === t) ? t : SETTINGS_TABS[0].id;
+}
+function storeActiveTab(id) {
+  _activeTab = id;
+  try { localStorage.setItem(TAB_STORE_KEY, id); } catch { /* storage blocked */ }
+}
+
+const _norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+const _text = node => (node ? node.textContent.replace(/\s+/g, ' ').trim() : '');
+
+// Every searchable setting on the page, read from the DOM (so the list always
+// matches what's rendered): card titles, sub-section headings and form rows.
+// Lazily-built card bodies (devices, trash…) are found by their card title.
+function collectSearchEntries(root) {
+  const entries = [];
+  for (const panel of root.querySelectorAll('.settings-panel')) {
+    const tabId = panel.dataset.tab;
+    const tabLabel = SETTINGS_TABS.find(t => t.id === tabId)?.label || '';
+    for (const card of panel.querySelectorAll(':scope > .card')) {
+      const cardTitle = _text(card.querySelector('.card-header .card-title'));
+      const cardSub = _text(card.querySelector('.card-header .card-subtitle'));
+      entries.push({ kind: 'card', tabId, tabLabel, label: cardTitle, context: tabLabel, hint: cardSub, target: card, focus: null });
+      for (const h of card.querySelectorAll('.sub-section-header, .settings-section > .settings-section-title')) {
+        const title = h.classList.contains('settings-section-title') ? _text(h) : _text(h.querySelector('.sub-section-title'));
+        const sub = h.classList.contains('settings-section-title') ? _text(h.parentElement.querySelector(':scope > .settings-section-desc')) : _text(h.querySelector('.sub-section-subtitle'));
+        entries.push({ kind: 'section', tabId, tabLabel, label: title, context: cardTitle, hint: sub, target: h.parentElement, focus: null });
+      }
+      for (const row of card.querySelectorAll('.form-row')) {
+        if (row.classList.contains('horizontal')) continue;
+        const lab = row.querySelector(':scope > .form-label');
+        if (!lab) continue;
+        const sec = row.closest('.settings-section');
+        const secTitle = sec ? _text(sec.querySelector(':scope > .settings-section-title')) : '';
+        const extra = [...row.querySelectorAll(':scope > label:not(.form-label), :scope > label label')].map(_text).join(' ');
+        entries.push({
+          kind: 'field', tabId, tabLabel, label: _text(lab),
+          context: secTitle ? `${cardTitle} › ${secTitle}` : cardTitle,
+          hint: [_text(row.querySelector(':scope > .fx-hint')), extra].filter(Boolean).join(' '),
+          target: row, focus: row.querySelector('input:not([type=hidden]), select, textarea, button')
+        });
+      }
+    }
+  }
+  return entries;
+}
+
+// Ranks label matches above help-text matches; every word must match.
+function searchSettings(root, query) {
+  const words = _norm(query).split(' ').filter(Boolean);
+  if (!words.length) return [];
+  const out = [];
+  for (const e of collectSearchEntries(root)) {
+    const label = _norm(e.label), ctx = _norm(e.context), hint = _norm(e.hint);
+    const all = `${label} ${ctx} ${hint}`;
+    if (!words.every(w => all.includes(w))) continue;
+    let score = 0;
+    for (const w of words) {
+      if (label.startsWith(w) || label.includes(' ' + w)) score += 6;
+      else if (label.includes(w)) score += 4;
+      else if (ctx.includes(w)) score += 2;
+      else score += 1;
+    }
+    if (e.kind === 'card') score += 1;
+    out.push({ ...e, score });
+  }
+  out.sort((a, b) => b.score - a.score);
+  return out.slice(0, 12);
+}
+
+function buildSettingsSearch(root, selectTab) {
+  const wrap = el('div', { class: 'settings-search' });
+  const inputEl = el('input', {
+    type: 'search', id: 'settings-search', class: 'input settings-search-input',
+    placeholder: 'Search settings (e.g. VAT, discount, trash)…', autocomplete: 'off', spellcheck: 'false',
+    role: 'combobox', 'aria-expanded': 'false', 'aria-controls': 'settings-search-results',
+    'aria-autocomplete': 'list', 'aria-label': 'Search settings'
+  });
+  const list = el('ul', { id: 'settings-search-results', class: 'settings-search-results', role: 'listbox', hidden: true });
+  wrap.appendChild(inputEl);
+  wrap.appendChild(list);
+  let results = [], active = -1;
+
+  const setActive = i => {
+    active = i;
+    [...list.children].forEach((li, j) => {
+      const on = j === i;
+      li.classList.toggle('active', on);
+      li.setAttribute('aria-selected', String(on));
+      if (on) li.scrollIntoView({ block: 'nearest' });
+    });
+    if (i >= 0 && list.children[i]) inputEl.setAttribute('aria-activedescendant', list.children[i].id);
+    else inputEl.removeAttribute('aria-activedescendant');
+  };
+  const close = () => { list.hidden = true; inputEl.setAttribute('aria-expanded', 'false'); setActive(-1); };
+  const render = () => {
+    _searchQuery = inputEl.value;
+    results = searchSettings(root, inputEl.value);
+    list.innerHTML = '';
+    if (!inputEl.value.trim()) { close(); return; }
+    if (!results.length) {
+      list.appendChild(el('li', { class: 'settings-search-empty', role: 'option', 'aria-disabled': 'true' }, 'No matching settings'));
+    }
+    results.forEach((r, i) => {
+      const li = el('li', { id: `settings-search-opt-${i}`, class: 'settings-search-result', role: 'option', 'aria-selected': 'false' },
+        el('span', { class: 'settings-search-label' }, r.label),
+        el('span', { class: 'settings-search-context' }, `${r.tabLabel}${r.context && r.context !== r.tabLabel ? ' › ' + r.context : ''}`));
+      // mousedown (not click) so the input's blur doesn't close the list first.
+      li.addEventListener('mousedown', e => e.preventDefault());
+      li.addEventListener('click', () => choose(i));
+      list.appendChild(li);
+    });
+    list.hidden = false;
+    inputEl.setAttribute('aria-expanded', 'true');
+    setActive(results.length ? 0 : -1);
+  };
+  const choose = i => {
+    const r = results[i];
+    if (!r) return;
+    close();
+    goToSetting(root, r, selectTab);
+  };
+  inputEl.addEventListener('input', render);
+  inputEl.addEventListener('focus', () => { if (inputEl.value.trim()) render(); });
+  inputEl.addEventListener('blur', () => setTimeout(close, 120));
+  inputEl.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (list.hidden) render(); else if (results.length) setActive((active + 1) % results.length); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); if (results.length) setActive(active <= 0 ? results.length - 1 : active - 1); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (active >= 0) choose(active); }
+    else if (e.key === 'Escape') { if (!list.hidden) { e.preventDefault(); e.stopPropagation(); close(); } else if (inputEl.value) { e.preventDefault(); inputEl.value = ''; _searchQuery = ''; } }
+  });
+  inputEl.value = _searchQuery;
+  return { wrap, input: inputEl };
+}
+
+// Switches to the result's tab, opens every collapsible around it, then
+// scrolls to it and flashes a highlight (and focuses the field, if any).
+function goToSetting(root, r, selectTab) {
+  selectTab(r.tabId);
+  const target = r.target;
+  for (let n = target; n && n !== root; n = n.parentElement) {
+    const key = n.dataset?.collapseKey;
+    if (key && n.style.display === 'none' && !n.matches('[role=button]')) {
+      const header = root.querySelector(`[role=button][data-collapse-key="${CSS.escape(key)}"]`);
+      if (header) header.click();
+    }
+  }
+  // A card result opens the card itself too.
+  if (r.kind === 'card') {
+    const header = target.querySelector(':scope > .card-header--toggle');
+    const body = target.querySelector(':scope > .card-collapsible-body');
+    if (header && body && body.style.display === 'none') header.click();
+  }
+  const smooth = !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  target.scrollIntoView({ block: r.kind === 'card' ? 'start' : 'center', behavior: smooth ? 'smooth' : 'auto' });
+  for (const h of root.querySelectorAll('.settings-highlight')) h.classList.remove('settings-highlight');
+  void target.offsetWidth; // restart the animation on a repeat pick
+  target.classList.add('settings-highlight');
+  clearTimeout(_highlightTimer);
+  _highlightTimer = setTimeout(() => target.classList.remove('settings-highlight'), 2200);
+  const f = r.focus || (r.kind === 'card' ? target.querySelector(':scope > .card-header--toggle') : null);
+  if (f) try { f.focus({ preventScroll: true }); } catch { /* old browser */ }
+}
+
+function buildSettingsTabs(wrap, cards) {
+  const header = el('div', { class: 'settings-top' });
+  const tablist = el('div', { class: 'tabs settings-tabs', role: 'tablist', 'aria-label': 'Settings sections' });
+  const panels = {};
+  const tabBtns = {};
+  for (const t of SETTINGS_TABS) {
+    tabBtns[t.id] = el('button', { type: 'button', class: 'tab settings-tab', role: 'tab', id: `settings-tab-${t.id}`, 'aria-controls': `settings-panel-${t.id}`, dataset: { tab: t.id } }, t.label);
+    panels[t.id] = el('div', { class: 'settings-panel', role: 'tabpanel', id: `settings-panel-${t.id}`, 'aria-labelledby': `settings-tab-${t.id}`, dataset: { tab: t.id } });
+    tablist.appendChild(tabBtns[t.id]);
+  }
+  const fallback = SETTINGS_TABS[SETTINGS_TABS.length - 1].id;
+  for (const card of cards) {
+    if (!card) continue;
+    const key = card.querySelector(':scope > [data-collapse-key]')?.dataset.collapseKey;
+    const tab = SETTINGS_TABS.find(t => t.keys.includes(key))?.id || fallback;
+    panels[tab].appendChild(card);
+  }
+  // Keep the configured order within each tab.
+  for (const t of SETTINGS_TABS) {
+    const p = panels[t.id];
+    const kids = [...p.children];
+    const idx = c => { const k = c.querySelector(':scope > [data-collapse-key]')?.dataset.collapseKey; const i = t.keys.indexOf(k); return i < 0 ? 999 : i; };
+    kids.sort((a, b) => idx(a) - idx(b)).forEach(c => p.appendChild(c));
+  }
+  const selectTab = (id, focus = false) => {
+    storeActiveTab(id);
+    for (const t of SETTINGS_TABS) {
+      const on = t.id === id;
+      tabBtns[t.id].classList.toggle('active', on);
+      tabBtns[t.id].setAttribute('aria-selected', String(on));
+      tabBtns[t.id].setAttribute('tabindex', on ? '0' : '-1');
+      panels[t.id].hidden = !on;
+    }
+    const btn = tabBtns[id];
+    if (focus) btn.focus();
+    // Keep the chosen tab in view in the sideways-scrolling phone strip.
+    if (tablist.scrollWidth > tablist.clientWidth) {
+      const l = btn.offsetLeft - tablist.offsetLeft, r = l + btn.offsetWidth;
+      if (l < tablist.scrollLeft || r > tablist.scrollLeft + tablist.clientWidth) tablist.scrollLeft = Math.max(0, l - 16);
+    }
+  };
+  tablist.addEventListener('click', e => { const b = e.target.closest('[role=tab]'); if (b) selectTab(b.dataset.tab); });
+  tablist.addEventListener('keydown', e => {
+    const ids = SETTINGS_TABS.map(t => t.id);
+    const cur = ids.indexOf(document.activeElement?.dataset?.tab);
+    if (cur < 0) return;
+    let next = null;
+    if (e.key === 'ArrowRight') next = (cur + 1) % ids.length;
+    else if (e.key === 'ArrowLeft') next = (cur - 1 + ids.length) % ids.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = ids.length - 1;
+    if (next == null) return;
+    e.preventDefault();
+    selectTab(ids[next], true);
+  });
+
+  const search = buildSettingsSearch(wrap, selectTab);
+  header.appendChild(search.wrap);
+  header.appendChild(tablist);
+  wrap.appendChild(header);
+  for (const t of SETTINGS_TABS) wrap.appendChild(panels[t.id]);
+  selectTab(loadActiveTab());
+  return { selectTab, search };
+}
+
+function build() {
+  const wrap = el('div', { class: 'view active settings-page' });
+  // The page is rebuilt on every background sync; if the person was typing in
+  // the search box, give the new box the focus and caret back.
+  const prevSearch = document.getElementById('settings-search');
+  const hadFocus = prevSearch && document.activeElement === prevSearch;
+  const caret = hadFocus ? prevSearch.selectionStart : null;
+
+  const cards = [];
+  cards.push(buildGithubCard());
+  cards.push(buildEncryptionCard());
+  cards.push(buildDevicesCard()); // null for non-admins
+  cards.push(buildCurrencyCard());
+  cards.push(buildBusinessCard());
+  cards.push(buildStrSettingsCard());
+  cards.push(buildServicesCard());
+  cards.push(buildReservationExpenseRulesCard());
   // Destructive / data-exfiltrating tools (bulk file deletes, debug export,
   // full restore/import, plaintext export) are admin-only — they used to be
   // shown to every role. Roles are advisory in a static app, but this
   // removes the easy footgun for regular users.
   const isAdmin = state.session?.role === 'admin';
   if (isAdmin) {
-    wrap.appendChild(buildRepositoryMaintenanceCard());
-    wrap.appendChild(buildDebugExportCard());
+    cards.push(buildRepositoryMaintenanceCard());
+    cards.push(buildDebugExportCard());
   }
-  wrap.appendChild(buildTrashCard());
-  wrap.appendChild(buildSyncConflictsCard());
-  if (isAdmin) wrap.appendChild(buildDangerCard());
+  cards.push(buildTrashCard());
+  cards.push(buildSyncConflictsCard());
+  if (isAdmin) cards.push(buildDangerCard());
+
+  const { search } = buildSettingsTabs(wrap, cards);
+  if (hadFocus) {
+    setTimeout(() => {
+      if (!search.input.isConnected) return;
+      search.input.focus({ preventScroll: true });
+      try { search.input.setSelectionRange(caret, caret); } catch { /* not supported */ }
+    }, 0);
+  }
   return wrap;
 }
 
@@ -1465,11 +1740,23 @@ function buildStrSettingsCard() {
 
   wireCollapsible('str-airbnb', header, body, chevron);
 
-  body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:12px' },
+  // Layout only: the fields are grouped into headed sections; every input,
+  // its validation and the saved keys are unchanged (one Save for them all).
+  const section = (title, desc) => el('section', { class: 'settings-section' },
+    el('h3', { class: 'settings-section-title' }, title),
+    desc ? el('div', { class: 'settings-section-desc' }, desc) : null);
+  const secFees    = section('Airbnb fees', 'What Airbnb takes from you and adds for the guest, and the cleaning fee.');
+  const secPricing = section('Pricing & strategy', 'How STR Daily Rates turns past prices into suggested rates.');
+  const secSpecial = section('Special dates & gap nights', 'Day-by-day adjustments to the suggested rate.');
+  const secWebsite = section('Website', 'What the public website shows.');
+  const secCal     = section('Calendar', 'Airbnb calendar sync.');
+
+  body.appendChild(el('div', { class: 'settings-section-intro' },
     'Since 13 Oct 2026 Airbnb takes one host-only fee (15.5% + VAT) out of your price and adds no guest fee; ' +
     'reservations booked before that keep the old split fee (3% + VAT for you, the guest fee below on top for the guest). ' +
     'STR Daily Rates recommends the Airbnb daily rate to set: old bookings count at what their guests paid (× 1 + guest fee), ' +
     'so both kinds blend on one scale. The website price is that rate minus your discount.'));
+  [secFees, secPricing, secSpecial, secWebsite, secCal].forEach(x => body.appendChild(x));
 
   const modelS = select([{ value: 'host_only', label: 'Host-only fee (from 13 Oct 2026)' }, { value: 'split', label: 'Old split fee (host + guest fee)' }],
     af.feeModel === 'split' ? 'split' : 'host_only');
@@ -1482,16 +1769,16 @@ function buildStrSettingsCard() {
     effectiveFee.textContent = `Airbnb keeps ${f.hostFeePct}% of each new booking (${f.hostFeeBasePct}% + ${f.vatPct}% VAT); old split-fee bookings: ${f.splitHostFeePct}%.`;
   };
   hostI.addEventListener('input', showFee); vatI.addEventListener('input', showFee); showFee();
-  body.appendChild(formRow('Airbnb fee model for new bookings', modelS, 'Which fee new bookings pay. Past reservations are recognised automatically from their own fee and booking date.'));
-  body.appendChild(el('div', { class: 'form-row horizontal' },
+  secFees.appendChild(formRow('Airbnb fee model for new bookings', modelS, 'Which fee new bookings pay. Past reservations are recognised automatically from their own fee and booking date.'));
+  secFees.appendChild(el('div', { class: 'form-row horizontal' },
     formRow('Host fee % (before VAT)', hostI, 'Airbnb\'s host-only fee — 15.5% since 13 Oct 2026.'),
     formRow('VAT on Airbnb\'s fee %', vatI, 'VAT Airbnb charges on its fee (also on the old 3% fee). Your payouts fit 19%.')
   ));
-  body.appendChild(effectiveFee);
+  secFees.appendChild(effectiveFee);
 
   const weekendI = pctInput(af.weekendUpliftPct, DEFAULT_WEEKEND_UPLIFT_PCT, { min: '0', max: '100' });
   const growthI  = pctInput(af.growthPct, DEFAULT_GROWTH_PCT, { min: '-50', max: '100' });
-  body.appendChild(el('div', { class: 'form-row horizontal' },
+  secPricing.appendChild(el('div', { class: 'form-row horizontal' },
     formRow('Weekend uplift %', weekendI, 'Added to Friday and Saturday nights in STR Daily Rates (suggestions and confirmed targets) and on the website.'),
     formRow('Yearly price growth %', growthI, 'Older years\' prices are raised by this per year before they feed the recommendations. 0 = use them as they were.')
   ));
@@ -1504,18 +1791,18 @@ function buildStrSettingsCard() {
     { value: 'balanced', label: 'Balanced — the suggestion as it is' },
     { value: 'maximise', label: 'Maximise rate — above the suggestion' }
   ], ssCur.strategy);
-  body.appendChild(formRow('Pricing strategy', stratS, 'Applied to the suggested rates (not to confirmed monthly targets). A property or a single month can use a different one — set in STR Daily Rates; the month wins over the property, the property over this.'));
+  secPricing.appendChild(formRow('Pricing strategy', stratS, 'Applied to the suggested rates (not to confirmed monthly targets). A property or a single month can use a different one — set in STR Daily Rates; the month wins over the property, the property over this.'));
   const fillI = pctInput(af.fillPct, STRATEGY_DEFAULTS.fillPct, { min: '0', max: '50' });
   const maxI  = pctInput(af.maximisePct, STRATEGY_DEFAULTS.maximisePct, { min: '0', max: '100' });
   const capI  = pctInput(af.autoCapPct, STRATEGY_DEFAULTS.capPct, { min: '0', max: '50' });
-  body.appendChild(el('div', { class: 'form-row horizontal' },
+  secPricing.appendChild(el('div', { class: 'form-row horizontal' },
     formRow('Fill nights: lower by %', fillI),
     formRow('Maximise rate: raise by %', maxI),
     formRow('Auto: at most ± %', capI, 'Auto moves the price by ½% per point of occupancy ahead of / behind last year, ±3% for months that usually sell out / stay quiet, capped here.')
   ));
   const gapPctI = pctInput(af.gapNightPct, 15, { min: '0', max: '50' });
   const gapMaxI = input({ value: af.gapNightMax != null ? af.gapNightMax : 2, type: 'number', min: '0', max: '7', step: '1', placeholder: '2' });
-  body.appendChild(el('div', { class: 'form-row horizontal' },
+  secSpecial.appendChild(el('div', { class: 'form-row horizontal' },
     formRow('Gap nights: lower by %', gapPctI, 'Open nights in a short gap between two bookings (or closures) rarely sell at full price. 0 = off.'),
     formRow('Gap nights: up to (nights)', gapMaxI, 'A gap this long or shorter counts.')
   ));
@@ -1543,12 +1830,12 @@ function buildStrSettingsCard() {
   drawSpecials();
   spWrap.appendChild(spList);
   spWrap.appendChild(button('+ Add date', { variant: 'sm', onClick: () => { specials.push({ label: '', from: '', to: '', pct: 20, yearly: true }); drawSpecials(); } }));
-  body.appendChild(formRow('Special dates', spWrap, 'Raise (or lower) the suggested rate on these days, e.g. Christmas +20%, a local festival +30%. Applies to all properties.'));
+  secSpecial.appendChild(formRow('Special dates', spWrap, 'Raise (or lower) the suggested rate on these days, e.g. Christmas +20%, a local festival +30%. Applies to all properties.'));
 
   const lmDaysI = input({ value: af.lastMinuteDays != null ? af.lastMinuteDays : STRATEGY_DEFAULTS.lmDays, type: 'number', min: '0', max: '30', step: '1', placeholder: String(STRATEGY_DEFAULTS.lmDays) });
   const lmModeS = select([{ value: 'measured', label: 'Measured from my bookings' }, { value: 'fixed', label: 'Fixed %' }], ssCur.lmMode);
   const lmPctI  = pctInput(af.lastMinutePct, STRATEGY_DEFAULTS.lmPct, { min: '0', max: '50' });
-  body.appendChild(el('div', { class: 'form-row horizontal' },
+  secPricing.appendChild(el('div', { class: 'form-row horizontal' },
     formRow('Last-minute window (days)', lmDaysI, 'Open nights this close to the date get the last-minute drop (Fill nights, and Auto unless it\'s raising the price).'),
     formRow('Last-minute drop', lmModeS, 'Measured: how much cheaper your last-minute bookings went, shown in STR Daily Rates.'),
     formRow('Fixed / fallback %', lmPctI, 'Used when "Fixed", or when nothing has been measured yet.')
@@ -1558,7 +1845,7 @@ function buildStrSettingsCard() {
   const feeI = input({ value: af.guestFeePct != null ? af.guestFeePct : AIRBNB_GUEST_FEE_PCT, type: 'number', placeholder: String(AIRBNB_GUEST_FEE_PCT) });
   const taxI = input({ value: af.taxPct      != null ? af.taxPct      : AIRBNB_TAX_PCT,      type: 'number', placeholder: String(AIRBNB_TAX_PCT) });
   const cleanI = input({ value: af.cleaningFee != null ? af.cleaningFee : AIRBNB_CLEANING_FEE, type: 'number', placeholder: String(AIRBNB_CLEANING_FEE) });
-  body.appendChild(el('div', { class: 'form-row horizontal' },
+  secFees.appendChild(el('div', { class: 'form-row horizontal' },
     formRow('Guest service fee % (old split fee only)', feeI, 'Old model only: what Airbnb added for the guest on top of your price (~14%). Used for reservations booked before 13 Oct 2026.'),
     formRow('Occupancy / tourist tax %', taxI, 'Any tax added to the guest total. Leave 0 if not applicable.')
   ));
@@ -1566,24 +1853,24 @@ function buildStrSettingsCard() {
     { value: 'keep', label: 'I keep my Airbnb cleaning fee as it is' },
     { value: 'raise', label: 'I raise my Airbnb cleaning fee by the old guest fee too' }
   ], af.cleaningStrategy === 'raise' ? 'raise' : 'keep');
-  body.appendChild(formRow('Cleaning fee after the fee change', cleanStratS,
+  secFees.appendChild(formRow('Cleaning fee after the fee change', cleanStratS,
     'Keep: the guest fee your guests used to pay on cleaning moves into the nightly rate, so a guest pays the same total as before (e.g. €40 a night + €40 cleaning, 19% fee → €50 a night). Raise: it stays with cleaning (€48 a night + €48 cleaning).'));
-  body.appendChild(formRow('Cleaning fee (flat, per booking)', cleanI, 'Flat fee the guest pays for cleaning, once per booking (no guest fee/tax added). Published in the daily-rate feed for the Short-Term-Rentals repo.'));
+  secFees.appendChild(formRow('Cleaning fee (flat, per booking)', cleanI, 'Flat fee the guest pays for cleaning, once per booking (no guest fee/tax added). Published in the daily-rate feed for the Short-Term-Rentals repo.'));
 
   const globalDiscI = input({ value: af.globalDiscountPct != null ? af.globalDiscountPct : '', type: 'number', min: '0', max: '100', placeholder: '0' });
-  body.appendChild(formRow('Global promotional discount %', globalDiscI, 'Applied to all properties and months when publishing rates. Override per month in STR Rates → Promotional Discount.'));
+  secWebsite.appendChild(formRow('Global promotional discount %', globalDiscI, 'Applied to all properties and months when publishing rates. Override per month in STR Rates → Promotional Discount.'));
 
   // Nights Airbnb closes beyond this many months ahead are its availability
   // window, not closures — STR Daily Rates doesn't ask for a reason on them.
   const windowI = input({ value: af.availabilityWindowMonths != null ? af.availabilityWindowMonths : 9, type: 'number', min: '1', max: '36', placeholder: '9' });
-  body.appendChild(formRow('Airbnb availability window (months)', windowI, 'Same as Airbnb → Availability → "How far in advance can guests book". Nights Airbnb shows as closed beyond this aren\'t treated as your closures.'));
+  secCal.appendChild(formRow('Airbnb availability window (months)', windowI, 'Same as Airbnb → Availability → "How far in advance can guests book". Nights Airbnb shows as closed beyond this aren\'t treated as your closures.'));
 
   // Master switch for the public website (Short-Term-Rentals): overrides every
   // property's own "Website prices" toggle. The published feeds then carry no
   // amounts at all and the site shows "Price on request" everywhere.
   const hideAllChk = el('input', { type: 'checkbox' });
   hideAllChk.checked = af.hideAllSitePrices === true;
-  body.appendChild(formRow('Public website prices',
+  secWebsite.appendChild(formRow('Public website prices',
     el('label', { style: 'display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer' }, hideAllChk,
       'Hide all prices on the website (every property)'),
     'Overrides each property\'s own "Website prices" setting. Guests see "Price on request" and ask for a quote on WhatsApp. Takes effect a few minutes after saving, once the website rebuilds.'));
@@ -1592,7 +1879,7 @@ function buildStrSettingsCard() {
   // → "Set up calendar sync"). An own proxy (docs/ical-proxy.md) is optional:
   // with one, this browser also fetches them. Public proxies are never used.
   const proxyI = input({ value: af.icalProxyUrl || '', placeholder: 'https://calendar-proxy.<you>.workers.dev' });
-  body.appendChild(formRow('Calendar proxy (optional)', proxyI,
+  secCal.appendChild(formRow('Calendar proxy (optional)', proxyI,
     'Not needed: Airbnb calendars are fetched by the GitHub calendar sync (STR Daily Rates). If you also run your own proxy (a free Cloudflare Worker — docs/ical-proxy.md), this browser fetches through it too. Public proxies are never used.'));
 
   const save = button('Save', { variant: 'primary', onClick: () => {
@@ -1655,7 +1942,7 @@ function buildStrSettingsCard() {
     markDirty();
     toast('Saved', 'success');
   }});
-  body.appendChild(save);
+  body.appendChild(el('div', { class: 'settings-save-bar' }, save));
   return card;
 }
 
