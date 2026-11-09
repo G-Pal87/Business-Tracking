@@ -928,30 +928,9 @@ function buildScheduleSection(wrap) {
 
     const tenants = listActive('tenants');
     const tenantById = new Map(tenants.map(t => [t.id, t]));
-    const toRows = entries => entries.map(e => {
-      const t = tenantById.get(e.tenantId);
-      return {
-        property: e.prop.name,
-        owner: getPersonName(e.prop.owner),
-        tenant: t ? t.name : (e.prop.tenantName || e.prop.name),
-        dueDate: e.date,
-        amount: e.amount,
-        currency: e.currency,
-        status: e.paid ? 'paid' : e.overdue ? 'overdue' : 'upcoming'
-      };
-    });
-    const schedCols = [
-      { key: 'property', label: 'Property', tip: 'Long-term rental property this scheduled rent entry belongs to.' },
-      { key: 'owner', label: 'Owner', tip: 'Which partner owns this property.' },
-      { key: 'tenant', label: 'Tenant', tip: 'Tenant on the active lease for this month (falls back to the property\'s stored tenant name if no tenant record matches).' },
-      { key: 'dueDate', label: 'Due Date', tip: 'Exact date rent is due, based on the lease\'s payment-day-of-month.', format: v => fmtDate(v) },
-      { key: 'amount', label: 'Amount', right: true, tip: 'Monthly rent amount from the tenant\'s lease, in the lease currency.', format: (v, row) => formatMoney(v, row.currency, { maxFrac: 0 }) },
-      { key: 'status', label: 'Status', tip: 'Paid (a matching payment record exists), Overdue (past due date and unpaid), or Upcoming.', format: v => ({ paid: el('span', { class: 'badge success' }, 'Paid'), overdue: el('span', { class: 'badge danger' }, 'Overdue'), upcoming: el('span', { class: 'badge' }, 'Upcoming') })[v] || el('span', { class: 'badge' }, v) }
-    ];
-
     kpiRow.innerHTML = '';
     kpiRow.appendChild(kpiCard('Paid This Year', String(paidThisYear.length), formatEUR(paidThisYear.reduce((s, e) => s + e.amountEUR, 0)), 'success',
-      paidThisYear.length ? () => drillDownModal('Paid This Year', toRows(paidThisYear), schedCols) : null, {
+      paidThisYear.length ? () => openSchedByProperty(`Paid This Year — ${now.getFullYear()} by Property`, paidThisYear) : null, {
         title: 'Paid This Year',
         formula: `Count of scheduled rent entries where paid = true and month starts with "${now.getFullYear()}"; € total = Σ amountEUR of those entries`,
         inputs: [
@@ -962,7 +941,7 @@ function buildScheduleSection(wrap) {
         source: 'js/core/data.js:715-717 _scheduleSegment() (paid flag); js/modules/payments.js:728 buildScheduleSection()'
       }));
     kpiRow.appendChild(kpiCard('Overdue', String(overdueAll.length), overdueAll.length ? formatEUR(overdueAll.reduce((s, e) => s + e.amountEUR, 0)) : '—', overdueAll.length ? 'danger' : '',
-      overdueAll.length ? () => drillDownModal('Overdue Payments', toRows(overdueAll), schedCols) : null, {
+      overdueAll.length ? () => openSchedOverdue('Overdue Rent — Worst First', overdueAll) : null, {
         title: 'Overdue',
         formula: 'Count of scheduled rent entries where paid = false and the due date has already passed; € total = Σ amountEUR of those entries',
         inputs: [
@@ -972,7 +951,7 @@ function buildScheduleSection(wrap) {
         source: 'js/core/data.js:729 _scheduleSegment() — overdue = !paid && dueDate < now; js/modules/payments.js:729 buildScheduleSection()'
       }));
     kpiRow.appendChild(kpiCard('Upcoming', String(upcomingAll.length), upcomingAll.length ? formatEUR(upcomingAll.reduce((s, e) => s + e.amountEUR, 0)) : '—', '',
-      upcomingAll.length ? () => drillDownModal('Upcoming Payments', toRows(upcomingAll), schedCols) : null, {
+      upcomingAll.length ? () => openSchedByMonth('Upcoming Rent by Month', upcomingAll) : null, {
         title: 'Upcoming',
         formula: 'Count of scheduled rent entries where paid = false and overdue = false (includes entries due later this month); € total = Σ amountEUR of those entries',
         inputs: [
@@ -982,7 +961,7 @@ function buildScheduleSection(wrap) {
         source: 'js/modules/payments.js:730 buildScheduleSection()'
       }));
     kpiRow.appendChild(kpiCard('Next Due', next ? fmtDate(next.date) : '—', daysToNext !== null ? (daysToNext <= 0 ? 'Today!' : daysToNext === 1 ? 'Tomorrow' : `In ${daysToNext} days`) : '—', daysToNext !== null && daysToNext <= 3 ? 'warning' : '',
-      next ? () => drillDownModal('Next Due', toRows([next]), schedCols) : null, next ? {
+      next ? () => openSchedNextDue(`Next Due — ${fmtDate(next.date)}`, upcomingAll.filter(e => e.date === next.date)) : null, next ? {
         title: 'Next Due',
         formula: 'Earliest entry among "Upcoming", sorted by due date ascending; days shown = ceil((due date − today) ÷ 1 day)',
         inputs: [
@@ -1286,6 +1265,121 @@ function buildScheduleSection(wrap) {
   return render;
 }
 
+// ── Rent-schedule card breakdowns ─────────────────────────────────────────────
+// Each schedule card opens its own table (drillDownModal has no total row of
+// its own, so a bold Total row equal to the card's € figure is appended).
+// `entries` are generatePaymentSchedule() entries with `prop` attached.
+function openScheduleBreakdown(title, rows, cols, total) {
+  const out = total && rows.length ? [...rows, { [cols[0].key]: 'Total', ...total, _total: true }] : rows;
+  drillDownModal(title, out, cols.map(c => ({ ...c, format: (v, row) => {
+    if (!row._total) return c.format ? c.format(v, row) : (v ?? '—');
+    if (v == null || v === '') return '';
+    const d = c.format && c.key !== cols[0].key ? c.format(v, row) : v;
+    return d instanceof Node ? el('strong', {}, d) : el('strong', {}, String(d));
+  } })));
+}
+const schedTenant = e => (e.tenantId ? byId('tenants', e.tenantId)?.name : null) || e.prop.tenantName || '—';
+const schedEUR = entries => entries.reduce((s, e) => s + (e.amountEUR || 0), 0);
+const rentCell = (v, row) => formatMoney(v, row.currency, { maxFrac: 0 });
+const SCHED_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const monthName = mk => `${SCHED_MONTHS[parseInt(mk.slice(5, 7), 10) - 1]} ${mk.slice(0, 4)}`;
+
+// Paid / expected rent per property (Paid This Year, Total Expected).
+function openSchedByProperty(title, entries, { split = false } = {}) {
+  const m = new Map();
+  for (const e of entries) {
+    const x = m.get(e.prop.id) || { property: e.prop.name, owner: getPersonName(e.prop.owner), n: 0, months: [], overdue: 0, upcoming: 0, eur: 0 };
+    x.n++; x.months.push(e.monthKey); x.eur += e.amountEUR || 0;
+    if (e.overdue) x.overdue += e.amountEUR || 0; else x.upcoming += e.amountEUR || 0;
+    m.set(e.prop.id, x);
+  }
+  const rows = [...m.values()].map(x => {
+    const ms = [...x.months].sort();
+    return { ...x, span: ms.length > 1 ? `${monthName(ms[0])} – ${monthName(ms[ms.length - 1])}` : monthName(ms[0]) };
+  }).sort((a, b) => b.eur - a.eur);
+  const cols = split ? [
+    { key: 'property', label: 'Property' },
+    { key: 'n', label: 'Payments', right: true },
+    { key: 'overdue', label: 'Overdue (EUR)', right: true, format: v => formatEUR(v), tip: 'Unpaid and past the due date.' },
+    { key: 'upcoming', label: '+ Not Yet Due (EUR)', right: true, format: v => formatEUR(v), tip: 'Due within the selected horizon.' },
+    { key: 'eur', label: '= Expected (EUR)', right: true, format: v => formatEUR(v) }
+  ] : [
+    { key: 'property', label: 'Property' },
+    { key: 'owner', label: 'Owner' },
+    { key: 'span', label: 'Months Paid' },
+    { key: 'n', label: 'Payments', right: true },
+    { key: 'eur', label: 'Paid (EUR)', right: true, format: v => formatEUR(v), tip: 'Scheduled rent marked paid, converted to EUR.' }
+  ];
+  openScheduleBreakdown(title, rows, cols, { n: entries.length, overdue: schedEUR(entries.filter(e => e.overdue)), upcoming: schedEUR(entries.filter(e => !e.overdue)), eur: schedEUR(entries) });
+}
+
+// Overdue rent, worst first, with days late.
+function openSchedOverdue(title, entries) {
+  const today = todayYmd();
+  const rows = entries.map(e => ({ property: e.prop.name, tenant: schedTenant(e), dueDate: e.date, late: Math.max(0, diffDaysYmd(e.date, today)), amount: e.amount, currency: e.currency, eur: e.amountEUR || 0 }))
+    .sort((a, b) => b.late - a.late || b.eur - a.eur);
+  openScheduleBreakdown(title, rows, [
+    { key: 'property', label: 'Property' },
+    { key: 'tenant', label: 'Tenant' },
+    { key: 'dueDate', label: 'Due Date', format: v => fmtDate(v) },
+    { key: 'late', label: 'Days Late', right: true, tip: 'Days since the due date.' },
+    { key: 'amount', label: 'Rent', right: true, format: rentCell, tip: 'Rent in the lease currency.' },
+    { key: 'eur', label: 'Owed (EUR)', right: true, format: v => formatEUR(v) }
+  ], { eur: schedEUR(entries) });
+}
+
+// Rent not yet due, grouped by month with a running total.
+function openSchedByMonth(title, entries) {
+  const m = new Map();
+  for (const e of entries) {
+    const x = m.get(e.monthKey) || { mk: e.monthKey, n: 0, props: new Set(), eur: 0 };
+    x.n++; x.props.add(e.prop.name); x.eur += e.amountEUR || 0; m.set(e.monthKey, x);
+  }
+  let cum = 0;
+  const rows = [...m.values()].sort((a, b) => a.mk.localeCompare(b.mk))
+    .map(x => { cum += x.eur; return { month: monthName(x.mk), n: x.n, props: [...x.props].join(', '), eur: x.eur, cum }; });
+  openScheduleBreakdown(title, rows, [
+    { key: 'month', label: 'Month' },
+    { key: 'n', label: 'Payments', right: true },
+    { key: 'props', label: 'Properties' },
+    { key: 'eur', label: 'Expected (EUR)', right: true, format: v => formatEUR(v) },
+    { key: 'cum', label: 'Running Total', right: true, format: v => formatEUR(v) }
+  ], { n: entries.length, eur: schedEUR(entries) });
+}
+
+// Rent due this month — paid status and days to go.
+function openSchedThisMonth(title, entries) {
+  const today = todayYmd();
+  const rows = entries.map(e => ({ property: e.prop.name, tenant: schedTenant(e), dueDate: e.date,
+    when: e.overdue ? `${Math.max(0, diffDaysYmd(e.date, today))} days late` : diffDaysYmd(today, e.date) <= 0 ? 'Today' : `In ${diffDaysYmd(today, e.date)} days`,
+    amount: e.amount, currency: e.currency, eur: e.amountEUR || 0 })).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  openScheduleBreakdown(title, rows, [
+    { key: 'property', label: 'Property' },
+    { key: 'tenant', label: 'Tenant' },
+    { key: 'dueDate', label: 'Due Date', format: v => fmtDate(v) },
+    { key: 'when', label: 'When' },
+    { key: 'amount', label: 'Rent', right: true, format: rentCell },
+    { key: 'eur', label: 'Due (EUR)', right: true, format: v => formatEUR(v) }
+  ], { eur: schedEUR(entries) });
+}
+
+// Next Due — every payment falling on that date, and the lease behind it.
+function openSchedNextDue(title, entries) {
+  const rows = entries.map(e => {
+    const t = e.tenantId ? byId('tenants', e.tenantId) : null;
+    return { property: e.prop.name, tenant: schedTenant(e), owner: getPersonName(e.prop.owner),
+      leaseEnd: t?.leaseEndDate || '', amount: e.amount, currency: e.currency, eur: e.amountEUR || 0 };
+  });
+  openScheduleBreakdown(title, rows, [
+    { key: 'property', label: 'Property' },
+    { key: 'tenant', label: 'Tenant' },
+    { key: 'owner', label: 'Owner' },
+    { key: 'leaseEnd', label: 'Lease Ends', format: v => v ? fmtDate(v) : '—' },
+    { key: 'amount', label: 'Rent', right: true, format: rentCell },
+    { key: 'eur', label: 'EUR', right: true, format: v => formatEUR(v) }
+  ], { eur: schedEUR(entries) });
+}
+
 function kpiCard(label, value, sub, variant, onClick, explain) {
   const labelEl = el('div', { class: 'kpi-label', style: explain ? 'display:flex;align-items:center;gap:4px' : '' }, label);
   if (explain) labelEl.appendChild(mkExplainButton(explain));
@@ -1347,27 +1441,9 @@ function buildUpcomingSection(wrap) {
     const upcoming = allEntries.filter(e => !e.overdue);
     const totalEUR = allEntries.reduce((s, e) => s + e.amountEUR, 0);
 
-    const toRows = entries => entries.map(e => ({
-      property: e.prop.name,
-      owner: getPersonName(e.prop.owner),
-      tenant: e.tenantId ? (byId('tenants', e.tenantId)?.name || e.prop.tenantName || '—') : (e.prop.tenantName || '—'),
-      dueDate: e.date,
-      amount: e.amount,
-      currency: e.currency,
-      status: e.overdue ? 'overdue' : e.monthKey === thisMonthKey ? 'due-this-month' : 'upcoming'
-    }));
-    const upcomingCols = [
-      { key: 'property', label: 'Property', tip: 'Long-term rental property this entry belongs to.' },
-      { key: 'owner', label: 'Owner', tip: 'Which partner owns this property.' },
-      { key: 'tenant', label: 'Tenant', tip: 'Tenant on the active lease for this month (falls back to the property\'s stored tenant name if no tenant record matches).' },
-      { key: 'dueDate', label: 'Due Date', tip: 'Exact date this rent payment is due, based on the lease\'s payment-day-of-month.', format: v => fmtDate(v) },
-      { key: 'amount', label: 'Amount', right: true, tip: 'Monthly rent amount from the tenant\'s lease, in the lease currency.', format: (v, row) => formatMoney(v, row.currency, { maxFrac: 0 }) },
-      { key: 'status', label: 'Status', tip: 'Overdue (past due and unpaid), Due this month, or Upcoming (further out, within the selected horizon).', format: v => ({ overdue: el('span', { class: 'badge danger' }, 'Overdue'), 'due-this-month': el('span', { class: 'badge warning' }, 'Due this month'), upcoming: el('span', { class: 'badge' }, 'Upcoming') })[v] || el('span', { class: 'badge' }, v) }
-    ];
-
     kpiRow.innerHTML = '';
     kpiRow.appendChild(kpiCard('Overdue', String(overdue.length), overdue.length ? formatEUR(overdue.reduce((s, e) => s + e.amountEUR, 0)) : '—', overdue.length ? 'danger' : '',
-      overdue.length ? () => drillDownModal('Overdue', toRows(overdue), upcomingCols) : null, {
+      overdue.length ? () => openSchedOverdue('Overdue Rent — Worst First', overdue) : null, {
         title: 'Overdue',
         formula: 'Count of unpaid scheduled entries (within the collected set below) whose due date has already passed; € total = Σ amountEUR of those entries',
         inputs: [
@@ -1377,7 +1453,7 @@ function buildUpcomingSection(wrap) {
         source: 'js/modules/payments.js buildUpcomingSection() — overdue = allEntries.filter(e => e.overdue)'
       }));
     kpiRow.appendChild(kpiCard('Due This Month', String(thisMonth.length), thisMonth.length ? formatEUR(thisMonth.reduce((s, e) => s + e.amountEUR, 0)) : '—', thisMonth.length ? 'warning' : '',
-      thisMonth.length ? () => drillDownModal('Due This Month', toRows(thisMonth), upcomingCols) : null, {
+      thisMonth.length ? () => openSchedThisMonth('Rent Due This Month', thisMonth) : null, {
         title: 'Due This Month',
         formula: 'Count of unpaid scheduled entries whose month key equals the current calendar month; € total = Σ amountEUR of those entries',
         inputs: [
@@ -1388,7 +1464,7 @@ function buildUpcomingSection(wrap) {
         source: 'js/modules/payments.js buildUpcomingSection() — thisMonth = allEntries.filter(e => e.monthKey === thisMonthKey)'
       }));
     kpiRow.appendChild(kpiCard('Upcoming', String(upcoming.length), upcoming.length ? formatEUR(upcoming.reduce((s, e) => s + e.amountEUR, 0)) : '—', '',
-      upcoming.length ? () => drillDownModal('Upcoming Payments', toRows(upcoming), upcomingCols) : null, {
+      upcoming.length ? () => openSchedByMonth(`Upcoming Rent by Month — Next ${horizonMonths} Month(s)`, upcoming) : null, {
         title: 'Upcoming',
         formula: 'Count of all not-yet-overdue entries in the collected set (includes entries due later this month); € total = Σ amountEUR of those entries',
         inputs: [
@@ -1399,7 +1475,7 @@ function buildUpcomingSection(wrap) {
         source: 'js/modules/payments.js buildUpcomingSection() — upcoming = allEntries.filter(e => !e.overdue)'
       }));
     kpiRow.appendChild(kpiCard('Total Expected', formatEUR(totalEUR), `${allEntries.length} payment(s)`, '',
-      allEntries.length ? () => drillDownModal('Total Expected', toRows(allEntries), upcomingCols) : null, {
+      allEntries.length ? () => openSchedByProperty(`Total Expected — Next ${horizonMonths} Month(s) by Property`, allEntries, { split: true }) : null, {
         title: 'Total Expected',
         formula: `Σ amountEUR across every unpaid scheduled entry that is either overdue or due within the selected horizon (Next ${horizonMonths} month(s))`,
         inputs: [

@@ -10,12 +10,13 @@ import {
   getPersonName, drillRevRows, drillExpRows, drillNetRows, drillRevRowsPnL, drillNetRowsPnL
 } from '../core/data.js';
 import {
-  mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkExplainButton, mkDrillValue,
+  mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkExplainButton, mkDrillValue,
   GHS_ANNUAL_CAP, ghsRateForDate, ghsDividendCap, ghsOtherIncome, ghsByDividend, ghsForDividendAmount,
   isDividendRecipientDomiciled, sdcRateForDate, sdcForDividend
 } from './analytics-helpers.js';
 import { hasCyprusTaxYearConfig, getCyprusTaxYearConfig } from './cyprus-tax.js';
 import { todayYmd } from '../core/dates.js';
+import { COST_CATEGORIES } from '../core/config.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 // GHS (General Healthcare System/GESY) is withheld on dividends for ALL
@@ -195,6 +196,7 @@ function toDivDrillRows(divs, ghsById) {
       recipient: d.recipient === 'giorgos' ? G_LABEL : R_LABEL,
       gross:     d.grossAmount || 0,
       ghs,
+      sdc:       sdcForDividend(d),
       net:       (d.grossAmount || 0) - ghs - sdcForDividend(d),
       notes:     d.notes || '—'
     };
@@ -204,10 +206,69 @@ const DIV_DRILL_COLS = [
   { key: 'date',      label: 'Date',      format: v => fmtDate(v) },
   { key: 'recipient', label: 'Recipient' },
   { key: 'gross',     label: 'Gross',     right: true, format: v => formatEUR(v) },
-  { key: 'ghs',       label: 'GHS',       right: true, format: v => formatEUR(v) },
-  { key: 'net',       label: 'Net',       right: true, format: v => formatEUR(v) },
+  { key: 'ghs',       label: '− GHS',     right: true, format: v => formatEUR(v) },
+  { key: 'sdc',       label: '− SDC',     right: true, format: v => formatEUR(v), tip: 'Special Defence Contribution — only for recipients marked Cyprus-domiciled.' },
+  { key: 'net',       label: '= Net',     right: true, format: v => formatEUR(v) },
   { key: 'notes',     label: 'Notes' }
 ];
+
+// ── Per-figure breakdowns ─────────────────────────────────────────────────────
+// drillDownModal() has no total row of its own: `total` (column values) is
+// appended as a bold last row, its first column labelled "Total" unless given.
+function openBreakdown(title, rows, cols, total = null) {
+  const out = total && rows.length ? [...rows, { [cols[0].key]: 'Total', ...total, _total: true }] : rows;
+  drillDownModal(title, out, cols.map(c => ({ ...c, format: (v, row) => {
+    if (!row._total) return c.format ? c.format(v, row) : (v ?? '—');
+    if (v == null || v === '') return '';
+    const d = c.format && c.key !== cols[0].key ? c.format(v, row) : v;
+    return d instanceof Node ? el('strong', {}, d) : el('strong', {}, String(d));
+  } })));
+}
+const sumKey = (rows, k) => rows.reduce((s, r) => s + (Number(r[k]) || 0), 0);
+const signedE = v => (v < 0 ? '−' : '') + fmtE(Math.abs(v));
+const linkCell = fmt => (v, row) => row.open ? mkDrillValue(fmt(v), row.open) : fmt(v);
+const recLabel = r => r === 'giorgos' ? G_LABEL : R_LABEL;
+// Same two-way split as toDivDrillRows / the history chart (anything not
+// 'giorgos' is the second recipient), so per-recipient rows add up to the totals.
+const recKey = d => d.recipient === 'giorgos' ? 'giorgos' : 'rita';
+
+// Dividend records with their gross / GHS / SDC / net totals.
+function openDivRecords(title, divs, ghsById) {
+  const rows = toDivDrillRows(divs, ghsById);
+  openBreakdown(title, rows, DIV_DRILL_COLS, { gross: sumKey(rows, 'gross'), ghs: sumKey(rows, 'ghs'), sdc: sumKey(rows, 'sdc'), net: sumKey(rows, 'net') });
+}
+function openRecordList(title, rows, cols) {
+  openBreakdown(title, rows, cols, { eur: sumKey(rows, 'eur') });
+}
+
+// Operating Profit = revenue (rent received, invoices excl. VAT) − OpEx by category.
+function openOpProfitBreakdown(pnl, year) {
+  const pays = pnl.payments, invs = pnl.invoices;
+  const paysEUR = pays.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
+  const invsEUR = invs.reduce((s, i) => s + toEUR(i.subtotal ?? i.total, i.currency, i.issueDate || i.date), 0);
+  const cats = new Map();
+  for (const e of pnl.opExpenses) {
+    const f = resolveExpenseFields(e);
+    const k = f.costCategory || e.costCategory || e.category || 'other';
+    const x = cats.get(k) || { recs: [], amount: 0 };
+    x.recs.push(e); x.amount += toEUR(e.amount, e.currency, e.date); cats.set(k, x);
+  }
+  const rows = [
+    { line: 'Rent received', kind: 'Revenue', n: pays.length, amount: paysEUR,
+      open: pays.length ? () => openRecordList(`Rent Received — ${year}`, drillRevRows(pays, []), REV_COLS) : null },
+    { line: 'Invoices issued (excl. VAT)', kind: 'Revenue', n: invs.length, amount: invsEUR,
+      open: invs.length ? () => openRecordList(`Invoices — ${year}`, drillRevRowsPnL([], invs), REV_COLS) : null },
+    ...[...cats.entries()].sort((a, b) => b[1].amount - a[1].amount).map(([k, x]) => ({
+      line: COST_CATEGORIES[k]?.label || k, kind: 'Operating expense', n: x.recs.length, amount: -x.amount,
+      open: () => openRecordList(`${COST_CATEGORIES[k]?.label || k} — ${year}`, drillExpRows(x.recs), EXP_COLS) }))
+  ].filter(r => r.n > 0);
+  openBreakdown(`Operating Profit — ${year}`, rows, [
+    { key: 'line', label: 'Line' },
+    { key: 'kind', label: 'Type' },
+    { key: 'n', label: 'Records', right: true },
+    { key: 'amount', label: 'Profit Effect', right: true, format: linkCell(signedE), tip: 'Revenue adds to profit, operating expenses reduce it. Click for the records.' }
+  ], { n: sumKey(rows, 'n'), amount: pnl.opProfit });
+}
 
 // Corporation tax on the SAME period as Operating Profit — the year's
 // configured rate × this module's (year-to-date, for the current year)
@@ -338,23 +399,7 @@ function buildView() {
         ],
         source: 'dividends.js:135 getOpProfit()'
       },
-      onClick: () => {
-        const body = el('div');
-        body.appendChild(mkSummaryGrid([
-          { label: 'Total Revenue',    value: mkDrillValue(fmtE(pnlData.totalRevenue), () =>
-              drillDownModal(`Total Revenue — ${gYear}`, drillRevRowsPnL(pnlData.payments, pnlData.invoices), REV_COLS)) },
-          { label: 'Total OpEx',       value: mkDrillValue(fmtE(pnlData.totalOpEx), () =>
-              drillDownModal(`Total OpEx — ${gYear}`, drillExpRows(pnlData.opExpenses), EXP_COLS)) },
-          { label: 'Operating Profit', value: mkDrillValue(fmtE(pnlData.opProfit), () =>
-              drillDownModal(`Operating Profit — ${gYear}`, drillNetRowsPnL(pnlData.payments, pnlData.invoices, pnlData.opExpenses), NET_COLS)) },
-          { label: 'CapEx (excluded)', value: mkDrillValue(fmtE(pnlData.totalCapEx), () =>
-              drillDownModal(`CapEx — ${gYear}`, drillExpRows(pnlData.capExpenses), EXP_COLS)) },
-        ], 2));
-        body.appendChild(el('div', { style: 'margin-top:8px;font-size:12px;color:var(--text-muted);padding:8px 12px;background:rgba(99,102,241,0.06);border-left:2px solid var(--accent);border-radius:4px;line-height:1.6' },
-          'Company-channel properties only. CapEx is excluded from OpEx but shown for reference. For the full P&L breakdown, open the Tax → P&L Report tab.'
-        ));
-        openModal({ title: `Operating Profit — ${gYear}`, body });
-      }
+      onClick: () => openOpProfitBreakdown(pnlData, gYear)
     }),
     mkKpiCard({
       label: 'Est. Corporation Tax',
@@ -374,22 +419,21 @@ function buildView() {
         note: 'Tax is taken on the same period as the profit it is subtracted from. The full-year projection (actuals + forecast) is for reference only.'
       } : null,
       onClick: () => {
-        const body = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
-        if (corpTaxEst !== null) {
-          body.appendChild(mkSummaryGrid([
-            { label: 'Operating Profit',   value: mkDrillValue(fmtE(pnlData.opProfit), () =>
-                drillDownModal(`Operating Profit — ${gYear}`, drillNetRowsPnL(pnlData.payments, pnlData.invoices, pnlData.opExpenses), NET_COLS)) },
-            { label: 'Est. Corporation Tax', value: fmtE(corpTaxEst) },
-            { label: 'After-Tax Profit',   value: fmtE(Math.max(0, afterTax)) },
-            { label: 'Tax Rate Applied',   value: `${getCyprusTaxYearConfig(gYear).corpTaxRate}%` },
-            { label: 'Full-year projection', value: fmtE(fullYearTaxEst ?? 0) },
-          ], 2));
-        } else {
-          body.appendChild(el('p', { style: 'font-size:13px;color:var(--text-muted);line-height:1.6;margin:0' },
-            `No corporation tax estimate is linked to ${gYear}. Configure the Provisional Tax tab under Tax (Analysis) for the same year.`
-          ));
+        if (corpTaxEst === null) {
+          openModal({ title: `Est. Corporation Tax — ${gYear}`, body: el('p', { style: 'font-size:13px;color:var(--text-muted);line-height:1.6;margin:0' },
+            `No corporation tax estimate is linked to ${gYear}. Configure the Provisional Tax tab under Tax (Analysis) for the same year.`) });
+          return;
         }
-        openModal({ title: `Est. Corporation Tax — ${gYear}`, body });
+        const rate = getCyprusTaxYearConfig(gYear).corpTaxRate;
+        openBreakdown(`Est. Corporation Tax — ${gYear}`, [
+          { step: 'Operating Profit', detail: 'Revenue − operating expenses, company scope', amount: signedE(pnlData.opProfit), open: () => openOpProfitBreakdown(pnlData, gYear) },
+          { step: 'Taxable profit', detail: pnlData.opProfit < 0 ? 'Loss — floored at €0' : 'Same as operating profit', amount: fmtE(Math.max(0, pnlData.opProfit)) },
+          { step: '× Corporation tax rate', detail: `Set on the Provisional Tax tab for ${gYear}`, amount: `${rate}%` }
+        ], [
+          { key: 'step', label: 'Step' },
+          { key: 'detail', label: 'Detail' },
+          { key: 'amount', label: 'Amount', right: true, format: linkCell(v => v) }
+        ], { step: 'Est. Corporation Tax', detail: `Full-year projection: ${fmtE(fullYearTaxEst ?? 0)}`, amount: fmtE(corpTaxEst) });
       }
     }),
     mkKpiCard({
@@ -407,20 +451,19 @@ function buildView() {
         source: 'dividends.js:232,236 buildView()'
       },
       onClick: totalGross > 0 ? () => {
-        const body = el('div');
-        body.appendChild(mkSummaryGrid([
-          { label: G_LABEL, value: mkDrillValue(fmtE(gTotal), () =>
-              drillDownModal(`${G_LABEL} — Dividends — ${gYear}`, toDivDrillRows(yearDivs.filter(d => d.recipient === 'giorgos'), ghsById), DIV_DRILL_COLS)),
-            sub: `${yearDivs.filter(d => d.recipient === 'giorgos').length} payment(s)` },
-          { label: R_LABEL, value: mkDrillValue(fmtE(rTotal), () =>
-              drillDownModal(`${R_LABEL} — Dividends — ${gYear}`, toDivDrillRows(yearDivs.filter(d => d.recipient === 'rita'), ghsById), DIV_DRILL_COLS)),
-            sub: `${yearDivs.filter(d => d.recipient === 'rita').length} payment(s)` },
-          { label: `GHS (${ghsPct(gYear)})`, value: mkDrillValue(fmtE(ghsAmount), () =>
-              drillDownModal(`GHS Withheld — ${gYear}`, toDivDrillRows(yearDivs, ghsById), DIV_DRILL_COLS)) },
-          { label: 'Net Total',   value: mkDrillValue(fmtE(netTotal), () =>
-              drillDownModal(`Net to Shareholders — ${gYear}`, toDivDrillRows(yearDivs, ghsById), DIV_DRILL_COLS)) },
-        ], 2));
-        openModal({ title: `Gross Dividends — ${gYear}`, body });
+        const rows = ['giorgos', 'rita'].map(r => {
+          const divs = yearDivs.filter(d => recKey(d) === r);
+          const gross = divs.reduce((s, d) => s + (d.grossAmount || 0), 0);
+          return { who: recLabel(r), n: divs.length, last: divs[0]?.date || '', gross, share: totalGross > 0 ? `${(gross / totalGross * 100).toFixed(1)}%` : '—',
+            open: divs.length ? () => openDivRecords(`${recLabel(r)} — Dividends — ${gYear}`, divs, ghsById) : null };
+        }).filter(r => r.n > 0).sort((a, b) => b.gross - a.gross);
+        openBreakdown(`Gross Dividends — ${gYear}`, rows, [
+          { key: 'who', label: 'Recipient' },
+          { key: 'n', label: 'Payments', right: true },
+          { key: 'last', label: 'Latest Payment', format: v => v ? fmtDate(v) : '' },
+          { key: 'gross', label: 'Gross Declared', right: true, format: linkCell(fmtE), tip: 'Click for that recipient\'s dividend records.' },
+          { key: 'share', label: 'Share', right: true }
+        ], { n: yearDivs.length, gross: totalGross, share: '100%' });
       } : null
     }),
     mkKpiCard({
@@ -441,15 +484,33 @@ function buildView() {
       },
       onClick: () => {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
+        const ghsRows = ['giorgos', 'rita'].map(r => {
+          const divs = yearDivs.filter(d => recKey(d) === r);
+          const gross = divs.reduce((s, d) => s + (d.grossAmount || 0), 0);
+          const ghs = divs.reduce((s, d) => s + (ghsById.get(d.id) || 0), 0);
+          const subject = divs.reduce((s, d) => { const rt = ghsRateForDate(d.date); return s + (rt > 0 ? (ghsById.get(d.id) || 0) / rt : 0); }, 0);
+          return { key: r, who: recLabel(r), other: ghsOtherIncome(r, gYear), cap: ghsDividendCap(r, gYear), gross, subject, ghs };
+        }).filter(r => r.gross > 0);
+        body.appendChild(mkSectionLabel('GHS by Recipient'));
+        const tbl = el('div');
+        body.appendChild(tbl);
+        const ghsCols = [
+          { label: 'Recipient' }, { label: 'Other GHS-able Income', right: true }, { label: 'Cap Left for Dividends', right: true },
+          { label: 'Gross Dividends', right: true }, { label: 'Subject to GHS', right: true }, { label: `GHS (${ghsPct(gYear)})`, right: true }
+        ];
+        const strong = v => el('strong', {}, v);
+        tbl.appendChild(mkModalTable(ghsCols, ghsRows.map(r => [r.who, fmtE(r.other), fmtE(r.cap), fmtE(r.gross), fmtE(r.subject),
+            mkDrillValue(fmtE(r.ghs), () => openDivRecords(`GHS — ${r.who} — ${gYear}`, yearDivs.filter(d => recKey(d) === r.key), ghsById))])
+          .concat([[strong('Total'), '', '', strong(fmtE(totalGross)), strong(fmtE(ghsRows.reduce((s, r) => s + r.subject, 0))), strong(fmtE(ghsAmount))]])));
         body.appendChild(mkSummaryGrid([
           { label: 'Gross Dividends', value: mkDrillValue(fmtE(totalGross), () =>
-              drillDownModal(`Dividends — ${gYear}`, toDivDrillRows(yearDivs, ghsById), DIV_DRILL_COLS)) },
+              openDivRecords(`Dividends — ${gYear}`, yearDivs, ghsById)) },
           { label: 'GHS Rate',        value: ghsPct(gYear) },
           { label: 'GHS Amount',      value: mkDrillValue(fmtE(ghsAmount), () =>
-              drillDownModal(`GHS Withheld — ${gYear}`, toDivDrillRows(yearDivs, ghsById), DIV_DRILL_COLS)) },
+              openDivRecords(`GHS Withheld — ${gYear}`, yearDivs, ghsById)) },
           ...(sdcAmount > 0 ? [{ label: `SDC (${(sdcRateForDate(`${gYear}-12-31`) * 100).toFixed(0)}%, domiciled)`, value: fmtE(sdcAmount) }] : []),
           { label: 'Net to Shareholders', value: mkDrillValue(fmtE(netTotal), () =>
-              drillDownModal(`Net to Shareholders — ${gYear}`, toDivDrillRows(yearDivs, ghsById), DIV_DRILL_COLS)) },
+              openDivRecords(`Net to Shareholders — ${gYear}`, yearDivs, ghsById)) },
         ], 2));
         body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);padding:10px 12px;background:rgba(251,191,36,0.07);border-left:2px solid var(--warning,#f59e0b);border-radius:4px;line-height:1.6' },
           `General Healthcare System (GHS/GESY) contribution of ${ghsPct(gYear)} is withheld at source on dividends for ALL Cyprus tax residents, regardless of domicile status, up to €${GHS_ANNUAL_CAP.toLocaleString('en-US')} of a recipient's TOTAL annual GHS-able income — salary and other income use the cap up first (set it under Tax settings). Special Defence Contribution (SDC) applies only to Cyprus-domiciled recipients (17% before 2026, 5% from 2026); non-domiciled residents are exempt.`
@@ -475,21 +536,21 @@ function buildView() {
         source: 'dividends.js:242-243 buildView()'
       },
       onClick: () => {
-        const body = el('div');
-        body.appendChild(mkSummaryGrid([
-          { label: 'Operating Profit',     value: mkDrillValue(fmtE(pnlData.opProfit), () =>
-              drillDownModal(`Operating Profit — ${gYear}`, drillNetRowsPnL(pnlData.payments, pnlData.invoices, pnlData.opExpenses), NET_COLS)) },
-          { label: 'Est. Corporation Tax', value: corpTaxEst !== null ? fmtE(corpTaxEst) : '—' },
-          { label: 'Gross Dividends',      value: mkDrillValue(fmtE(totalGross), () =>
-              drillDownModal(`Dividends — ${gYear}`, toDivDrillRows(yearDivs, ghsById), DIV_DRILL_COLS)) },
-          { label: 'Retained Earnings',    value: fmtEAny(retained) },
-        ], 2));
-        if (corpTaxEst === null) {
-          body.appendChild(el('div', { style: 'margin-top:8px;font-size:12px;color:var(--text-muted)' },
-            'Corp tax not included — configure the Provisional Tax tab (Tax → Analysis) for this year to show the full picture.'
-          ));
-        }
-        openModal({ title: `Retained Earnings — ${gYear}`, body });
+        const rows = [
+          { line: 'Operating Profit', detail: 'Revenue − operating expenses', amount: pnlData.opProfit, open: () => openOpProfitBreakdown(pnlData, gYear) },
+          { line: '− Est. Corporation Tax', detail: corpTaxEst !== null ? `${getCyprusTaxYearConfig(gYear).corpTaxRate}% of taxable profit` : 'Not set — configure the Provisional Tax tab', amount: corpTaxEst !== null ? -corpTaxEst : 0 },
+          ...['giorgos', 'rita'].map(r => {
+            const divs = yearDivs.filter(d => recKey(d) === r);
+            const g = divs.reduce((s, d) => s + (d.grossAmount || 0), 0);
+            return { line: `− Dividends to ${recLabel(r)}`, detail: `${divs.length} payment(s), gross`, amount: -g, n: divs.length,
+              open: divs.length ? () => openDivRecords(`${recLabel(r)} — Dividends — ${gYear}`, divs, ghsById) : null };
+          }).filter(r => r.n > 0)
+        ];
+        openBreakdown(`Retained Earnings — ${gYear}`, rows, [
+          { key: 'line', label: 'From Profit to Retained' },
+          { key: 'detail', label: 'What It Is' },
+          { key: 'amount', label: 'Effect on Earnings', right: true, format: linkCell(signedE), tip: 'Profit adds; tax and dividends paid out reduce what the company keeps.' }
+        ], { line: 'Retained Earnings', amount: retained });
       }
     }),
     mkKpiCard({
@@ -508,18 +569,18 @@ function buildView() {
         source: 'dividends.js:244 buildView()'
       } : null,
       onClick: afterTax > 0 ? () => {
-        const body = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
-        body.appendChild(mkSummaryGrid([
-          { label: 'After-Tax Profit',  value: fmtE(afterTax) },
-          { label: 'Gross Dividends',   value: mkDrillValue(fmtE(totalGross), () =>
-              drillDownModal(`Dividends — ${gYear}`, toDivDrillRows(yearDivs, ghsById), DIV_DRILL_COLS)) },
-          { label: 'Payout Ratio',      value: `${payoutRatio.toFixed(1)}%` },
-          { label: 'Retained (%)',      value: afterTax > 0 ? `${(100 - payoutRatio).toFixed(1)}%` : '—' },
-        ], 2));
-        body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);padding:10px 12px;background:rgba(99,102,241,0.06);border-left:2px solid var(--accent);border-radius:4px;line-height:1.6' },
-          `A payout ratio above 90% leaves minimal capital for reinvestment and risk reserve. Most small businesses target 50–75% when conditions are stable.`
-        ));
-        openModal({ title: `Payout Ratio — ${gYear}`, body });
+        const pctOf = v => `${(v / afterTax * 100).toFixed(1)}%`;
+        const rows = ['giorgos', 'rita'].map(r => {
+          const divs = yearDivs.filter(d => recKey(d) === r);
+          const g = divs.reduce((s, d) => s + (d.grossAmount || 0), 0);
+          return { who: `Dividends to ${recLabel(r)}`, amount: g, ratio: pctOf(g), n: divs.length,
+            open: divs.length ? () => openDivRecords(`${recLabel(r)} — Dividends — ${gYear}`, divs, ghsById) : null };
+        }).filter(r => r.n > 0).sort((a, b) => b.amount - a.amount);
+        openBreakdown(`Payout Ratio — ${gYear} (of ${fmtE(afterTax)} after-tax profit)`, rows, [
+          { key: 'who', label: 'Paid Out' },
+          { key: 'amount', label: 'Gross Dividends', right: true, format: linkCell(fmtE) },
+          { key: 'ratio', label: '% of After-Tax Profit', right: true, tip: `After-tax profit = operating profit − est. corporation tax = ${fmtE(afterTax)}.` }
+        ], { who: `Total paid out (${(100 - payoutRatio).toFixed(1)}% of after-tax profit kept)`, amount: totalGross, ratio: `${payoutRatio.toFixed(1)}%` });
       } : null
     })
   ));
@@ -687,7 +748,7 @@ function renderHistoryBar(allDivs) {
       { label: G_LABEL, data: labels.map(yr => byYear[yr].giorgos), color: G_COLOR },
       { label: R_LABEL, data: labels.map(yr => byYear[yr].rita),    color: R_COLOR },
     ],
-    onClickItem: (idx) => {
+    onClickItem: (_label, idx) => {
       const yr = labels[idx];
       if (yr && gYear !== yr) { gYear = yr; rebuildView(); }
     }
@@ -705,7 +766,11 @@ function renderRecipientDonut(allDivs) {
     labels: [G_LABEL, R_LABEL],
     data:   [gTotal, rTotal],
     colors: [G_COLOR, R_COLOR],
-    onClickItem: null
+    onClickItem: (_label, idx) => {
+      const r = idx === 0 ? 'giorgos' : 'rita';
+      const divs = yearDivs.filter(d => recKey(d) === r).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      if (divs.length) openDivRecords(`${recLabel(r)} — Dividends — ${gYear}`, divs, ghsScheduleForYear(yearDivs));
+    }
   });
 }
 
