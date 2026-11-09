@@ -4,11 +4,37 @@ import { loadLib } from './libs.js';
 // Theme colours are read when each chart is drawn, so light and dark themes
 // (css/base.css) both look right.
 const cssVar = (name, fallback) => (typeof document !== 'undefined' && getComputedStyle(document.documentElement).getPropertyValue(name).trim()) || fallback;
-const T = () => ({
+// T() is read by the label plugins on every frame a chart draws, and each
+// cssVar() is a getComputedStyle() — so the colours are cached and only re-read
+// when the theme changes (Settings → Dark / Light / Match device, or the
+// device itself switching while on "Match device").
+let _theme = null;
+// Call before redrawing after a theme change (the observer below only runs
+// after the current task, too late for a synchronous redraw).
+export function themeChanged() { _theme = null; }
+const T = () => _theme || (_theme = {
   text: cssVar('--text', '#e4e8f1'), muted: cssVar('--text-muted', '#8b93b0'),
   tipBg: cssVar('--bg-elev-2', '#1e2235'), border: cssVar('--border', '#2a2f47'),
   surface: cssVar('--bg-elev-1', '#161a27'), grid: cssVar('--chart-grid', 'rgba(255,255,255,0.04)')
 });
+try {
+  const forget = themeChanged;
+  new MutationObserver(forget).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class', 'style'] });
+  window.matchMedia?.('(prefers-color-scheme: dark)')?.addEventListener?.('change', forget);
+} catch { /* no DOM (tests) */ }
+
+// Entry animation: Chart.js redraws the whole chart (and our value labels) on
+// every frame of it, and a page with several charts kept a phone busy for
+// seconds. Phones/touch screens and "reduce motion" get none; elsewhere a
+// short one. Re-renders of a chart already drawn never animate (see create()).
+const ENTRY_ANIMATION_MS = 300;
+function entryAnimation() {
+  try {
+    const mq = q => window.matchMedia?.(q)?.matches;
+    if (mq('(prefers-reduced-motion: reduce)') || mq('(pointer: coarse)') || mq('(max-width: 760px)')) return false;
+  } catch { /* fall through */ }
+  return { duration: ENTRY_ANIMATION_MS };
+}
 const defaultColor = cssVar('--text-muted', '#8b93b0');
 
 const baseOpts = () => {
@@ -96,7 +122,7 @@ async function pump() {
 
 function create(Chart, id, { canvas, config }) {
   clearChartFallback(canvas);
-  if (drawn.has(id)) config.options.animation = false;
+  config.options.animation = drawn.has(id) ? false : entryAnimation();
   try {
     const c = new Chart(canvas.getContext('2d'), config);
     registry.set(id, c);

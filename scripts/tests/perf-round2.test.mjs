@@ -268,7 +268,7 @@ test('charts: creation is queued one per frame, cancellable, and re-renders skip
     charts.destroy('b');                     // cancel a queued creation
     await flush();
     assert.deepEqual(created.map(c => c.canvas.id), ['a', 'c', 'd']);
-    assert.equal(created[0].cfg.options.animation, undefined, 'first draw animates');
+    assert.deepEqual(created[0].cfg.options.animation, { duration: 300 }, 'first draw: a short entry animation (none on phones / reduced motion)');
 
     charts.bar('a', { labels: ['y'], datasets: [{ data: [2] }] });   // re-render
     assert.equal(created[0].destroyed, true, 'the old instance is destroyed at once');
@@ -287,6 +287,18 @@ test('charts: creation is queued one per frame, cancellable, and re-renders skip
     canvases.get('a').isConnected = false;
     await flush();
     assert.equal(created.length, n, 'a detached canvas is skipped');
+
+    // Phones / touch screens and "reduce motion": no entry animation at all.
+    const realMM = window.matchMedia;
+    for (const q of ['(pointer: coarse)', '(prefers-reduced-motion: reduce)', '(max-width: 760px)']) {
+      window.matchMedia = x => ({ matches: x === q });
+      const id = 'm' + q.length;
+      mkCanvas(id);
+      charts.bar(id, { labels: ['x'], datasets: [{ data: [1] }] });
+      await flush();
+      assert.equal(created.at(-1).cfg.options.animation, false, `no entry animation with ${q}`);
+    }
+    window.matchMedia = realMM;
   } finally {
     document.getElementById = realGet;
     delete globalThis.Chart;

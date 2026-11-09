@@ -89,6 +89,34 @@ test('a flat whose tenant pays the provider is left out', () => {
   assert.ok(!acts.readings.some(c => c.property.id === 'h1'));
 });
 
+test('actions are cached per day and follow edits (reading, tenant change)', () => {
+  load();
+  const today = '2026-11-03';
+  const a1 = elec.electricityActions(today);
+  assert.equal(elec.electricityActions(today), a1, 'same day, no edits: cached');
+  const nov = elec.cyclesFor(data.byId('properties', 'h1'), today).find(c => c.period === '2026-11');
+  elec.markReading(nov, { date: today, kwh: 100 });
+  const a2 = elec.electricityActions(today);
+  assert.notEqual(a2, a1);
+  assert.ok(!a2.readings.some(c => c.id === nov.id), 'submitted reading no longer listed');
+  data.upsert('tenants', { ...data.byId('tenants', 't2'), electricityPaidBy: 'tenant' });
+  assert.ok(!elec.electricityActions(today).readings.some(c => c.property.id === 'h2'), 'tenant change applies at once');
+  assert.notEqual(elec.electricityActions('2026-11-04'), elec.electricityActions(today), 'another day: computed separately');
+});
+
+test('currentLeases: indexed by property, follows tenant edits, returns a fresh array', () => {
+  load();
+  assert.deepEqual(data.currentLeases('h1', '2026-11-03').map(t => t.id), ['t1']);
+  const a = data.currentLeases('h1', '2026-11-03');
+  a.push({ id: 'junk' });
+  assert.deepEqual(data.currentLeases('h1', '2026-11-03').map(t => t.id), ['t1'], 'callers can change the result safely');
+  data.upsert('tenants', { id: 't3', propertyId: 'h1', name: 'New', leaseStartDate: '2026-10-01', status: 'active' });
+  assert.deepEqual(data.currentLeases('h1', '2026-11-03').map(t => t.id).sort(), ['t1', 't3']);
+  data.softDelete('tenants', 't1');
+  assert.deepEqual(data.currentLeases('h1', '2026-11-03').map(t => t.id), ['t3']);
+  assert.deepEqual(data.tenantsOfProperty('nope'), []);
+});
+
 test('actions: readings open/overdue + invoices due; rows keep pending + upcoming', () => {
   load();
   const today = '2026-11-03';

@@ -13,7 +13,7 @@
 // (to Trash) or the month marked as correct — remembered per month and set of
 // payments in settings.rentChecks.dismissed, so a new payment flags it again.
 import { state, markDirty } from './state.js';
-import { listActivePayments, generatePaymentSchedule, isRentPayment, rentMonthOf, toEUR, byId, tenantRentForMonth } from './data.js';
+import { listActivePayments, generatePaymentSchedule, isRentPayment, rentMonthOf, toEUR, byId, tenantRentForMonth, derivedCache, memoGet } from './data.js';
 
 export const OVERPAY_TOLERANCE = 0.02;   // 2% (rounding, FX, bank fees)
 const SAME_AMOUNT = 0.005;                // ±0.5% counts as the same amount
@@ -22,8 +22,13 @@ export function rentCheckKey(propertyId, monthKey, paymentIds) {
   return `${propertyId}|${monthKey}|${[...paymentIds].sort().join(',')}`;
 }
 
-// Paid rent payments by property id → month.
+// Paid rent payments by property id → month — built once, shared until
+// payments change (read-only).
+const _paidIdxCache = derivedCache(['payments']);
 function paidRentByPropertyMonth() {
+  return memoGet(_paidIdxCache(), 'idx', buildPaidRentIndex);
+}
+function buildPaidRentIndex() {
   const out = new Map();
   for (const p of listActivePayments()) {
     if (p.status !== 'paid' || !isRentPayment(p) || !p.propertyId) continue;

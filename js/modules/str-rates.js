@@ -1,7 +1,7 @@
 // STR Daily Rates — historic per-night rates derived from bookings, projected
 // into a month calendar with suggested prices for open days. Booked/blocked
 // days can be overlaid from an Airbnb iCal feed.
-import { state } from '../core/state.js';
+import { state, dataRev } from '../core/state.js';
 import { el, openModal, closeModal, toast, select, input, textarea, button, formRow, fmtDate, confirmDialog } from '../core/ui.js';
 import { listActive, listActivePayments, byId, upsert, softDelete, newId, formatMoney, isReservationNight, derivedCache, memoGet, paymentsOfProperty } from '../core/data.js';
 import { fetchICal, parseICal, mergeBlocksChecked, isOwnerBlockSummary } from '../core/ical.js';
@@ -1363,12 +1363,23 @@ async function publishRatesFeeds() {
 // Auto-publish hook (called after a successful data sync). Only republishes
 // when a feed's content changed or the property set changed. Silent and
 // best-effort.
+// Everything the feeds are computed from. Called after every push, so an edit
+// that touches none of these (an expense, an invoice, a tenant…) skips the
+// rebuild — 365 nights × every STR property — entirely. A push that adopted
+// other devices' changes bumps every revision, so those always rebuild; the
+// date is in the key because the rates depend on today (last-minute, window).
+const FEED_INPUTS = ['payments', 'properties', 'settings', 'strCalendars', 'strRateTargets', 'strBlockAnnotations'];
+let _lastFeedInputs = null;
+const feedInputsKey = () => `${state.github.owner}/${state.github.repo}|${todayYmd()}|${FEED_INPUTS.map(c => dataRev(c)).join(',')}`;
+
 export async function autoPublishRatesFeeds() {
   if (_publishing) return;
   const { owner, repo, token } = state.github;
   if (!owner || !repo || !token) return;
   const stProps = listActive('properties').filter(p => p.type === 'short_term');
   if (!stProps.length) return;
+  const inputs = feedInputsKey();
+  if (inputs === _lastFeedInputs) return;
 
   _publishing = true;
   try {
@@ -1377,6 +1388,7 @@ export async function autoPublishRatesFeeds() {
     const manifestSig = JSON.stringify(feeds.map(({ p, feed }) => manifestEntry(p, feed)));
     const changed = feeds.some(({ p, sig }) => _lastFeedSig.get(p.id) !== sig) || manifestSig !== _lastManifestSig;
     if (changed) await publishAllFeeds(feeds, 'Update daily-rate feeds');
+    _lastFeedInputs = inputs;   // only once built (and, if needed, published) without error
   } catch (e) {
     console.warn('Auto-publish daily-rate feeds failed:', e);
   } finally {

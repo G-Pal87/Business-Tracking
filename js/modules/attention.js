@@ -4,7 +4,7 @@
 // that contradicts itself (status vs leases, overlapping leases). Shared by
 // the Executive overview and the Properties dashboard.
 import { el, button, fmtDate, toast, openModal, closeModal, confirmDialog } from '../core/ui.js';
-import { listActive, listActivePayments, generatePaymentSchedule, currentLeases, expectedPropertyStatus, syncPropertyStatus, formatEUR, formatMoney, toEUR, byId, softDelete } from '../core/data.js';
+import { paymentsOfProperty, tenantsOfProperty, generatePaymentSchedule, currentLeases, expectedPropertyStatus, syncPropertyStatus, formatEUR, formatMoney, toEUR, byId, softDelete } from '../core/data.js';
 import { findRentPaymentIssues, dismissRentCheck } from '../core/rent-checks.js';
 import { PROPERTY_STATUSES } from '../core/config.js';
 import { navigate } from '../core/router.js';
@@ -23,15 +23,15 @@ const inRenovation = (p, day) => p.status === 'renovation' ||
 // termination before `day`), else its purchase date.
 function emptySince(p, day) {
   let last = '';
-  for (const t of listActive('tenants')) {
-    if (t.propertyId !== p.id || t.status === 'prospective') continue;
+  for (const t of tenantsOfProperty(p.id)) {
+    if (t.status === 'prospective') continue;
     const end = t.terminationDate && (!t.leaseEndDate || t.terminationDate < t.leaseEndDate) ? t.terminationDate : t.leaseEndDate;
     if (end && end < day && end > last) last = end;
   }
   return last || p.purchaseDate || '';
 }
 function lastRentEUR(p, day) {
-  const ts = listActive('tenants').filter(t => t.propertyId === p.id && t.monthlyRent)
+  const ts = tenantsOfProperty(p.id).filter(t => t.monthlyRent)
     .sort((a, b) => (b.leaseStartDate || '').localeCompare(a.leaseStartDate || ''));
   return ts[0] ? toEUR(ts[0].monthlyRent, ts[0].currency || p.currency || 'EUR', day) : 0;
 }
@@ -41,7 +41,6 @@ function lastRentEUR(p, day) {
 export function getAttentionItems(props, weight = () => 1, day = todayYmd()) {
   const out = { overdue: [], empty: [], idle: [], ending: [], checks: [], electricity: [] };
   const live = props.filter(p => p.status !== 'sold');
-  const pays = listActivePayments();
   for (const p of live) {
     const w = weight(p);
     const leases = currentLeases(p.id, day);
@@ -63,7 +62,7 @@ export function getAttentionItems(props, weight = () => 1, day = todayYmd()) {
       const days = since ? diffDaysYmd(since, day) : null;
       out.empty.push({ prop: p, since, days, missedEUR: days ? lastRentEUR(p, day) * (days / DAYS_PER_MONTH) * w : 0 });
     } else if (p.type === 'short_term') {
-      const mine = pays.filter(x => x.propertyId === p.id && (x.status === 'paid' || x.status === 'pending'));
+      const mine = paymentsOfProperty(p.id).filter(x => x.status === 'paid' || x.status === 'pending');
       const stayEnd = x => x.airbnbCheckOut || x.checkOut || x.date || '';
       const future = mine.some(x => (x.airbnbCheckIn || x.checkIn || x.date || '') >= day);
       const last = mine.filter(x => x.status === 'paid').map(stayEnd).filter(d => d && d < day).sort().pop() || '';
@@ -73,7 +72,7 @@ export function getAttentionItems(props, weight = () => 1, day = todayYmd()) {
     // Leases ending soon with no following lease.
     for (const t of leases) {
       if (!t.leaseEndDate || t.leaseEndDate > addDaysYmd(day, LEASE_WARN_DAYS)) continue;
-      const next = listActive('tenants').some(o => o.id !== t.id && o.propertyId === p.id && o.status !== 'prospective' && (o.leaseStartDate || '') > (t.leaseStartDate || ''));
+      const next = tenantsOfProperty(p.id).some(o => o.id !== t.id && o.status !== 'prospective' && (o.leaseStartDate || '') > (t.leaseStartDate || ''));
       if (!next) out.ending.push({ prop: p, tenant: t, end: t.leaseEndDate, days: diffDaysYmd(day, t.leaseEndDate) });
     }
     // Data that contradicts itself.

@@ -1499,8 +1499,25 @@ export function getContractExpiryFlag(tenant) {
 // Leases running on `day` (default today): not prospective, started, not yet
 // ended or terminated. A lease marked past has ended — it only still runs
 // while terminating (a termination date not yet reached).
+// Active tenants by property id — one pass, shared until tenants change.
+// Read-only: callers filter/slice before changing anything.
+const _tenantsByPropCache = derivedCache(['tenants']);
+const _NO_TENANTS = Object.freeze([]);
+export function tenantsOfProperty(propertyId) {
+  const idx = memoGet(_tenantsByPropCache(), 'idx', () => {
+    const m = new Map();
+    for (const t of listActive('tenants')) {
+      const arr = m.get(t.propertyId);
+      if (arr) arr.push(t); else m.set(t.propertyId, [t]);
+    }
+    return m;
+  });
+  return idx.get(propertyId) || _NO_TENANTS;
+}
+
+// Always a new array (callers may sort it).
 export function currentLeases(propertyId, day = today()) {
-  return listActive('tenants').filter(t =>
+  return tenantsOfProperty(propertyId).filter(t =>
     t.propertyId === propertyId && t.status !== 'prospective' &&
     !(t.status === 'past' && !(t.terminationDate && t.terminationDate >= day)) &&
     (t.leaseStartDate || '') <= day &&

@@ -962,7 +962,9 @@ function applyTheme(t) {
   if (t === 'dark') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
   try { localStorage.setItem('bt.theme', t); } catch { /* storage blocked */ }
   // Charts read the theme colours when drawn — redraw the current view.
-  try { router.navigate((location.hash || '#home').slice(1)); } catch { /* best-effort */ }
+  import('./core/charts.js').then(m => m.themeChanged()).catch(() => {}).finally(() => {
+    try { router.navigate((location.hash || '#home').slice(1)); } catch { /* best-effort */ }
+  });
 }
 function buildThemeSwitch() {
   const row = document.createElement('div');

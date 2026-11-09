@@ -13,7 +13,7 @@
 // `electricityCycles` collection (id `${propertyId}|${period}`), and the
 // messaging accounts/template in settings.electricity.
 import { state, runBatch } from './state.js';
-import { listActive, byId, upsert, softDelete, newId, currentLeases } from './data.js';
+import { listActive, byId, upsert, softDelete, newId, currentLeases, derivedCache, memoGet } from './data.js';
 import { todayYmd, addDaysYmd, addMonthsYmd, daysInMonth } from './dates.js';
 
 export const DEFAULT_ELEC_CONFIG = { active: true, windowFrom: 1, windowTo: 5, everyMonths: 1, invoiceDelayDays: 10, startMonth: '' };
@@ -114,7 +114,13 @@ export function electricityRows(today = todayYmd(), { history = false } = {}) {
 
 // Steps needing action now: readings whose window is open or past, invoices
 // due. Drives the sidebar badge and the Needs-attention card.
+// Cached per day until properties, cycles, tenants or settings change — it
+// runs for the sidebar badge after every edit and on every attention render.
+const _actionsCache = derivedCache(['properties', 'electricityCycles', 'tenants']);   // settings: always part of the stamp
 export function electricityActions(today = todayYmd()) {
+  return memoGet(_actionsCache(), today, () => computeElectricityActions(today));
+}
+function computeElectricityActions(today) {
   const readings = [], invoices = [];
   for (const p of electricityProperties()) {
     for (const c of cyclesFor(p, today)) {
