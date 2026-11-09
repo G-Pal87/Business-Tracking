@@ -18,6 +18,7 @@ const VERSION = window._appV || '20260702c';
 // icon }` (the header title switches to the module's label once it loads).
 // Adding a module: add a row here and its id to a nav group in buildSidebar().
 const ROUTES = [
+  { id: 'home',                 label: 'Home',              icon: '🏡', file: 'home.js' },
   { id: 'properties',           label: 'Properties',        icon: '🏠', file: 'properties.js' },
   { id: 'payments',             label: 'Property Payments', icon: '💳', file: 'payments.js' },
   { id: 'str-rates',            label: 'STR Daily Rates',   icon: '🛏️', file: 'str-rates.js' },
@@ -44,7 +45,8 @@ const ROUTES = [
   { id: 'invoices',             label: 'Invoices',          icon: '🧾', file: 'invoices.js' },
   { id: 'time-off',             label: 'Time Off',          icon: '\u{1F334}', file: 'time-off.js' },
   { id: 'settings',             label: 'Settings',          icon: '⚙️', file: 'settings.js' },
-  { id: 'users',                label: 'Users',             icon: '👤', file: 'users.js' }
+  { id: 'users',                label: 'Users',             icon: '👤', file: 'users.js' },
+  { id: 'activity',             label: 'Activity Log',      icon: '🕘', file: 'activity.js' }
 ];
 // Same URL for every importer (router, sidebar badge, rates-feed publisher)
 // so they all share one module instance.
@@ -359,6 +361,8 @@ async function boot() {
   scheduleElecBadge();
   scheduleCalendarSync();
   setInterval(scheduleCalendarSync, 30 * 60e3);
+  // Global search, quick add and the theme toggle (modules/shell.js).
+  import(moduleUrl('shell.js')).then(m => m.mountShell?.()).catch(err => console.warn('Shell extras:', err));
   // Warm the remaining views' code at idle so later navigation stays instant —
   // but only once the initial GitHub sync has finished (and at least 5s after
   // the first render), so it never competes with the sync or the first screen.
@@ -1001,9 +1005,10 @@ function buildUserFooter() {
 
 function buildSidebar(MODULES) {
   const navGroups = [
+    { title: 'Start', items: ['home'] },
     { title: 'Analysis', items: ['analytics', 'analytics-revenue', 'analytics-expenses', 'analytics-properties', 'analytics-str', 'analytics-cashflow', 'reconciliation', 'analytics-forecast', 'analytics-owner', 'analytics-personal', 'analytics-tax'] },
     { title: 'Operations', items: ['properties', 'payments', 'str-rates', 'expenses', 'dividends', 'tenants', 'electricity', 'vendors', 'inventory', 'company-structure', 'clients', 'invoices', 'time-off', 'forecast'] },
-    { title: 'System', items: ['settings', 'users'] }
+    { title: 'System', items: ['settings', 'activity', 'users'] }
   ];
   const nav = document.getElementById('nav');
   nav.innerHTML = '';
