@@ -59,7 +59,7 @@ let gScope = 'company'; // 'company' | 'all'
 
 // ── Module export ─────────────────────────────────────────────────────────────
 export default {
-  id: 'analytics-forecast', label: 'Forecast', icon: '🔮',
+  id: 'analytics-forecast', label: 'Forecast Analysis', icon: '🔮',
   render(container) { container.appendChild(buildView()); },
   refresh() { rebuildView(); },
   destroy() { CHART_IDS.forEach(id => charts.destroy(id)); }

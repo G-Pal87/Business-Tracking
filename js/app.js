@@ -33,10 +33,10 @@ const ROUTES = [
   { id: 'forecast',             label: 'Forecast',          icon: '🔭', file: 'forecast.js' },
   { id: 'analytics',            label: 'Executive',         icon: '📊', file: 'analytics.js' },
   { id: 'analytics-revenue',    label: 'Revenue',           icon: '📈', file: 'analytics-revenue.js' },
-  { id: 'analytics-expenses',   label: 'Expenses',          icon: '📉', file: 'analytics-expenses.js' },
-  { id: 'analytics-properties', label: 'Properties',        icon: '🏘️', file: 'analytics-properties.js' },
+  { id: 'analytics-expenses',   label: 'Expense Analysis',  icon: '📉', file: 'analytics-expenses.js' },
+  { id: 'analytics-properties', label: 'Property Analysis', icon: '🏘️', file: 'analytics-properties.js' },
   { id: 'analytics-cashflow',   label: 'Cash Flow',         icon: '💹', file: 'analytics-cashflow.js' },
-  { id: 'analytics-forecast',   label: 'Forecast',          icon: '🔮', file: 'analytics-forecast.js' },
+  { id: 'analytics-forecast',   label: 'Forecast Analysis', icon: '🔮', file: 'analytics-forecast.js' },
   { id: 'analytics-owner',      label: 'Partners',          icon: '👤', file: 'analytics-owner.js' },
   { id: 'analytics-personal',   label: 'Personal Income',   icon: '💼', file: 'analytics-personal.js' },
   { id: 'analytics-tax',        label: 'Tax',               icon: '🏛️', file: 'analytics-tax.js' },
@@ -951,6 +951,43 @@ function stableHash(str) {
   return h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0');
 }
 
+// Theme: Dark (default) / Light / Match device — saved per device; the
+// colours live in css/base.css, js/bootstrap.js applies it at start-up.
+const THEMES = [['dark', 'Dark'], ['light', 'Light'], ['system', 'Match device']];
+function currentTheme() {
+  try { const t = localStorage.getItem('bt.theme'); if (t === 'light' || t === 'system') return t; } catch { /* storage blocked */ }
+  return 'dark';
+}
+function applyTheme(t) {
+  if (t === 'dark') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
+  try { localStorage.setItem('bt.theme', t); } catch { /* storage blocked */ }
+  // Charts read the theme colours when drawn — redraw the current view.
+  try { router.navigate((location.hash || '#analytics').slice(1)); } catch { /* best-effort */ }
+}
+function buildThemeSwitch() {
+  const row = document.createElement('div');
+  row.id = 'theme-switch';
+  row.setAttribute('role', 'group');
+  row.setAttribute('aria-label', 'Theme');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:8px';
+  const draw = () => {
+    row.innerHTML = '';
+    const cur = currentTheme();
+    for (const [v, l] of THEMES) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn';
+      b.textContent = l;
+      b.setAttribute('aria-pressed', String(cur === v));
+      b.style.cssText = `flex:1;font-size:11px;padding:4px 6px;min-height:30px;${cur === v ? 'background:var(--accent-soft);border-color:var(--accent);color:var(--text);font-weight:600' : ''}`;
+      b.onclick = () => { applyTheme(v); draw(); };
+      row.appendChild(b);
+    }
+  };
+  draw();
+  return row;
+}
+
 function buildUserFooter() {
   const footer = document.querySelector('.sidebar-footer');
   if (!footer || !state.session) return;
@@ -999,6 +1036,7 @@ function buildUserFooter() {
   };
   wrap.appendChild(nameEl);
   wrap.appendChild(roleEl);
+  wrap.appendChild(buildThemeSwitch());
   wrap.appendChild(logoutBtn);
   footer.insertBefore(wrap, footer.firstChild);
 }

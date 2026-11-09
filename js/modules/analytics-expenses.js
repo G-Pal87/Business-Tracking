@@ -51,7 +51,7 @@ let _expTableSortCol = -1, _expTableSortDir = 1, _expTableSearch = '';
 // ── Module export ─────────────────────────────────────────────────────────────
 export default {
   id:    'analytics-expenses',
-  label: 'Expenses',
+  label: 'Expense Analysis',
   icon:  '📉',
   render(container) { container.appendChild(buildView()); },
   refresh() { rebuildView(); },

@@ -69,7 +69,7 @@ let _sumSortCol = -1, _sumSortDir = 1, _sumSearch = '';
 // ── Module export ─────────────────────────────────────────────────────────────
 export default {
   id:    'analytics-properties',
-  label: 'Properties',
+  label: 'Property Analysis',
   icon:  '🏘️',
   render(container) { container.appendChild(buildView()); },
   refresh() { rebuildView(); },

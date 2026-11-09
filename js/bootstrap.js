@@ -1,3 +1,10 @@
+// Theme (Dark / Light / Match device), saved per device by the sidebar
+// switch in app.js — applied before anything renders so there's no flash.
+try {
+  const th = localStorage.getItem('bt.theme');
+  if (th === 'light' || th === 'system') document.documentElement.dataset.theme = th;
+} catch { /* storage blocked — dark */ }
+
 // Cache-busting version for the app's ES modules. The Pages deploy workflow
 // stamps js/version.js with the commit SHA, so a deploy busts every module
 // URL once and repeat visits reuse the browser cache. Unstamped ("dev", local

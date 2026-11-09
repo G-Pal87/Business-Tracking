@@ -1,28 +1,39 @@
 // Chart.js wrappers
 import { loadLib } from './libs.js';
 
-const defaultColor = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#8b93b0';
-
-const baseOpts = () => ({
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    legend: { labels: { color: '#e4e8f1', font: { size: 11 }, boxWidth: 12, padding: 12 } },
-    tooltip: {
-      backgroundColor: '#1e2235',
-      borderColor: '#2a2f47',
-      borderWidth: 1,
-      titleColor: '#e4e8f1',
-      bodyColor: '#e4e8f1',
-      padding: 10,
-      cornerRadius: 6
-    }
-  },
-  scales: {
-    x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#8b93b0', font: { size: 11 } } },
-    y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#8b93b0', font: { size: 11 } } }
-  }
+// Theme colours are read when each chart is drawn, so light and dark themes
+// (css/base.css) both look right.
+const cssVar = (name, fallback) => (typeof document !== 'undefined' && getComputedStyle(document.documentElement).getPropertyValue(name).trim()) || fallback;
+const T = () => ({
+  text: cssVar('--text', '#e4e8f1'), muted: cssVar('--text-muted', '#8b93b0'),
+  tipBg: cssVar('--bg-elev-2', '#1e2235'), border: cssVar('--border', '#2a2f47'),
+  surface: cssVar('--bg-elev-1', '#161a27'), grid: cssVar('--chart-grid', 'rgba(255,255,255,0.04)')
 });
+const defaultColor = cssVar('--text-muted', '#8b93b0');
+
+const baseOpts = () => {
+  const t = T();
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { labels: { color: t.text, font: { size: 11 }, boxWidth: 12, padding: 12 } },
+      tooltip: {
+        backgroundColor: t.tipBg,
+        borderColor: t.border,
+        borderWidth: 1,
+        titleColor: t.text,
+        bodyColor: t.text,
+        padding: 10,
+        cornerRadius: 6
+      }
+    },
+    scales: {
+      x: { grid: { color: t.grid }, ticks: { color: t.muted, font: { size: 11 } } },
+      y: { grid: { color: t.grid }, ticks: { color: t.muted, font: { size: 11 } } }
+    }
+  };
+};
 
 const registry = new Map();
 
@@ -243,7 +254,7 @@ export function bar(id, { labels, datasets, stacked = false, horizontal = false,
           const g = chart.ctx;
           g.save();
           g.font = '600 11px sans-serif';
-          g.fillStyle = '#e4e8f1';
+          g.fillStyle = T().text;
           g.textAlign = 'center';
           g.textBaseline = 'bottom';
           meta.data.forEach((bar, i) => {
@@ -266,9 +277,9 @@ export function bar(id, { labels, datasets, stacked = false, horizontal = false,
   const allDatasets = datasets.map(d => ({ borderRadius: 4, order: 1, ...d }));
   if (overlayLine && !horizontal) {
     opts.scales.y1 = { position: 'right', beginAtZero: true, grace: '12%', grid: { drawOnChartArea: false },
-      ticks: { color: '#8b93b0', font: { size: 11 }, precision: 0 } };
+      ticks: { color: T().muted, font: { size: 11 }, precision: 0 } };
     allDatasets.push({ type: 'line', label: overlayLine.label, data: overlayLine.data, yAxisID: 'y1', order: 0,
-      borderColor: overlayLine.color || '#e4e8f1', backgroundColor: overlayLine.color || '#e4e8f1',
+      borderColor: overlayLine.color || T().text, backgroundColor: overlayLine.color || T().text,
       tension: 0, pointRadius: 3, stepped: overlayLine.stepped || false });
   }
 
@@ -327,7 +338,7 @@ function valueLabelsPlugin(horizontal, formatValue = fmtEURLabel) {
       const g = chart.ctx;
       g.save();
       g.font = '600 10px sans-serif';
-      g.fillStyle = '#e4e8f1';
+      g.fillStyle = T().text;
       chart.data.datasets.forEach((ds, di) => {
         if (!chart.isDatasetVisible(di) || ds.type === 'line') return; // overlayLine: not money
         const meta = chart.getDatasetMeta(di);
@@ -366,13 +377,13 @@ function legendLabelsWithPct(chart) {
   return chart.data.labels.map((lbl, i) => ({
     text: lbl + (total > 0 && visible(i) ? ` (${(ds.data[i] / total * 100).toFixed(1)}%)` : ''),
     fillStyle: ds.backgroundColor[i],
-    strokeStyle: '#161a27',
+    strokeStyle: T().surface,
     lineWidth: 2,
     // Reflect the slice's real visibility so a legend-click-hidden slice
     // renders struck through instead of looking still active.
     hidden: !visible(i),
     index: i,
-    fontColor: '#e4e8f1'
+    fontColor: T().text
   }));
 }
 
@@ -401,7 +412,7 @@ export function doughnut(id, { labels, data, colors, onClickItem }) {
       datasets: [{
         data,
         backgroundColor: colors,
-        borderColor: '#161a27',
+        borderColor: T().surface,
         borderWidth: 2
       }]
     },
