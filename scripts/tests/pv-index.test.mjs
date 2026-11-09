@@ -15,15 +15,15 @@ function referenceMetrics(prop, asOf, { excludePersonal = false } = {}) {
   const cur = prop.currency || 'EUR';
   const valueEUR    = toEUR(at.value, cur, asOf);
   const purchaseEUR = prop.purchasePrice ? toEUR(prop.purchasePrice, cur, prop.purchaseDate) : 0;
-  let capexEUR = 0, netIncomeEUR = 0;
+  let capexEUR = 0, netIncomeEUR = 0, opexEUR = 0, revenueEUR = 0;
   for (const e of listActive('expenses')) {
     if (e.propertyId !== prop.id || !e.date || e.date > asOf || (excludePersonal && e.personal)) continue;
     const amt = toEUR(e.amount, e.currency, e.date);
-    if (isCapEx(e)) capexEUR += amt; else netIncomeEUR -= amt;
+    if (isCapEx(e)) capexEUR += amt; else { netIncomeEUR -= amt; opexEUR += amt; }
   }
   for (const p of listActivePayments()) {
     if (p.propertyId !== prop.id || p.status !== 'paid' || !p.date || p.date > asOf || (excludePersonal && p.personal)) continue;
-    netIncomeEUR += toEUR(p.amount, p.currency, p.date);
+    { const a = toEUR(p.amount, p.currency, p.date); netIncomeEUR += a; revenueEUR += a; }
   }
   const investedEUR = purchaseEUR + capexEUR;
   const gainEUR = valueEUR - investedEUR;
@@ -36,7 +36,7 @@ function referenceMetrics(prop, asOf, { excludePersonal = false } = {}) {
     valueEUR, valueDate: at.date, valueSource: at.source, isPurchaseValue: at.isPurchase,
     purchaseEUR, capexEUR, investedEUR, gainEUR,
     gainPct: investedEUR > 0 ? (gainEUR / investedEUR) * 100 : null,
-    netIncomeEUR, totalReturnEUR,
+    revenueEUR, opexEUR, netIncomeEUR, totalReturnEUR,
     totalReturnPct: investedEUR > 0 ? (totalReturnEUR / investedEUR) * 100 : null,
     cagrPct, years
   };

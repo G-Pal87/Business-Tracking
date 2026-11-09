@@ -36,7 +36,7 @@ const scaleBy = (obj, w, keys) => {
   for (const k of keys) if (typeof o[k] === 'number') o[k] *= w;
   return o;
 };
-const MV_MONEY = ['valueEUR', 'purchaseEUR', 'capexEUR', 'investedEUR', 'gainEUR', 'netIncomeEUR', 'totalReturnEUR'];
+const MV_MONEY = ['valueEUR', 'purchaseEUR', 'capexEUR', 'investedEUR', 'gainEUR', 'revenueEUR', 'opexEUR', 'netIncomeEUR', 'totalReturnEUR'];
 const MORT_MONEY = ['principalEUR', 'remaining', 'monthlyDebt'];
 // Value-type figures (units, market value, mortgage) are read as of the end of
 // the selected period — today for a period that hasn't ended.
@@ -1965,7 +1965,7 @@ function getMarketValueData(allProps, { timeline: withTimeline = true, asOf = to
     return { ...pt, rows, value: rows.reduce((s, r) => s + r.m.valueEUR, 0), invested: rows.reduce((s, r) => s + r.m.investedEUR, 0) };
   });
 
-  return { current, totals, valueYearAgo, valueSameNow, timeline, monthly };
+  return { current, totals, valueYearAgo, valueSameNow, timeline, monthly, asOf: now };
 }
 
 const MV_COLS = [
@@ -2051,7 +2051,7 @@ function buildMarketValueSection(mv, { kpis = true } = {}) {
 }
 
 // Overview's single value tile: market value vs a year ago, equity beneath.
-function buildOverviewValueCard({ current, totals, valueYearAgo, valueSameNow }) {
+function buildOverviewValueCard({ current, totals, valueYearAgo, valueSameNow, asOf }) {
   return mkKpiCard({
     label: 'Portfolio Market Value',
     value: formatEUR(totals.value),
@@ -2059,25 +2059,101 @@ function buildOverviewValueCard({ current, totals, valueYearAgo, valueSameNow })
     delta: valueYearAgo > 0 ? safePct(valueSameNow, valueYearAgo) : null,
     compLabel: '1 year earlier (same properties)',
     compValue: valueYearAgo > 0 ? formatEUR(valueYearAgo) : undefined,
-    onClick: () => drillDownModal('Portfolio Market Value', toMarketValueRows(current), MV_COLS),
+    onClick: () => openMvTile('Portfolio Market Value', current, MV_TILE_COLS.value, 'value', asOf),
     explain: { formula: 'Σ latest valuation on/before the end of the period (else purchase price); equity = value − estimated remaining mortgage', note: 'The change compares the same properties a year earlier, so purchases don\'t count as growth. Purchase price, gain and total return are on the Portfolio & Value tab.' }
   });
 }
 
+// Each market value tile opens its own breakdown — the figures behind that
+// number, per property, with a total row.
+const eur = v => formatEUR(v), pctOrDash = v => (v == null ? '—' : `${v.toFixed(1)}%`);
+const MV_TILE_COLS = {
+  purchase: [
+    { key: 'name', label: 'Property' },
+    { key: 'bought', label: 'Purchased', format: v => v ? fmtDate(v) : '—' },
+    { key: 'purchase', label: 'Purchase Price', right: true, format: eur },
+    { key: 'capex', label: 'CapEx (all-time)', right: true, format: eur, tip: 'Renovation spend, counted as investment' },
+    { key: 'invested', label: 'Invested', right: true, format: eur, tip: 'Purchase + CapEx' }
+  ],
+  value: [
+    { key: 'name', label: 'Property' },
+    { key: 'purchase', label: 'Purchase Price', right: true, format: eur },
+    { key: 'value', label: 'Market Value', right: true, format: eur },
+    { key: 'asOf', label: 'Valued On', format: v => (v == null ? '' : v ? fmtDate(v) : 'purchase price') },
+    { key: 'change', label: 'vs Purchase', right: true, format: pctOrDash },
+    { key: 'cagr', label: 'Avg Yearly Growth', right: true, format: pctOrDash, tip: 'Market value vs purchase price, per year owned' }
+  ],
+  gain: [
+    { key: 'name', label: 'Property' },
+    { key: 'value', label: 'Market Value', right: true, format: eur },
+    { key: 'purchase', label: '− Purchase', right: true, format: eur },
+    { key: 'capex', label: '− CapEx', right: true, format: eur },
+    { key: 'gain', label: '= Unrealised Gain', right: true, format: eur },
+    { key: 'gainPct', label: 'Gain %', right: true, format: pctOrDash, tip: 'Gain ÷ invested (purchase + CapEx)' }
+  ],
+  totalReturn: [
+    { key: 'name', label: 'Property' },
+    { key: 'gain', label: 'Unrealised Gain', right: true, format: eur, tip: 'Market value − purchase − CapEx' },
+    { key: 'revenue', label: 'Paid Revenue', right: true, format: eur, tip: 'All rental income received, lifetime' },
+    { key: 'opex', label: '− Operating Exp.', right: true, format: eur, tip: 'All operating expenses, lifetime (CapEx excluded)' },
+    { key: 'netIncome', label: '= Net Rental Income', right: true, format: eur },
+    { key: 'totalRet', label: 'Total Return', right: true, format: eur, tip: 'Unrealised gain + net rental income' },
+    { key: 'totalRetPct', label: '% of Invested', right: true, format: pctOrDash }
+  ],
+  equity: [
+    { key: 'name', label: 'Property' },
+    { key: 'value', label: 'Market Value', right: true, format: eur },
+    { key: 'mortgage', label: '− Est. Mortgage', right: true, format: eur, tip: 'Estimated remaining balance (same as Financing & Payoff)' },
+    { key: 'equity', label: '= Equity', right: true, format: eur },
+    { key: 'equityPct', label: 'Equity %', right: true, format: pctOrDash, tip: 'Equity ÷ market value' }
+  ]
+};
+function toMvTileRows(current, asOf = todayYmd()) {
+  const rows = current.map(({ prop, m }) => {
+    const mortgage = mortgageFor(prop, asOf).remaining || 0;
+    return {
+      name: shareName(prop, ownerWeight(prop)), bought: prop.purchaseDate || '',
+      purchase: m.purchaseEUR, capex: m.capexEUR, invested: m.investedEUR, value: m.valueEUR,
+      asOf: m.isPurchaseValue ? '' : m.valueDate,
+      change: m.purchaseEUR > 0 ? (m.valueEUR / m.purchaseEUR - 1) * 100 : null, cagr: m.cagrPct,
+      gain: m.gainEUR, gainPct: m.gainPct,
+      revenue: m.revenueEUR, opex: m.opexEUR, netIncome: m.netIncomeEUR, totalRet: m.totalReturnEUR, totalRetPct: m.totalReturnPct,
+      mortgage, equity: m.valueEUR - mortgage, equityPct: m.valueEUR > 0 ? (m.valueEUR - mortgage) / m.valueEUR * 100 : null
+    };
+  });
+  return rows;
+}
+// Rows sorted by the tile's main figure, plus a bold Total row.
+function mvTileRows(current, key, asOf) {
+  const rows = toMvTileRows(current, asOf).sort((a, b) => (b[key] ?? 0) - (a[key] ?? 0));
+  if (rows.length < 2) return rows;
+  const t = { name: 'Total' };
+  for (const k of ['purchase', 'capex', 'invested', 'value', 'gain', 'revenue', 'opex', 'netIncome', 'totalRet', 'mortgage', 'equity'])
+    t[k] = rows.reduce((s, r) => s + (r[k] || 0), 0);
+  t.change = t.purchase > 0 ? (t.value / t.purchase - 1) * 100 : null;
+  t.gainPct = t.invested > 0 ? t.gain / t.invested * 100 : null;
+  t.totalRetPct = t.invested > 0 ? t.totalRet / t.invested * 100 : null;
+  t.equityPct = t.value > 0 ? t.equity / t.value * 100 : null;
+  t.cagr = null; t.asOf = null; t.bought = '';
+  return [...rows, t];
+}
+function openMvTile(title, current, cols, key, asOf) {
+  drillDownModal(title, mvTileRows(current, key, asOf), cols.map(c => c.key === 'name' ? { ...c, format: v => v === 'Total' ? el('strong', {}, 'Total') : v } : c));
+}
+
 // The market value tiles (Portfolio & Value tab);
 // `purchase` adds a Total Purchase Price tile first.
-function buildMarketValueKpis({ current, totals, valueYearAgo, valueSameNow }, { purchase = false } = {}) {
+function buildMarketValueKpis({ current, totals, valueYearAgo, valueSameNow, asOf }, { purchase = false } = {}) {
   const pct = (a, b) => b > 0 ? (a / b) * 100 : null;
   const fmtPct = v => v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
-  const rows = toMarketValueRows(current);
-  const open = title => () => drillDownModal(title, rows, MV_COLS);
+  const open = (title, kind, key) => () => openMvTile(title, current, MV_TILE_COLS[kind], key, asOf);
 
   const kpis = el('div', { class: 'grid grid-4 mb-16' });
   if (purchase) kpis.appendChild(mkKpiCard({
     label: 'Total Purchase Price',
     value: formatEUR(totals.purchase),
     subtitle: `${formatEUR(totals.invested)} incl. CapEx · value ${fmtPct(pct(totals.value - totals.purchase, totals.purchase))}`,
-    onClick: open('Total Purchase Price'),
+    onClick: open('Total Purchase Price', 'purchase', 'invested'),
     explain: { formula: 'Σ purchase price of the properties held today', note: 'Each converted to EUR at the rate on its purchase date. "incl. CapEx" adds all-time renovation spend; "value" is the market value change vs purchase.' }
   }));
   kpis.appendChild(mkKpiCard({
@@ -2086,28 +2162,28 @@ function buildMarketValueKpis({ current, totals, valueYearAgo, valueSameNow }, {
     delta: valueYearAgo > 0 ? safePct(valueSameNow, valueYearAgo) : null,
     compLabel: '1 year earlier (same properties)',
     compValue: valueYearAgo > 0 ? formatEUR(valueYearAgo) : undefined,
-    onClick: open('Portfolio Market Value'),
+    onClick: open('Portfolio Market Value', 'value', 'value'),
     explain: { formula: 'Σ latest valuation on/before the end of the period (else purchase price)', note: 'The change compares the same properties a year earlier, so purchases don\'t count as growth. Sold properties drop out after their sale date.' }
   }));
   kpis.appendChild(mkKpiCard({
     label: 'Unrealised Gain',
     value: formatEUR(totals.gain),
     subtitle: `${fmtPct(pct(totals.gain, totals.invested))} vs ${formatEUR(totals.invested)} invested`,
-    onClick: open('Unrealised Gain'),
+    onClick: open('Unrealised Gain', 'gain', 'gain'),
     explain: { formula: 'Market value − purchase price − all-time CapEx', note: 'CapEx is subtracted so renovation spending is not counted as appreciation.' }
   }));
   kpis.appendChild(mkKpiCard({
     label: 'Total Return',
     value: formatEUR(totals.totalReturn),
     subtitle: `${fmtPct(pct(totals.totalReturn, totals.invested))} · gain ${formatEUR(totals.gain)} + income ${formatEUR(totals.netIncome)}`,
-    onClick: open('Total Return'),
+    onClick: open('Total Return', 'totalReturn', 'totalRet'),
     explain: { formula: 'Unrealised gain + lifetime net rental income (paid revenue − operating expenses)', note: 'Shown separately — the existing ROI figures are unchanged and still exclude appreciation.' }
   }));
   kpis.appendChild(mkKpiCard({
     label: 'Equity',
     value: formatEUR(totals.equity),
     subtitle: totals.mortgage > 0 ? `Value − ${formatEUR(totals.mortgage)} est. mortgage` : 'No mortgage balance',
-    onClick: open('Equity'),
+    onClick: open('Equity', 'equity', 'equity'),
     explain: { formula: 'Market value − estimated remaining mortgage', note: 'Mortgage balance is estimated from the amount, monthly payment and rate on each property (same estimate as Financing & Payoff).' }
   }));
   return kpis;

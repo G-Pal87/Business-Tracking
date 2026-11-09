@@ -815,14 +815,16 @@ function computePropertyValueMetrics(prop, asOf, excludePersonal) {
   const valueEUR    = toEUR(at.value, cur, asOf);
   const purchaseEUR = prop.purchasePrice ? toEUR(prop.purchasePrice, cur, prop.purchaseDate) : 0;
   const recs = propertyValueIndex().get(prop.id) || _NO_PV_RECORDS;
-  let capexEUR = 0, netIncomeEUR = 0;
+  // netIncomeEUR keeps its running total (exactly as before); revenue and
+  // operating expenses are tracked alongside for the Total Return breakdown.
+  let capexEUR = 0, netIncomeEUR = 0, opexEUR = 0, revenueEUR = 0;
   for (const e of recs.exp) {
     if (e.date > asOf || (excludePersonal && e.personal)) continue;
-    if (e.capex) capexEUR += e.amt; else netIncomeEUR -= e.amt;
+    if (e.capex) capexEUR += e.amt; else { netIncomeEUR -= e.amt; opexEUR += e.amt; }
   }
   for (const p of recs.pay) {
     if (p.date > asOf || (excludePersonal && p.personal)) continue;
-    netIncomeEUR += p.amt;
+    netIncomeEUR += p.amt; revenueEUR += p.amt;
   }
   const investedEUR = purchaseEUR + capexEUR;
   const gainEUR = valueEUR - investedEUR;
@@ -837,7 +839,7 @@ function computePropertyValueMetrics(prop, asOf, excludePersonal) {
     valueEUR, valueDate: at.date, valueSource: at.source, isPurchaseValue: at.isPurchase,
     purchaseEUR, capexEUR, investedEUR, gainEUR,
     gainPct: investedEUR > 0 ? (gainEUR / investedEUR) * 100 : null,
-    netIncomeEUR, totalReturnEUR,
+    revenueEUR, opexEUR, netIncomeEUR, totalReturnEUR,
     totalReturnPct: investedEUR > 0 ? (totalReturnEUR / investedEUR) * 100 : null,
     cagrPct, years
   };
