@@ -1,1 +1,116 @@
-/* Breakdown pop-ups: sort and export (js/core/ui.js drillDownModal). */
+/* Breakdown pop-ups: sort and export (js/core/ui.js drillDownModal and
+   attachBreakdownTools; js/modules/analytics-helpers.js mkModalTable).
+   Colours come only from the theme's custom properties. */
+
+/* ── Toolbar: record count + Download menu ─────────────────────────────── */
+.dd-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  min-width: 0;
+}
+.dd-toolbar .dd-meta { min-width: 0; }
+.dd-toolbar-compact { justify-content: flex-end; margin-bottom: 6px; }
+
+.dd-dl { position: relative; flex: 0 0 auto; }
+.dd-dl-btn { white-space: nowrap; }
+.dd-dl-btn svg { flex: 0 0 auto; }
+.dd-dl-compact .btn.sm.dd-dl-btn { padding: 3px 8px; font-size: 11px; color: var(--text-muted); }
+.dd-dl-compact .dd-dl-btn:hover { color: var(--text); }
+
+.dd-dl-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  min-width: 150px;
+  padding: 4px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+}
+.dd-dl-menu[hidden] { display: none; }
+.dd-dl-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.dd-dl-item:hover,
+.dd-dl-item:focus-visible { background: var(--accent-soft); outline: none; }
+.dd-dl-ext { color: var(--text-muted); font-size: 11px; font-family: var(--font-mono); }
+
+/* ── Sortable headers ──────────────────────────────────────────────────── */
+/* The label sits in a <button> so headers are keyboard-reachable; the
+   arrow is drawn in CSS so the header's text stays just the label. */
+th.dd-sortable { padding: 0 !important; }
+.table thead th.dd-sortable { padding: 0 !important; }
+.dd-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+.table thead th.dd-sortable .dd-sort { padding: 12px 16px; }
+th.dd-sortable.right .dd-sort,
+th.dd-sortable[style*="text-align:right"] .dd-sort { justify-content: flex-end; }
+.dd-sort:hover { color: var(--text); }
+.dd-sort:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-sm); }
+.dd-sort::after {
+  content: '';
+  flex: 0 0 auto;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.dd-sort:hover::after,
+.dd-sort:focus-visible::after { opacity: 0.35; }
+th[aria-sort] .dd-sort { color: var(--accent); }
+th[aria-sort] .dd-sort::after { opacity: 1; }
+th[aria-sort="ascending"] .dd-sort::after { border-top: 0; border-bottom: 5px solid currentColor; }
+
+/* Caller-flagged total rows in drill-downs read as totals. */
+.dd-table tbody tr.dd-total td { font-weight: 600; }
+
+/* ── Phones ────────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .dd-toolbar { margin-bottom: 8px; }
+  /* Icon-only Download button, still a 40px tap target. */
+  .btn.sm.dd-dl-btn { min-width: 40px; min-height: 40px; justify-content: center; padding: 0 10px; }
+  .dd-dl-label { display: none; }
+  .dd-dl-item { min-height: 44px; font-size: 15px; }
+  .dd-sort { min-height: 40px; white-space: nowrap; }
+  .table thead th.dd-sortable .dd-sort { padding: 10px 12px; }
+  /* The drill-down table scrolls inside the sheet with its header row kept
+     in view, so a sort is always one tap away. */
+  .dd-scroll { max-height: calc(100dvh - 210px); overflow: auto; }
+  .dd-scroll thead th { position: sticky; top: 0; z-index: 1; background: var(--bg-elev-2); }
+}

@@ -1,7 +1,7 @@
 // Shared UI helper utilities for analytics modals and drill-downs.
 // Import these instead of copy-pasting the equivalent mkExp* functions
 // into every analytics module.
-import { el, openModal } from '../core/ui.js';
+import { el, openModal, attachBreakdownTools } from '../core/ui.js';
 import { state, subscribe } from '../core/state.js';
 import { formatEUR, byId, toEUR, dataStamp, sameDataStamp } from '../core/data.js';
 import { todayYmd, addDaysYmd, diffDaysYmd } from '../core/dates.js';
@@ -150,26 +150,25 @@ export function mkModalTable(headers, rows, opts = {}) {
     return { label: String(h), right: !(hi === 0 && firstColLeft), muted: false, tip: '' };
   });
 
-  const tbl = el('table', { style: 'width:100%;border-collapse:collapse;font-size:13px' });
+  const tbl = el('table', { class: 'dd-mtable', style: 'width:100%;border-collapse:collapse;font-size:13px' });
 
   // Header row
   const hrow = el('tr');
-  cols.forEach(col => {
-    hrow.appendChild(el('th', {
-      title: col.tip || '',
-      style: `padding:4px 8px;text-align:${col.right ? 'right' : 'left'};color:var(--text-muted);font-size:11px;` +
-             `${col.tip ? 'cursor:help;' : ''}` +
-             `border-bottom:1px solid rgba(255,255,255,0.08)`
-    }, col.label));
-  });
+  const thEls = cols.map(col => el('th', {
+    title: col.tip || '',
+    style: `padding:4px 8px;text-align:${col.right ? 'right' : 'left'};color:var(--text-muted);font-size:11px;` +
+           `${col.tip ? 'cursor:help;' : ''}` +
+           `border-bottom:1px solid var(--border)`
+  }, col.label));
+  thEls.forEach(th => hrow.appendChild(th));
   tbl.appendChild(el('thead', {}, hrow));
 
   // Body rows
   const tbody = el('tbody');
-  rows.forEach((cells, ri) => {
-    const tr = el('tr', {
-      style: ri % 2 === 1 ? 'background:rgba(255,255,255,0.02)' : ''
-    });
+  const stripe = (tr, pos) => { tr.style.background = pos % 2 === 1 ? 'rgba(255,255,255,0.02)' : ''; };
+  const trs = rows.map((cells, ri) => {
+    const tr = el('tr');
+    stripe(tr, ri);
     cells.forEach((cell, ci) => {
       const col   = cols[ci] || { right: false, muted: false };
       const color = col.muted ? 'var(--text-muted)' : 'var(--text)';
@@ -185,6 +184,7 @@ export function mkModalTable(headers, rows, opts = {}) {
       tr.appendChild(td);
     });
     tbody.appendChild(tr);
+    return tr;
   });
   tbl.appendChild(tbody);
 
@@ -194,7 +194,40 @@ export function mkModalTable(headers, rows, opts = {}) {
   // a transparent change for all of them.
   const tw = el('div', { class: 'table-wrap' });
   tw.appendChild(tbl);
-  return tw;
+
+  // Sortable headers + a Download (CSV / Excel) menu, shared with
+  // drillDownModal. Skipped for one-row tables and when the caller opts out
+  // (opts.sortable / opts.exportable === false). Cells carry no raw values
+  // here, so numbers come from the displayed text ("€1,234.56" → 1234.56).
+  if (rows.length < 2 || cols.length < 1 || (opts.sortable === false && opts.exportable === false)) return tw;
+  const block = el('div', { class: 'dd-block' });
+  const cellsOf = i => cols.map((_, ci) => {
+    const cell = rows[i][ci];
+    const isNode = cell instanceof Node;
+    return { raw: isNode ? undefined : cell, text: isNode ? (cell.textContent || '').replace(/\s+/g, ' ').trim() : String(cell ?? '—').trim() };
+  });
+  const tools = attachBreakdownTools({
+    columns: cols.map(c => ({ label: String(c.label), tip: c.tip })),
+    count: rows.length,
+    cellsOf,
+    thEls,
+    sortable: opts.sortable !== false,
+    compact: true,
+    render: order => order.forEach((i, pos) => { stripe(trs[i], pos); tbody.appendChild(trs[i]); }),
+    getTitle: () => {
+      if (opts.title) return opts.title;
+      const modalTitle = block.closest('.modal')?.querySelector('.modal-title')?.textContent?.trim()
+        || block.closest('.card')?.querySelector('.card-title')?.textContent?.trim() || 'breakdown';
+      // Several tables in one pop-up: name the file after the section label
+      // just above this one too, when there is a short one.
+      const prev = block.previousElementSibling;
+      const sec = prev && !prev.querySelector('table') ? (prev.textContent || '').replace(/\s+/g, ' ').trim() : '';
+      return sec && sec.length <= 60 && sec !== modalTitle ? `${modalTitle} - ${sec}` : modalTitle;
+    }
+  });
+  if (opts.exportable !== false) block.appendChild(el('div', { class: 'dd-toolbar dd-toolbar-compact' }, tools.menu));
+  block.appendChild(tw);
+  return block;
 }
 
 // ── Column header with hover tooltip ─────────────────────────────────────────

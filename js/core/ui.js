@@ -1,5 +1,6 @@
 // UI utilities: modals, toasts, confirm, forms
 import { addDaysYmd, parseYmd } from './dates.js';
+import { downloadCsv } from './csv.js';
 export function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {
@@ -191,15 +192,16 @@ export function closeModal() {
 }
 
 export function drillDownModal(title, rows, columns) {
-  const table = el('table', { class: 'table' });
+  const table = el('table', { class: 'table dd-table' });
   const headRow = el('tr');
   // col.tip is an optional hover tooltip describing what the column means —
   // opt-in per column definition, every existing caller is unaffected.
-  for (const col of columns) headRow.appendChild(el('th', {
+  const thEls = columns.map(col => el('th', {
     class: col.right ? 'right' : '',
     title: col.tip || '',
     style: col.tip ? 'cursor:help' : ''
   }, col.label));
+  thEls.forEach(th => headRow.appendChild(th));
   table.appendChild(el('thead', {}, headRow));
   const tbody = el('tbody');
   if (!rows.length) {
@@ -208,11 +210,15 @@ export function drillDownModal(title, rows, columns) {
     tbody.appendChild(tr);
   }
 
+  const displayOf = (row, col) => {
+    const raw = row[col.key];
+    return col.format ? col.format(raw, row) : (raw ?? '—');
+  };
   const buildRow = (row) => {
     const tr = el('tr');
+    if (row && row._total) tr.classList.add('dd-total');
     for (const col of columns) {
-      const raw = row[col.key];
-      const display = col.format ? col.format(raw, row) : (raw ?? '—');
+      const display = displayOf(row, col);
       const cell = el('td', { class: col.right ? 'right num' : '' });
       if (display instanceof Node) cell.appendChild(display);
       else cell.appendChild(document.createTextNode(String(display ?? '—')));
@@ -224,38 +230,481 @@ export function drillDownModal(title, rows, columns) {
   // Render in pages so a drill-down with thousands of records doesn't freeze the
   // UI building one DOM node per cell synchronously. All rows remain reachable
   // via "Show more". Each page is appended in a single DocumentFragment.
+  // `order` is the current display order (indices into rows) — re-sorting
+  // replaces it and starts the paging over.
   const PAGE = 200;
+  let order = rows.map((_, i) => i);
   let shown = 0;
   const renderPage = () => {
     const frag = document.createDocumentFragment();
-    const end = Math.min(shown + PAGE, rows.length);
-    for (let i = shown; i < end; i++) frag.appendChild(buildRow(rows[i]));
+    const end = Math.min(shown + PAGE, order.length);
+    for (let i = shown; i < end; i++) frag.appendChild(buildRow(rows[order[i]]));
     tbody.appendChild(frag);
     shown = end;
   };
   renderPage();
 
   table.appendChild(tbody);
-  const tw = el('div', { class: 'table-wrap' });
+  const tw = el('div', { class: 'table-wrap dd-scroll' });
   tw.appendChild(table);
-  const meta = el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:12px' },
+  const meta = el('div', { class: 'dd-meta', style: 'font-size:12px;color:var(--text-muted)' },
     `${rows.length} record${rows.length !== 1 ? 's' : ''}`);
-  const body = el('div');
-  body.appendChild(meta);
+  const toolbar = el('div', { class: 'dd-toolbar' }, meta);
+  const body = el('div', { class: 'dd-body' });
+  body.appendChild(toolbar);
   body.appendChild(tw);
-  if (rows.length > PAGE) {
-    const moreBtn = el('button', { class: 'btn', style: 'margin-top:12px' });
-    const updateLabel = () => { moreBtn.textContent = `Show more (${shown} of ${rows.length})`; };
-    updateLabel();
-    moreBtn.onclick = () => {
-      renderPage();
-      updateLabel();
-      if (shown >= rows.length) moreBtn.remove();
-    };
-    body.appendChild(moreBtn);
+  let moreBtn = null;
+  const updateMore = () => {
+    if (order.length <= shown) { moreBtn?.remove(); return; }
+    if (!moreBtn) {
+      moreBtn = el('button', { class: 'btn', type: 'button', style: 'margin-top:12px' });
+      moreBtn.onclick = () => { renderPage(); updateMore(); };
+    }
+    moreBtn.textContent = `Show more (${shown} of ${order.length})`;
+    if (!moreBtn.isConnected) body.appendChild(moreBtn);
+  };
+  updateMore();
+
+  if (rows.length) {
+    // Each cell's raw value + displayed text, computed only when a sort or an
+    // export first needs it (formatting every cell up front would undo the
+    // paging above for big drill-downs).
+    const cellCache = new Array(rows.length);
+    const cellsOf = i => cellCache[i] || (cellCache[i] = columns.map(col => {
+      const row = rows[i];
+      return { raw: row?.[col.key], text: breakdownCellText(displayOf(row, col)) };
+    }));
+    const tools = attachBreakdownTools({
+      columns: columns.map(c => ({ label: String(c.label ?? ''), tip: c.tip || '' })),
+      count: rows.length,
+      cellsOf,
+      flagged: i => !!(rows[i] && (rows[i]._total || rows[i]._summary)),
+      thEls,
+      render: next => {
+        order = next;
+        tbody.textContent = '';
+        shown = 0;
+        renderPage();
+        updateMore();
+      },
+      getTitle: () => breakdownTitleText(title)
+    });
+    toolbar.appendChild(tools.menu);
   }
   openModal({ title, body, large: true });
 }
+
+// ========== Breakdown tables: sort + export ==========
+// Shared by drillDownModal above and analytics-helpers' mkModalTable, so every
+// breakdown pop-up gets the same sortable headers and CSV / Excel download.
+// The helpers below the DOM part are pure (exported via _breakdownInternals
+// for the node tests).
+
+// First-column text of a summary row that stays pinned at the bottom.
+const SUMMARY_LEAD = /^\s*(?:(?:grand |sub-?)?totals?|average|avg)\b|^\s*[=÷Σ]/i;
+// '', '—', '–', '-' (and runs of them): "no value".
+const DASH_ONLY = /^[\s—–‒−-]*$/;
+const ISO_DATE = /^\d{4}-\d{2}(-\d{2})?([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?Z?)?$/;
+const MONTH_WORD = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?(?=\s|,|$)/i;
+
+function breakdownCellText(v) {
+  if (v == null) return '';
+  if (typeof Node !== 'undefined' && v instanceof Node) return (v.textContent || '').replace(/\s+/g, ' ').trim();
+  return String(v).replace(/\s+/g, ' ').trim();
+}
+
+function breakdownTitleText(title) {
+  if (typeof Node !== 'undefined' && title instanceof Node) return breakdownCellText(title);
+  return title == null ? '' : String(title);
+}
+
+// "€1,234.56", "−€12", "(1,234)", "45.2%", "1.5x", "HUF 12,000", "€1.2k" →
+// { n, dec, mult, pct }; anything that isn't a single figure → null.
+function parseDisplayFigure(s) {
+  let t = String(s ?? '').trim();
+  if (!t || DASH_ONLY.test(t)) return null;
+  let neg = false;
+  t = t.replace(/−/g, '-');
+  if (/^\(.*\)$/.test(t)) { neg = true; t = t.slice(1, -1).trim(); }
+  t = t.replace(/^[A-Z]{3}\s+/, '').replace(/\s+([A-Z]{3}|Ft)$/, '');
+  t = t.replace(/[€$£¥₺₽₹\s  ,]/g, '');
+  const pct = /%$/.test(t);
+  t = t.replace(/(%|x|×)$/i, '');
+  let mult = 1;
+  const suf = /([kKmM])$/.exec(t);
+  if (suf) { mult = /k/i.test(suf[1]) ? 1e3 : 1e6; t = t.slice(0, -1); }
+  t = t.replace(/^\+/, '');
+  // A sign written before the currency symbol ("-€12") has already lost the
+  // symbol above; one written after it ("€-12") is the same text now.
+  if (!/^-?(\d+(\.\d*)?|\.\d+)$/.test(t)) return null;
+  const dec = (t.split('.')[1] || '').length;
+  let n = Number(t) * mult;
+  if (neg) n = -n;
+  return { n, dec, mult, pct };
+}
+
+export function parseDisplayNumber(s) {
+  const f = parseDisplayFigure(s);
+  return f ? f.n : null;
+}
+
+// The number a cell stands for. The raw value wins when the displayed figure
+// is just a rounding of it (exports keep full precision); when the column's
+// formatter converted it (another currency, a scaled unit) the displayed
+// figure is what the column means, so that one is used.
+function breakdownNumber(raw, text) {
+  const hasRaw = typeof raw === 'number' && Number.isFinite(raw);
+  const f = parseDisplayFigure(text);
+  if (!hasRaw) return f ? f.n : null;
+  if (!f) return raw;
+  const tol = 0.5 * Math.pow(10, -f.dec) * f.mult + 1e-9;
+  if (Math.abs(f.n - raw) <= tol) return raw;
+  if (Math.abs(Math.abs(f.n) - Math.abs(raw)) <= tol) return Math.sign(f.n || 1) * Math.abs(raw);
+  if (f.pct && Math.abs(f.n - raw * 100) <= tol) return raw * 100;
+  return f.n;
+}
+
+function parseDisplayDate(s) {
+  if (!MONTH_WORD.test(s) || !/\b\d{4}\b/.test(s)) return null;
+  const t = Date.parse(s);
+  if (!Number.isFinite(t)) return null;
+  const d = new Date(t);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Sort key for one cell: null (no value — always last), or { t, v } where
+// t orders the kinds (0 number, 1 date as ISO text, 2 text).
+export function breakdownSortKey(raw, text) {
+  const rawText = typeof raw === 'string' ? raw.trim() : '';
+  if (DASH_ONLY.test(text) && !rawText) return null;
+  if (raw instanceof Date && !isNaN(raw)) return { t: 1, v: raw.toISOString() };
+  if (rawText && ISO_DATE.test(rawText)) return { t: 1, v: rawText };
+  const s = DASH_ONLY.test(text) ? rawText : text;
+  const n = breakdownNumber(raw, s);
+  if (n != null) return { t: 0, v: n };
+  const d = parseDisplayDate(s);
+  if (d) return { t: 1, v: d };
+  return { t: 2, v: s };
+}
+
+let _collator = null;
+export function compareSortKeys(a, b, dir = 'asc') {
+  if (a == null || b == null) return a == null ? (b == null ? 0 : 1) : -1;
+  let c = a.t - b.t;
+  if (!c) {
+    if (a.t === 2) {
+      _collator = _collator || new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+      c = _collator.compare(a.v, b.v);
+    } else c = a.v < b.v ? -1 : a.v > b.v ? 1 : 0;
+  }
+  return dir === 'desc' ? -c : c;
+}
+
+// Value written to the CSV / Excel file for one cell: a number for anything
+// numeric (raw value, not the formatted text), the ISO date for raw dates,
+// otherwise the text shown; '' for an empty / "—" cell.
+export function breakdownExportValue(raw, text) {
+  const rawText = typeof raw === 'string' ? raw.trim() : '';
+  if (DASH_ONLY.test(text) && !rawText) return '';
+  if (rawText && ISO_DATE.test(rawText)) return rawText;
+  const s = DASH_ONLY.test(text) ? rawText : text;
+  const n = breakdownNumber(raw, s);
+  if (n != null) return Number(n.toPrecision(12));
+  return s;
+}
+
+// A summary row by its cell texts: the first cell starts with Total /
+// Average / "=" / "÷", or one of the next two cells is a lone "=" / "÷"
+// operator ("Est. Annual Revenue | = | €85,675").
+export function isSummaryTexts(texts) {
+  if (SUMMARY_LEAD.test(texts[0] || '')) return true;
+  return texts.slice(1, 3).some(t => /^\s*[=÷]\s*$/.test(t || ''));
+}
+
+// Trailing summary rows stay pinned at the bottom: returns the index the
+// pinned run starts at (count when there is none). Never pins every row.
+export function summaryStart(count, isSummary) {
+  let i = count;
+  while (i > 1 && isSummary(i - 1)) i--;
+  return i;
+}
+
+// Indices in display order: the sortable rows sorted (stable — ties keep the
+// original order), then the pinned summary rows as given.
+export function breakdownOrder(count, pinStart, keyOf, dir) {
+  const idx = [];
+  for (let i = 0; i < pinStart; i++) idx.push(i);
+  if (dir) {
+    const keys = idx.map(keyOf);
+    idx.sort((a, b) => compareSortKeys(keys[a], keys[b], dir) || a - b);
+  }
+  for (let i = pinStart; i < count; i++) idx.push(i);
+  return idx;
+}
+
+// Portable file name from the pop-up title: plain ASCII (browsers fall back
+// to "download" for some characters), "—" → "-", "€" → "EUR", accents dropped.
+export function breakdownFilename(title, ext) {
+  const base = String(title || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u2010-\u2015\u2212]/g, '-').replace(/€/g, 'EUR').replace(/£/g, 'GBP').replace(/\$/g, 'USD')
+    .replace(/[÷]/g, '-').replace(/[^A-Za-z0-9 _.,()&+#'-]+/g, ' ')
+    .replace(/\s+/g, ' ').trim().replace(/^[. -]+|[. -]+$/g, '').slice(0, 100) || 'breakdown';
+  return `${base}.${ext}`;
+}
+
+// ── Minimal .xlsx writer (one sheet, stored ZIP — no library needed) ────────
+let _crcTable = null;
+function crc32(bytes) {
+  if (!_crcTable) {
+    _crcTable = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      _crcTable[n] = c >>> 0;
+    }
+  }
+  let c = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) c = _crcTable[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+function zipStore(files) {
+  const enc = new TextEncoder();
+  const now = new Date();
+  const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+  const dosDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+  const parts = [];
+  const central = [];
+  let offset = 0;
+  for (const f of files) {
+    const name = enc.encode(f.name);
+    const data = typeof f.data === 'string' ? enc.encode(f.data) : f.data;
+    const crc = crc32(data);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+    lh.setUint16(8, 0, true); lh.setUint16(10, dosTime, true); lh.setUint16(12, dosDate, true);
+    lh.setUint32(14, crc, true); lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true);
+    lh.setUint16(26, name.length, true); lh.setUint16(28, 0, true);
+    parts.push(new Uint8Array(lh.buffer), name, data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true);
+    ch.setUint16(8, 0x0800, true); ch.setUint16(10, 0, true); ch.setUint16(12, dosTime, true);
+    ch.setUint16(14, dosDate, true); ch.setUint32(16, crc, true); ch.setUint32(20, data.length, true);
+    ch.setUint32(24, data.length, true); ch.setUint16(28, name.length, true);
+    ch.setUint32(42, offset, true);
+    central.push(new Uint8Array(ch.buffer), name);
+    offset += 30 + name.length + data.length;
+  }
+  const cdSize = central.reduce((s, p) => s + p.length, 0);
+  const eo = new DataView(new ArrayBuffer(22));
+  eo.setUint32(0, 0x06054b50, true); eo.setUint16(8, files.length, true); eo.setUint16(10, files.length, true);
+  eo.setUint32(12, cdSize, true); eo.setUint32(16, offset, true);
+  const all = [...parts, ...central, new Uint8Array(eo.buffer)];
+  const out = new Uint8Array(all.reduce((s, p) => s + p.length, 0));
+  let pos = 0;
+  for (const p of all) { out.set(p, pos); pos += p.length; }
+  return out;
+}
+
+const xmlEsc = s => String(s).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f￾￿]/g, '')
+  .replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const colRef = n => { let s = ''; n++; while (n) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
+
+// rows[0] is the header row; boldRows holds indices (into rows) to embolden.
+export function buildXlsx(sheetName, rows, boldRows = new Set()) {
+  const ncol = rows.reduce((m, r) => Math.max(m, r.length), 0);
+  // Columns holding any fractional number get a #,##0.00 format throughout.
+  const money = Array.from({ length: ncol }, (_, c) => rows.some((r, ri) => ri > 0 && typeof r[c] === 'number' && !Number.isInteger(r[c])));
+  const widths = Array.from({ length: ncol }, (_, c) => Math.min(60, Math.max(8, ...rows.map(r => String(r[c] ?? '').length + 2))));
+  const isoDay = /^(\d{4})-(\d{2})-(\d{2})$/;
+  const sheetRows = rows.map((r, ri) => {
+    const bold = ri === 0 || boldRows.has(ri);
+    const cells = r.map((v, ci) => {
+      const ref = colRef(ci) + (ri + 1);
+      if (v === '' || v == null) return bold ? `<c r="${ref}" s="1"/>` : '';
+      if (typeof v === 'number' && Number.isFinite(v)) {
+        const s = money[ci] ? (bold ? 4 : 3) : (bold ? 1 : 0);
+        return `<c r="${ref}"${s ? ` s="${s}"` : ''}><v>${v}</v></c>`;
+      }
+      const m = ri > 0 && typeof v === 'string' && isoDay.exec(v);
+      if (m) {
+        const serial = (Date.UTC(+m[1], +m[2] - 1, +m[3]) - Date.UTC(1899, 11, 30)) / 86400000;
+        if (Number.isFinite(serial) && serial > 0) return `<c r="${ref}" s="${bold ? 5 : 2}"><v>${serial}</v></c>`;
+      }
+      return `<c r="${ref}" t="inlineStr"${bold ? ' s="1"' : ''}><is><t xml:space="preserve">${xmlEsc(v)}</t></is></c>`;
+    }).join('');
+    return `<row r="${ri + 1}">${cells}</row>`;
+  }).join('');
+  const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+  const RNS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  const head = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+  const sheet = `${head}<worksheet xmlns="${NS}"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>` +
+    (ncol ? `<cols>${widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols>` : '') +
+    `<sheetData>${sheetRows}</sheetData></worksheet>`;
+  const name = (String(sheetName || 'Sheet1').replace(/[\[\]:*?/\\]/g, ' ').trim().slice(0, 31)) || 'Sheet1';
+  const styles = `${head}<styleSheet xmlns="${NS}"><numFmts count="2"><numFmt numFmtId="164" formatCode="#,##0.00"/><numFmt numFmtId="165" formatCode="yyyy-mm-dd"/></numFmts>` +
+    '<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>' +
+    '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>' +
+    '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
+    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="6">' +
+    '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+    '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
+    '<xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+    '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+    '<xf numFmtId="164" fontId="1" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/>' +
+    '<xf numFmtId="165" fontId="1" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/>' +
+    '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+  return zipStore([
+    { name: '[Content_Types].xml', data: `${head}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>` },
+    { name: '_rels/.rels', data: `${head}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RNS}/officeDocument" Target="xl/workbook.xml"/></Relationships>` },
+    { name: 'xl/workbook.xml', data: `${head}<workbook xmlns="${NS}" xmlns:r="${RNS}"><sheets><sheet name="${xmlEsc(name)}" sheetId="1" r:id="rId1"/></sheets></workbook>` },
+    { name: 'xl/_rels/workbook.xml.rels', data: `${head}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RNS}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${RNS}/styles" Target="styles.xml"/></Relationships>` },
+    { name: 'xl/styles.xml', data: styles },
+    { name: 'xl/worksheets/sheet1.xml', data: sheet }
+  ]);
+}
+
+function downloadBlob(filename, blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+const DL_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>';
+
+// "Download ▾" button with a two-item menu (CSV / Excel). Escape and arrow
+// keys work inside the menu; Escape there closes only the menu, not the modal.
+function mkDownloadMenu(onPick, { compact = false } = {}) {
+  const wrap = el('div', { class: 'dd-dl' + (compact ? ' dd-dl-compact' : '') });
+  const btn = el('button', {
+    type: 'button', class: 'btn sm dd-dl-btn', 'aria-haspopup': 'menu', 'aria-expanded': 'false',
+    title: 'Download this table (CSV or Excel)', 'aria-label': 'Download this table'
+  });
+  btn.innerHTML = DL_ICON + '<span class="dd-dl-label">Download</span>';
+  const menu = el('div', { class: 'dd-dl-menu', role: 'menu', hidden: true });
+  let onDoc = null;
+  const close = (focusBtn) => {
+    if (menu.hidden) return;
+    menu.hidden = true;
+    btn.setAttribute('aria-expanded', 'false');
+    if (onDoc) { document.removeEventListener('pointerdown', onDoc, true); onDoc = null; }
+    if (focusBtn) btn.focus();
+  };
+  const items = [['csv', 'CSV', '.csv'], ['xlsx', 'Excel', '.xlsx']].map(([fmt, label, ext]) => {
+    const b = el('button', { type: 'button', role: 'menuitem', class: 'dd-dl-item', 'data-fmt': fmt },
+      el('span', {}, label), el('span', { class: 'dd-dl-ext' }, ext));
+    b.onclick = () => { close(true); onPick(fmt); };
+    return b;
+  });
+  items.forEach(b => menu.appendChild(b));
+  const open = () => {
+    menu.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    onDoc = e => { if (!wrap.contains(e.target)) close(false); };
+    document.addEventListener('pointerdown', onDoc, true);
+    items[0].focus();
+  };
+  btn.onclick = () => (menu.hidden ? open() : close(true));
+  wrap.addEventListener('keydown', e => {
+    if (menu.hidden) {
+      if (e.target === btn && (e.key === 'ArrowDown')) { e.preventDefault(); open(); }
+      return;
+    }
+    const at = items.indexOf(document.activeElement);
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(true); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); items[(at + 1) % items.length].focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); items[(at - 1 + items.length) % items.length].focus(); }
+    else if (e.key === 'Tab') close(false);
+  });
+  wrap.appendChild(btn);
+  wrap.appendChild(menu);
+  return wrap;
+}
+
+// Makes a rendered table sortable by its header cells and builds its
+// Download menu. The caller owns the rows' DOM: `render(order)` gets the row
+// indices in display order and redraws the body.
+//   columns  [{ label, tip }]       cellsOf(i) → [{ raw, text }] per column
+//   flagged(i) → true for a caller-marked total/summary row
+//   thEls    the header cells (same order as columns)
+//   getTitle() → text used for the file name
+export function attachBreakdownTools({ columns, count, cellsOf, flagged = () => false, thEls = [], render, getTitle, compact = false, sortable = true }) {
+  const pinStart = summaryStart(count, i => flagged(i) || isSummaryTexts(cellsOf(i).map(c => c.text || '')));
+  let sortCol = -1;
+  let sortDir = null;
+  const keyCache = new Map();
+  const keysFor = ci => {
+    if (!keyCache.has(ci)) {
+      const ks = [];
+      for (let i = 0; i < pinStart; i++) { const c = cellsOf(i)[ci] || {}; ks.push(breakdownSortKey(c.raw, c.text || '')); }
+      keyCache.set(ci, ks);
+    }
+    return keyCache.get(ci);
+  };
+  const currentOrder = () => sortDir ? breakdownOrder(count, pinStart, i => keysFor(sortCol)[i], sortDir) : breakdownOrder(count, pinStart, null, null);
+
+  if (sortable && pinStart >= 2) {
+    thEls.forEach((th, ci) => {
+      if (!th || !columns[ci]) return;
+      const label = columns[ci].label;
+      const b = el('button', {
+        type: 'button', class: 'dd-sort',
+        title: (columns[ci].tip ? columns[ci].tip + '\n' : '') + 'Sort by ' + label
+      });
+      while (th.firstChild) b.appendChild(th.firstChild);
+      th.appendChild(b);
+      th.classList.add('dd-sortable');
+      b.onclick = () => {
+        if (sortCol !== ci) { sortCol = ci; sortDir = 'asc'; }
+        else if (sortDir === 'asc') sortDir = 'desc';
+        else { sortCol = -1; sortDir = null; }
+        thEls.forEach((h, hi) => {
+          if (!h) return;
+          if (hi === sortCol) h.setAttribute('aria-sort', sortDir === 'asc' ? 'ascending' : 'descending');
+          else h.removeAttribute('aria-sort');
+        });
+        render(currentOrder());
+      };
+    });
+  }
+
+  const exportRows = () => {
+    const order = currentOrder();
+    // "= Net" / "+ Long-term": the operator marker is dropped in files — a
+    // spreadsheet would read a leading = or + as a formula.
+    const plain = v => typeof v === 'string' ? v.replace(/^[=+]\s+/, '') : v;
+    const out = [columns.map(c => plain(c.label))];
+    const bold = new Set();
+    order.forEach((i, pos) => {
+      out.push(columns.map((_, ci) => { const c = cellsOf(i)[ci] || {}; return plain(breakdownExportValue(c.raw, c.text || '')); }));
+      if (i >= pinStart || flagged(i)) bold.add(pos + 1);
+    });
+    return { rows: out, bold };
+  };
+  const onPick = fmt => {
+    try {
+      const title = (getTitle && getTitle()) || 'breakdown';
+      const { rows, bold } = exportRows();
+      if (fmt === 'xlsx') {
+        downloadBlob(breakdownFilename(title, 'xlsx'), new Blob([buildXlsx(title, rows, bold)],
+          { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+      } else {
+        downloadCsv(breakdownFilename(title, 'csv'), rows);
+      }
+    } catch (e) {
+      console.warn('Breakdown export failed', e);
+      toast('Download failed', 'danger');
+    }
+  };
+  return { menu: mkDownloadMenu(onPick, { compact }), pinStart, exportRows };
+}
+
+export const _breakdownInternals = { parseDisplayFigure, breakdownNumber, parseDisplayDate, crc32, zipStore, SUMMARY_LEAD };
 
 export function confirmDialog(message, { title = 'Confirm', okLabel = 'OK', danger = false } = {}) {
   return new Promise(resolve => {
