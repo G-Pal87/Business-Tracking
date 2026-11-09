@@ -232,6 +232,136 @@ const INV_DRILL_COLS = [
   { key: 'amountEUR', label: 'Amount EUR', right: true, tip: 'Invoice total converted to EUR.' }
 ];
 
+// ── Breakdown tables with a Total row ─────────────────────────────────────────
+// Amount cells carry their number (data-v) so autoTotal() can add a bold
+// Total row equal to the figure the table explains: amount columns summed,
+// count columns added up, each % column recomputed from the summed first
+// amount column over its denominator (`tots`, in column order). Only added
+// when there are 2+ rows (a one-row total would repeat it).
+function num(v, text) {
+  const node = el('span', {}, text ?? formatEUR(v));
+  node.dataset.v = String(v);
+  return node;
+}
+function autoTotal(rows, tots, label = 'Total') {
+  if (rows.length < 2) return rows;
+  const denoms = (Array.isArray(tots) ? tots : [tots]).filter(t => t != null);
+  const ncol = rows[0].length;
+  const isAmt = c => rows.every(r => r[c] instanceof Node && r[c].dataset?.v != null);
+  const firstAmt = [...Array(ncol).keys()].find(isAmt);
+  const amtSum = c => rows.reduce((s, r) => s + (Number(r[c].dataset.v) || 0), 0);
+  let pctIdx = 0;
+  const cells = [...Array(ncol).keys()].map(c => {
+    if (c === 0) return label;
+    if (isAmt(c)) return formatEUR(amtSum(c));
+    if (rows.every(r => typeof r[c] === 'string' && /^\d+$/.test(r[c]))) return String(rows.reduce((s, r) => s + Number(r[c]), 0));
+    if (rows.some(r => typeof r[c] === 'string' && r[c].endsWith('%'))) {
+      const d = denoms[pctIdx++];
+      return d > 0 && firstAmt != null ? (amtSum(firstAmt) / d * 100).toFixed(1) + '%' : '';
+    }
+    return '';
+  });
+  return [...rows, cells.map(c => el('strong', {}, c))];
+}
+// Cash In · − Op. Out · (− Invest. Out) · = Net table from [name, {in, opOut, capOut}]
+// entries, with a Total row equal to the period's net.
+function mkFlowTable(nameLabel, nameTip, entries, { invest = true, netLabel = 'Net' } = {}) {
+  return mkModalTable(
+    [
+      { label: nameLabel, tip: nameTip },
+      { label: 'Cash In', right: true, tip: 'Paid payments + paid invoices.' },
+      { label: '− Op. Out', right: true, tip: 'Operating (non-CapEx) expenses.' },
+      ...(invest ? [{ label: '− Invest. Out', right: true, tip: 'CapEx / investment expenses.' }] : []),
+      { label: `= ${netLabel}`, right: true, tip: invest ? 'Cash In − Op. Out − Invest. Out.' : 'Cash In − Op. Out.' }
+    ],
+    autoTotal(entries.map(([k, d]) => [k, num(d.in), num(d.opOut), ...(invest ? [num(d.capOut || 0)] : []),
+      num(d.in - d.opOut - (invest ? (d.capOut || 0) : 0))]), null)
+  );
+}
+// Cash flow per property (payments + expenses) and per client (invoices) —
+// every cash item lands in a row, so the rows add up to the net.
+function flowByPropertyClient(payments, invoices, opExpenses, capExpenses) {
+  const m = new Map();
+  const add = (name, inV, opV, capV) => { const c = m.get(name) || { in: 0, opOut: 0, capOut: 0 }; c.in += inV; c.opOut += opV; c.capOut += capV; m.set(name, c); };
+  const pn = id => id ? (byId('properties', id)?.name || id) : 'No property';
+  payments.forEach(p => add(pn(p.propertyId), toEUR(p.amount, p.currency, p.date), 0, 0));
+  invoices.forEach(i => add(`${byId('clients', i.clientId)?.name || 'No client'} (client)`, toEUR(i.total, i.currency, i.issueDate), 0, 0));
+  opExpenses.forEach(e => add(pn(e.propertyId), 0, toEUR(e.amount, e.currency, e.date), 0));
+  capExpenses.forEach(e => add(pn(e.propertyId), 0, 0, toEUR(e.amount, e.currency, e.date)));
+  return [...m.entries()].sort((a, b) => (b[1].in - b[1].opOut - b[1].capOut) - (a[1].in - a[1].opOut - a[1].capOut));
+}
+// Cash flow per stream (income by its stream, expenses by expStream).
+function flowByStream(payments, invoices, opExpenses, capExpenses) {
+  const m = new Map();
+  const add = (sk, inV, opV, capV) => { const k = STREAMS[sk]?.label || sk || 'Other'; const c = m.get(k) || { in: 0, opOut: 0, capOut: 0 }; c.in += inV; c.opOut += opV; c.capOut += capV; m.set(k, c); };
+  payments.forEach(p => add(cashInStream(p), toEUR(p.amount, p.currency, p.date), 0, 0));
+  invoices.forEach(i => add(cashInStream(i), toEUR(i.total, i.currency, i.issueDate), 0, 0));
+  opExpenses.forEach(e => add(expStream(e), 0, toEUR(e.amount, e.currency, e.date), 0));
+  capExpenses.forEach(e => add(expStream(e), 0, 0, toEUR(e.amount, e.currency, e.date)));
+  return [...m.entries()].sort((a, b) => (b[1].in - b[1].opOut - b[1].capOut) - (a[1].in - a[1].opOut - a[1].capOut));
+}
+// Cash flow per month 'YYYY-MM', oldest first.
+function flowByMonth(payments, invoices, opExpenses, capExpenses) {
+  const m = new Map();
+  const add = (mk, inV, opV, capV) => { if (!mk) return; const c = m.get(mk) || { in: 0, opOut: 0, capOut: 0 }; c.in += inV; c.opOut += opV; c.capOut += capV; m.set(mk, c); };
+  payments.forEach(p => add(p.date?.slice(0, 7), toEUR(p.amount, p.currency, p.date), 0, 0));
+  invoices.forEach(i => add((i.issueDate || '').slice(0, 7), toEUR(i.total, i.currency, i.issueDate), 0, 0));
+  opExpenses.forEach(e => add(e.date?.slice(0, 7), 0, toEUR(e.amount, e.currency, e.date), 0));
+  capExpenses.forEach(e => add(e.date?.slice(0, 7), 0, 0, toEUR(e.amount, e.currency, e.date)));
+  return [...m.entries()].sort(([a], [b]) => a.localeCompare(b));
+}
+
+// Month-by-month net cash flow and its average — the breakdown behind Avg
+// Monthly Net (and the Negative Months insight): Total ÷ active months = average.
+function openMonthlyNetModal(title, curData, cmpData, cmpRange) {
+  const { payments, invoices, opExpenses, capExpenses, avgMonthlyNet } = curData;
+  const monthEntries = flowByMonth(payments, invoices, opExpenses, capExpenses);
+  const monthCount = monthEntries.length;
+  const totalNet = monthEntries.reduce((s, [, d]) => s + d.in - d.opOut - d.capOut, 0);
+  const posMonths = monthEntries.filter(([, d]) => d.in - d.opOut - d.capOut >= 0).length;
+  const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+  if (cmpData) {
+    const cm = flowByMonth(cmpData.payments, cmpData.invoices, cmpData.opExpenses, cmpData.capExpenses);
+    const cTotal = cm.reduce((s, [, d]) => s + d.in - d.opOut - d.capOut, 0);
+    body.appendChild(mkCmpGrid([
+      { label: 'Total Net',
+        curVal: mkDrillValue(formatEUR(totalNet), () => drillDownModal('Net Cash Flow', buildCashFlowRows(payments, invoices, opExpenses, capExpenses), CF_DRILL_COLS)),
+        cmpVal: mkDrillValue(formatEUR(cTotal), () => drillDownModal(`Net Cash Flow — ${cmpRange?.label || 'Comparison'}`, buildCashFlowRows(cmpData.payments, cmpData.invoices, cmpData.opExpenses, cmpData.capExpenses), CF_DRILL_COLS)) },
+      { label: '÷ Active Months', curVal: String(monthCount), cmpVal: String(cm.length) },
+      { label: '= Avg Monthly Net', curVal: formatEUR(avgMonthlyNet), cmpVal: formatEUR(cmpData.avgMonthlyNet) },
+      { label: 'Positive Months', curVal: `${posMonths} / ${monthCount}`, cmpVal: `${cm.filter(([, d]) => d.in - d.opOut - d.capOut >= 0).length} / ${cm.length}` }
+    ], 'Current Period', cmpRange?.label || ''));
+  } else {
+    const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
+    summaryGrid.appendChild(mkSummaryBox('Total Net',
+      mkDrillValue(formatEUR(totalNet), () => drillDownModal('Net Cash Flow', buildCashFlowRows(payments, invoices, opExpenses, capExpenses), CF_DRILL_COLS)),
+      'across all months'));
+    summaryGrid.appendChild(mkSummaryBox('÷ Active Months', String(monthCount), `${posMonths} positive · ${monthCount - posMonths} negative`));
+    summaryGrid.appendChild(mkSummaryBox('= Avg Monthly Net', formatEUR(avgMonthlyNet), 'per active month'));
+    body.appendChild(summaryGrid);
+  }
+  const monthSection = el('div');
+  monthSection.appendChild(mkSectionLabel('Monthly Net Cash Flow'));
+  const rows = monthEntries.map(([mk, d]) => {
+    const net = d.in - d.opOut - d.capOut;
+    return [mk, num(d.in), num(d.opOut), num(d.capOut), num(net, (net < 0 ? '▼ ' : '') + formatEUR(net))];
+  });
+  const withTot = autoTotal(rows, null);
+  if (monthCount > 1) withTot.push([el('strong', {}, `÷ ${monthCount} active months = Average`), '', '', '', el('strong', {}, formatEUR(avgMonthlyNet))]);
+  monthSection.appendChild(mkModalTable(
+    [
+      { label: 'Month', tip: 'Calendar month (YYYY-MM) with any cash activity.' },
+      { label: 'Cash In', right: true, tip: 'Paid payments + paid invoices in that month.' },
+      { label: '− Op. Out', right: true, tip: 'Operating (non-CapEx) expenses in that month.' },
+      { label: '− Invest. Out', right: true, tip: 'CapEx expenses in that month.' },
+      { label: '= Net', right: true, tip: 'Cash In − Op. Out − Invest. Out for that month (▼ = negative month).' }
+    ],
+    withTot
+  ));
+  body.appendChild(monthSection);
+  openModal({ title, body, large: true });
+}
+
 // Net cash flow (in / opOut / capOut) grouped by raw stream key — shared by
 // the per-stream KPI card row and its drill-down modal below.
 function computeCashflowByStream({ payments, invoices, opExpenses, capExpenses }) {
@@ -328,7 +458,7 @@ function openCashflowStreamModal(sk, curData, cmpData, cmpLabel) {
         { label: 'Amount', right: true, tip: 'Cash in from this property/client within the stream and period, in EUR.' },
         { label: '% of Cash In', right: true, tip: "This property/client's share of the stream's total cash in." }
       ],
-      propEntries.map(([k, v]) => [k, formatEUR(v), inV > 0 ? (v / inV * 100).toFixed(1) + '%' : '—'])
+      autoTotal(propEntries.map(([k, v]) => [k, num(v), inV > 0 ? (v / inV * 100).toFixed(1) + '%' : '—']), inV)
     ));
   }
 
@@ -348,7 +478,7 @@ function openCashflowStreamModal(sk, curData, cmpData, cmpLabel) {
         { label: 'Amount', right: true, tip: 'Total expense amount in this category, in EUR.' },
         { label: '% of Cash Out', right: true, tip: "This category's share of the stream's total cash out (Op. + Invest.)." }
       ],
-      catEntries.map(([k, v]) => [k, formatEUR(v), cashOutV > 0 ? (v / cashOutV * 100).toFixed(1) + '%' : '—'])
+      autoTotal(catEntries.map(([k, v]) => [k, num(v), cashOutV > 0 ? (v / cashOutV * 100).toFixed(1) + '%' : '—']), cashOutV)
     ));
   }
 
@@ -492,7 +622,7 @@ function computeCashFlowInsights(curData, cmpData, cmpRange) {
       title: 'NEGATIVE MONTHS',
       text: `${negCount} of ${allMonths.length} months have negative net cash flow.`,
       inspect: 'Trends & Transactions → Monthly Net Cash Flow',
-      onClick: () => openNetCashFlowModal(curData, cmpData, cmpRange)
+      onClick: () => openMonthlyNetModal('Negative Months — Monthly Net Cash Flow', curData, cmpData, cmpRange)
     });
   }
 
@@ -612,31 +742,12 @@ function buildCashSeasonalityHeatmap() {
           }));
           body.appendChild(summaryGrid);
 
-          // Stream breakdown
-          const streamMap = new Map();
-          const addS = (sk, inV, opV, capV) => {
-            const c = streamMap.get(sk) || { in: 0, opOut: 0, capOut: 0 };
-            c.in += inV; c.opOut += opV; c.capOut += capV;
-            streamMap.set(sk, c);
-          };
-          mPay.forEach(p => addS(cashInStream(p), toEUR(p.amount, p.currency, p.date), 0, 0));
-          mInv.forEach(i => addS(cashInStream(i), toEUR(i.total, i.currency, i.issueDate), 0, 0));
-          mOp .forEach(e => addS(expStream(e), 0, toEUR(e.amount, e.currency, e.date), 0));
-          mCap.forEach(e => addS(expStream(e), 0, 0, toEUR(e.amount, e.currency, e.date)));
-          const streamEntries = [...streamMap.entries()].sort((a, b) => (b[1].in - b[1].opOut - b[1].capOut) - (a[1].in - a[1].opOut - a[1].capOut));
+          // Stream breakdown — adds up to the month's net
+          const streamEntries = flowByStream(mPay, mInv, mOp, mCap);
           if (streamEntries.length > 0) {
             const streamSection = el('div');
             streamSection.appendChild(mkSectionLabel('Breakdown by Stream'));
-            streamSection.appendChild(mkModalTable(
-              [
-                { label: 'Stream', tip: 'Revenue/expense stream key (e.g. short-term rental, long-term rental).' },
-                { label: 'Cash In', right: true, tip: 'Paid payments + paid invoices for this stream in the month.' },
-                { label: 'Op. Out', right: true, tip: 'Operating (non-CapEx) expenses for this stream in the month.' },
-                { label: 'Invest. Out', right: true, tip: 'CapEx/investment expenses for this stream in the month.' },
-                { label: 'Net', right: true, tip: 'Cash In minus Op. Out minus Invest. Out for this stream and month.' }
-              ],
-              streamEntries.map(([sk, d]) => [STREAMS[sk]?.label || sk, formatEUR(d.in), formatEUR(d.opOut), formatEUR(d.capOut), formatEUR(d.in - d.opOut - d.capOut)])
-            ));
+            streamSection.appendChild(mkFlowTable('Stream', 'Income by its stream; expenses by their (or their property\'s) stream.', streamEntries));
             body.appendChild(streamSection);
           }
 
@@ -692,49 +803,17 @@ function openOperatingCashFlowModal(curData, cmpData, cmpRange) {
     body.appendChild(summaryGrid);
   }
 
-  const monthMap = new Map();
-  const addM = (mk, inV, outV) => {
-    if (!mk) return;
-    const c = monthMap.get(mk) || { in: 0, out: 0 };
-    c.in += inV; c.out += outV;
-    monthMap.set(mk, c);
-  };
-  payments   .forEach(p => addM(p.date?.slice(0, 7), toEUR(p.amount, p.currency, p.date), 0));
-  invoices   .forEach(i => addM((i.issueDate || '').slice(0, 7), toEUR(i.total, i.currency, i.issueDate), 0));
-  opExpenses .forEach(e => addM(e.date?.slice(0, 7), 0, toEUR(e.amount, e.currency, e.date)));
-  const monthEntries = [...monthMap.entries()].sort(([a], [b]) => a.localeCompare(b));
   const monthSection = el('div');
-  monthSection.appendChild(mkSectionLabel('Monthly Breakdown'));
-  monthSection.appendChild(mkModalTable(
-    [
-      { label: 'Month', tip: 'Calendar month (YYYY-MM).' },
-      { label: 'Cash In', right: true, tip: 'Paid payments + paid invoices in that month.' },
-      { label: 'Op. Out', right: true, tip: 'Operating expenses (excludes CapEx) in that month.' },
-      { label: 'Net CF', right: true, tip: 'Cash In minus Op. Out for that month.' }
-    ],
-    monthEntries.map(([mk, d]) => [mk, formatEUR(d.in), formatEUR(d.out), formatEUR(d.in - d.out)])
-  ));
+  monthSection.appendChild(mkSectionLabel('By Month'));
+  monthSection.appendChild(mkFlowTable('Month', 'Calendar month (YYYY-MM).', flowByMonth(payments, invoices, opExpenses, []), { invest: false, netLabel: 'Operating CF' }));
   body.appendChild(monthSection);
 
-  const streamMap = new Map();
-  payments   .forEach(p => { const k = STREAMS[cashInStream(p)]?.label || cashInStream(p); const c = streamMap.get(k) || { in: 0, out: 0 }; c.in  += toEUR(p.amount, p.currency, p.date);  streamMap.set(k, c); });
-  invoices   .forEach(i => { const k = STREAMS[cashInStream(i)]?.label || cashInStream(i); const c = streamMap.get(k) || { in: 0, out: 0 }; c.in  += toEUR(i.total, i.currency, i.issueDate); streamMap.set(k, c); });
-  opExpenses .forEach(e => { const k = STREAMS[expStream(e)]?.label || expStream(e) || 'Other'; const c = streamMap.get(k) || { in: 0, out: 0 }; c.out += toEUR(e.amount, e.currency, e.date); streamMap.set(k, c); });
-  const streamEntries = [...streamMap.entries()].sort((a, b) => (b[1].in - b[1].out) - (a[1].in - a[1].out));
   const streamSection = el('div');
-  streamSection.appendChild(mkSectionLabel('Breakdown by Stream'));
-  streamSection.appendChild(mkModalTable(
-    [
-      { label: 'Stream', tip: 'Revenue/expense stream.' },
-      { label: 'Cash In', right: true, tip: 'Paid payments + paid invoices in this stream for the period.' },
-      { label: 'Op. Out', right: true, tip: 'Operating expenses in this stream for the period.' },
-      { label: 'Net CF', right: true, tip: 'Cash In minus Op. Out for this stream.' }
-    ],
-    streamEntries.map(([k, d]) => [k, formatEUR(d.in), formatEUR(d.out), formatEUR(d.in - d.out)])
-  ));
+  streamSection.appendChild(mkSectionLabel('By Stream'));
+  streamSection.appendChild(mkFlowTable('Stream', 'Income by its stream; expenses by their (or their property\'s) stream.', flowByStream(payments, invoices, opExpenses, []), { invest: false, netLabel: 'Operating CF' }));
   body.appendChild(streamSection);
 
-  openModal({ title: 'Operating Cash Flow — Breakdown', body, large: true });
+  openModal({ title: `Operating Cash Flow — ${formatEUR(opCashFlow)}`, body, large: true });
 }
 
 function openInvestmentCashOutModal(curData, cmpData, cmpRange) {
@@ -793,7 +872,7 @@ function openInvestmentCashOutModal(curData, cmpData, cmpRange) {
       { label: 'Amount', right: true, tip: 'CapEx spend for this property in the period, in EUR.' },
       { label: '% of CapEx', right: true, tip: "This property's share of total Investment Cash Out." }
     ],
-    propEntries.map(([k, v]) => [k, formatEUR(v), investCashOut > 0 ? (v / investCashOut * 100).toFixed(1) + '%' : '—'])
+    autoTotal(propEntries.map(([k, v]) => [k, num(v), investCashOut > 0 ? (v / investCashOut * 100).toFixed(1) + '%' : '—']), investCashOut)
   ));
   body.appendChild(propSection);
 
@@ -812,7 +891,7 @@ function openInvestmentCashOutModal(curData, cmpData, cmpRange) {
       { label: 'Amount', right: true, tip: 'CapEx spend in this category, in EUR.' },
       { label: '% of CapEx', right: true, tip: "This category's share of total Investment Cash Out." }
     ],
-    catEntries.map(([k, v]) => [k, formatEUR(v), investCashOut > 0 ? (v / investCashOut * 100).toFixed(1) + '%' : '—'])
+    autoTotal(catEntries.map(([k, v]) => [k, num(v), investCashOut > 0 ? (v / investCashOut * 100).toFixed(1) + '%' : '—']), investCashOut)
   ));
   body.appendChild(catSection);
 
@@ -860,57 +939,17 @@ function openNetCashFlowModal(curData, cmpData, cmpRange) {
     body.appendChild(summaryGrid);
   }
 
-  const monthMap = new Map();
-  const addM = (mk, inV, opV, capV) => {
-    if (!mk) return;
-    const c = monthMap.get(mk) || { in: 0, opOut: 0, capOut: 0 };
-    c.in += inV; c.opOut += opV; c.capOut += capV;
-    monthMap.set(mk, c);
-  };
-  payments   .forEach(p => addM(p.date?.slice(0, 7), toEUR(p.amount, p.currency, p.date), 0, 0));
-  invoices   .forEach(i => addM((i.issueDate || '').slice(0, 7), toEUR(i.total, i.currency, i.issueDate), 0, 0));
-  opExpenses .forEach(e => addM(e.date?.slice(0, 7), 0, toEUR(e.amount, e.currency, e.date), 0));
-  capExpenses.forEach(e => addM(e.date?.slice(0, 7), 0, 0, toEUR(e.amount, e.currency, e.date)));
-  const monthEntries = [...monthMap.entries()].sort(([a], [b]) => a.localeCompare(b));
-  const monthSection = el('div');
-  monthSection.appendChild(mkSectionLabel('Monthly Breakdown'));
-  monthSection.appendChild(mkModalTable(
-    [
-      { label: 'Month', tip: 'Calendar month (YYYY-MM).' },
-      { label: 'Cash In', right: true, tip: 'Paid payments + paid invoices in that month.' },
-      { label: 'Op. Out', right: true, tip: 'Operating (non-CapEx) expenses in that month.' },
-      { label: 'Invest. Out', right: true, tip: 'CapEx expenses in that month.' },
-      { label: 'Net CF', right: true, tip: 'Cash In minus Op. Out minus Invest. Out for that month.' }
-    ],
-    monthEntries.map(([mk, d]) => [mk, formatEUR(d.in), formatEUR(d.opOut), formatEUR(d.capOut), formatEUR(d.in - d.opOut - d.capOut)])
-  ));
-  body.appendChild(monthSection);
+  const streamSection = el('div');
+  streamSection.appendChild(mkSectionLabel('By Stream'));
+  streamSection.appendChild(mkFlowTable('Stream', 'Income by its stream; expenses by their (or their property\'s) stream.', flowByStream(payments, invoices, opExpenses, capExpenses), { netLabel: 'Net Cash Flow' }));
+  body.appendChild(streamSection);
 
-  const propMap = new Map();
-  const addP = (name, inV, opV, capV) => {
-    const c = propMap.get(name) || { in: 0, opOut: 0, capOut: 0 };
-    c.in += inV; c.opOut += opV; c.capOut += capV;
-    propMap.set(name, c);
-  };
-  payments   .forEach(p => { const n = p.propertyId ? (byId('properties', p.propertyId)?.name || p.propertyId) : 'No Property'; addP(n, toEUR(p.amount, p.currency, p.date), 0, 0); });
-  opExpenses .forEach(e => { const n = e.propertyId ? (byId('properties', e.propertyId)?.name || e.propertyId) : 'No Property'; addP(n, 0, toEUR(e.amount, e.currency, e.date), 0); });
-  capExpenses.forEach(e => { const n = e.propertyId ? (byId('properties', e.propertyId)?.name || e.propertyId) : 'No Property'; addP(n, 0, 0, toEUR(e.amount, e.currency, e.date)); });
-  const propEntries = [...propMap.entries()].sort((a, b) => (b[1].in - b[1].opOut - b[1].capOut) - (a[1].in - a[1].opOut - a[1].capOut));
   const propSection = el('div');
-  propSection.appendChild(mkSectionLabel('Breakdown by Property'));
-  propSection.appendChild(mkModalTable(
-    [
-      { label: 'Property', tip: 'Property the payments/expenses are linked to (or "No Property").' },
-      { label: 'Cash In', right: true, tip: 'Paid payments linked to this property in the period.' },
-      { label: 'Op. Out', right: true, tip: 'Operating expenses linked to this property in the period.' },
-      { label: 'Invest. Out', right: true, tip: 'CapEx linked to this property in the period.' },
-      { label: 'Net CF', right: true, tip: 'Cash In minus Op. Out minus Invest. Out for this property.' }
-    ],
-    propEntries.map(([k, d]) => [k, formatEUR(d.in), formatEUR(d.opOut), formatEUR(d.capOut), formatEUR(d.in - d.opOut - d.capOut)])
-  ));
+  propSection.appendChild(mkSectionLabel('By Property / Client'));
+  propSection.appendChild(mkFlowTable('Property / Client', 'Rental payments and expenses by property ("No property" when unlinked); service invoices by client.', flowByPropertyClient(payments, invoices, opExpenses, capExpenses), { netLabel: 'Net Cash Flow' }));
   body.appendChild(propSection);
 
-  openModal({ title: 'Net Cash Flow — Breakdown', body, large: true });
+  openModal({ title: `Net Cash Flow — ${formatEUR(net)}`, body, large: true });
 }
 
 // ── Main view ─────────────────────────────────────────────────────────────────
@@ -1059,7 +1098,7 @@ function buildView() {
           { label: 'Amount', right: true, tip: 'Cash in from this stream in the period, in EUR.' },
           { label: '% of Total', right: true, tip: "This stream's share of total Cash In." }
         ],
-        streamEntries.map(([k, v]) => [k, formatEUR(v), cashIn > 0 ? (v / cashIn * 100).toFixed(1) + '%' : '—'])
+        autoTotal(streamEntries.map(([k, v]) => [k, num(v), cashIn > 0 ? (v / cashIn * 100).toFixed(1) + '%' : '—']), cashIn)
       ));
       body.appendChild(streamSection);
 
@@ -1089,7 +1128,7 @@ function buildView() {
             { label: 'Amount', right: true, tip: 'Cash in from this property/client in the period, in EUR.' },
             { label: '% of Total', right: true, tip: "This property/client's share of total Cash In." }
           ],
-          entityEntries.map(([k, v]) => [k, formatEUR(v), cashIn > 0 ? (v / cashIn * 100).toFixed(1) + '%' : '—'])
+          autoTotal(entityEntries.map(([k, v]) => [k, num(v), cashIn > 0 ? (v / cashIn * 100).toFixed(1) + '%' : '—']), cashIn)
         ));
 
         const top5In = [...allIn].sort((a, b) => b._eur - a._eur).slice(0, 5);
@@ -1196,7 +1235,7 @@ function buildView() {
           { label: 'Amount', right: true, tip: 'Operating expense total in this category, in EUR.' },
           { label: '% of Total', right: true, tip: "This category's share of total Operating Cash Out." }
         ],
-        catEntries.map(([k, v]) => [k, formatEUR(v), opExCashOut > 0 ? (v / opExCashOut * 100).toFixed(1) + '%' : '—'])
+        autoTotal(catEntries.map(([k, v]) => [k, num(v), opExCashOut > 0 ? (v / opExCashOut * 100).toFixed(1) + '%' : '—']), opExCashOut)
       ));
       body.appendChild(catSection);
 
@@ -1215,7 +1254,7 @@ function buildView() {
           { label: 'Amount', right: true, tip: 'Operating expense total for this property, in EUR.' },
           { label: '% of Total', right: true, tip: "This property's share of total Operating Cash Out." }
         ],
-        propEntries.map(([k, v]) => [k, formatEUR(v), opExCashOut > 0 ? (v / opExCashOut * 100).toFixed(1) + '%' : '—'])
+        autoTotal(propEntries.map(([k, v]) => [k, num(v), opExCashOut > 0 ? (v / opExCashOut * 100).toFixed(1) + '%' : '—']), opExCashOut)
       ));
       body.appendChild(propSection);
 
@@ -1297,77 +1336,7 @@ function buildView() {
       source: 'analytics-cashflow.js getData() — `avgMonthlyNet` (lines 83-84)',
       note: 'A month only counts as active if it has at least one paid payment/invoice or expense — months with zero activity are not divided into.'
     },
-    onClick:   () => {
-      const monthMap = new Map();
-      const addMk = (mk, inAmt, opOut, capOut) => {
-        if (!mk) return;
-        const c = monthMap.get(mk) || { in: 0, opOut: 0, capOut: 0 };
-        c.in += inAmt; c.opOut += opOut; c.capOut += capOut;
-        monthMap.set(mk, c);
-      };
-      payments   .forEach(p => addMk(p.date?.slice(0, 7),              toEUR(p.amount, p.currency, p.date), 0, 0));
-      invoices   .forEach(i => addMk((i.issueDate || '').slice(0, 7),  toEUR(i.total, i.currency, i.issueDate), 0, 0));
-      opExpenses .forEach(e => addMk(e.date?.slice(0, 7),              0, toEUR(e.amount, e.currency, e.date), 0));
-      capExpenses.forEach(e => addMk(e.date?.slice(0, 7),              0, 0, toEUR(e.amount, e.currency, e.date)));
-      const monthEntries = [...monthMap.entries()].sort(([a], [b]) => a.localeCompare(b));
-      const monthCount = monthEntries.length;
-      const totalNet = monthEntries.reduce((s, [, d]) => s + d.in - d.opOut - d.capOut, 0);
-      const posMonths = monthEntries.filter(([, d]) => d.in - d.opOut - d.capOut >= 0).length;
-
-      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-
-      if (cmpData) {
-        const cmpMonthMap = new Map();
-        const addCmpMk = (mk, inAmt, opOut, capOut) => {
-          if (!mk) return;
-          const c = cmpMonthMap.get(mk) || { in: 0, opOut: 0, capOut: 0 };
-          c.in += inAmt; c.opOut += opOut; c.capOut += capOut;
-          cmpMonthMap.set(mk, c);
-        };
-        cmpData.payments   .forEach(p => addCmpMk(p.date?.slice(0, 7),              toEUR(p.amount, p.currency, p.date), 0, 0));
-        cmpData.invoices   .forEach(i => addCmpMk((i.issueDate || '').slice(0, 7),  toEUR(i.total, i.currency, i.issueDate), 0, 0));
-        cmpData.opExpenses .forEach(e => addCmpMk(e.date?.slice(0, 7),              0, toEUR(e.amount, e.currency, e.date), 0));
-        cmpData.capExpenses.forEach(e => addCmpMk(e.date?.slice(0, 7),              0, 0, toEUR(e.amount, e.currency, e.date)));
-        const cmpMonthEntries = [...cmpMonthMap.entries()].sort(([a], [b]) => a.localeCompare(b));
-        const cmpMonthCount = cmpMonthEntries.length;
-        const cmpTotalNet = cmpMonthEntries.reduce((s, [, d]) => s + d.in - d.opOut - d.capOut, 0);
-        const cmpPosMonths = cmpMonthEntries.filter(([, d]) => d.in - d.opOut - d.capOut >= 0).length;
-
-        body.appendChild(mkCmpGrid([
-          { label: 'Avg Monthly Net', curVal: formatEUR(avgMonthlyNet), cmpVal: formatEUR(cmpData.avgMonthlyNet) },
-          { label: 'Positive Months', curVal: `${posMonths} / ${monthCount}`, cmpVal: `${cmpPosMonths} / ${cmpMonthCount}` },
-          { label: 'Total Net',
-            curVal: mkDrillValue(formatEUR(totalNet), () => drillDownModal('Net Cash Flow', buildCashFlowRows(payments, invoices, opExpenses, capExpenses), CF_DRILL_COLS)),
-            cmpVal: mkDrillValue(formatEUR(cmpTotalNet), () => drillDownModal(`Net Cash Flow — ${cmpRange?.label || 'Comparison'}`, buildCashFlowRows(cmpData.payments, cmpData.invoices, cmpData.opExpenses, cmpData.capExpenses), CF_DRILL_COLS)) },
-        ], 'Current Period', cmpRange?.label || ''));
-      } else {
-        // Summary boxes
-        const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
-        summaryGrid.appendChild(mkSummaryBox('Avg Monthly Net', formatEUR(avgMonthlyNet), `over ${monthCount} active month${monthCount !== 1 ? 's' : ''}`));
-        summaryGrid.appendChild(mkSummaryBox('Positive Months', `${posMonths} / ${monthCount}`, posMonths === monthCount ? 'All surplus' : posMonths === 0 ? 'All deficit' : 'Mixed'));
-        summaryGrid.appendChild(mkSummaryBox('Total Net',
-          mkDrillValue(formatEUR(totalNet), () => drillDownModal('Net Cash Flow', buildCashFlowRows(payments, invoices, opExpenses, capExpenses), CF_DRILL_COLS)),
-          'across all months'));
-        body.appendChild(summaryGrid);
-      }
-
-      // Monthly table
-      const monthSection = el('div');
-      monthSection.appendChild(mkSectionLabel('Monthly Net Cash Flow'));
-      monthSection.appendChild(mkModalTable(
-        [
-          { label: 'Month', tip: 'Calendar month (YYYY-MM).' },
-          { label: 'Cash In', right: true, tip: 'Paid payments + paid invoices in that month.' },
-          { label: 'Op. Out', right: true, tip: 'Operating (non-CapEx) expenses in that month.' },
-          { label: 'Invest. Out', right: true, tip: 'CapEx expenses in that month.' },
-          { label: 'Net', right: true, tip: 'Cash In minus Op. Out minus Invest. Out for that month.' }
-        ],
-        monthEntries.map(([mk, d]) => [mk, formatEUR(d.in), formatEUR(d.opOut), formatEUR(d.capOut), formatEUR(d.in - d.opOut - d.capOut)])
-      ));
-      body.appendChild(monthSection);
-
-      openModal({ title: 'Avg Monthly Net — Breakdown', body, large: true });
-    }
+    onClick:   () => openMonthlyNetModal(`Avg Monthly Net — ${formatEUR(avgMonthlyNet)}`, curData, cmpData, cmpRange)
   }));
 
   // ── Liquidity row: Net Coverage Days, Invoice Collection Lag, Cash Runway,
@@ -1431,8 +1400,12 @@ function buildView() {
             const net = netByMk.get(mk);
             cum += net;
             const opMk = (opByMk.get(mk) || []).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-            return [mk, formatEUR(net >= 0 ? net : 0), formatEUR(net < 0 ? Math.abs(net) : 0), formatEUR(opMk), formatEUR(cum)];
+            return [mk, num(net >= 0 ? net : 0), num(net < 0 ? Math.abs(net) : 0), num(opMk), formatEUR(cum)];
           });
+          const covRows = autoTotal(tableRows, null);
+          if (tableRows.length > 1) covRows[covRows.length - 1][4] = el('strong', {}, formatEUR(running));
+          covRows.push([el('strong', {}, `Avg monthly OpEx = OpEx ÷ ${opexMonthCount} OpEx month${opexMonthCount !== 1 ? 's' : ''}`), '', '', el('strong', {}, formatEUR(avgMonthlyOpex)), '']);
+          covRows.push([el('strong', {}, 'Net Coverage Days = Balance ÷ Avg monthly OpEx × 30'), '', '', '', el('strong', {}, isNegativeBalance ? '0 days (shortfall)' : (daysOnHand !== null ? `${daysOnHand} days` : 'N/A'))]);
           posSection.appendChild(mkModalTable(
             [
               { label: 'Month', tip: 'Calendar month (YYYY-MM).' },
@@ -1441,7 +1414,7 @@ function buildView() {
               { label: 'OpEx Out', right: true, tip: 'Operating expenses paid in this month.' },
               { label: 'Running Balance', right: true, tip: 'Cumulative net cash flow across all months up to and including this one.' }
             ],
-            tableRows
+            covRows
           ));
           body.appendChild(posSection);
         }
@@ -1457,7 +1430,8 @@ function buildView() {
     const inRange = d => !!d && d >= start && d <= end;
     const allInvoices = listActive('invoices').filter(i => inRange(i.issueDate || i.date) && mStreamCCC(i) && mOwnerCCC(i) && mClientCCC(i)).map(shareCCC);
     const svcInvoiced = allInvoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
-    const outstandingSvc = allInvoices.filter(i => !['paid', 'cancelled', 'void', 'draft'].includes(i.status))
+    const isOutstanding = i => !['paid', 'cancelled', 'void', 'draft'].includes(i.status);
+    const outstandingSvc = allInvoices.filter(isOutstanding)
       .reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
     const ccc = svcInvoiced > 0 ? Math.round(outstandingSvc / svcInvoiced * 30) : null;
 
@@ -1486,8 +1460,8 @@ function buildView() {
           mkDrillValue(formatEUR(svcInvoiced), () => drillDownModal('Total Service Invoiced', invDrillRows(allInvoices), INV_DRILL_COLS)),
           `${allInvoices.length} invoice${allInvoices.length !== 1 ? 's' : ''}`));
         summaryGrid.appendChild(mkSummaryBox('Outstanding Service',
-          mkDrillValue(formatEUR(outstandingSvc), () => drillDownModal('Outstanding Service Invoices', invDrillRows(allInvoices.filter(i => !['paid','cancelled','void'].includes(i.status))), INV_DRILL_COLS)),
-          `${allInvoices.filter(i => !['paid','cancelled','void'].includes(i.status)).length} unpaid`));
+          mkDrillValue(formatEUR(outstandingSvc), () => drillDownModal('Outstanding Service Invoices', invDrillRows(allInvoices.filter(isOutstanding)), INV_DRILL_COLS)),
+          `${allInvoices.filter(isOutstanding).length} unpaid`));
         summaryGrid.appendChild(mkSummaryBox('Collection Lag (proxy)', ccc !== null ? `${ccc} days` : 'N/A', '(Outstanding ÷ Invoiced) × 30'));
         body.appendChild(summaryGrid);
 
@@ -1502,11 +1476,12 @@ function buildView() {
         allInvoices.forEach(i => {
           const mk = (i.issueDate || '').slice(0, 7);
           if (!mk) return;
-          const c = monthMap2.get(mk) || { invoiced: 0, outstanding: 0, paid: 0 };
+          const c = monthMap2.get(mk) || { invoiced: 0, outstanding: 0, paid: 0, other: 0 };
           const v = toEUR(i.total, i.currency, i.issueDate);
           c.invoiced += v;
-          if (['paid','cancelled','void'].includes(i.status)) c.paid += v;
-          else c.outstanding += v;
+          if (i.status === 'paid') c.paid += v;
+          else if (isOutstanding(i)) c.outstanding += v;
+          else c.other += v;
           monthMap2.set(mk, c);
         });
         const monthEntries2 = [...monthMap2.entries()].sort(([a], [b]) => a.localeCompare(b));
@@ -1516,18 +1491,20 @@ function buildView() {
           monthSection.appendChild(mkModalTable(
             [
               { label: 'Month', tip: 'Calendar month (YYYY-MM) by invoice issue date.' },
-              { label: 'Total Invoiced', right: true, tip: 'Sum of invoice totals issued in this month.' },
-              { label: 'Paid', right: true, tip: 'Invoiced amount already marked paid, cancelled, or void in this month.' },
-              { label: 'Outstanding', right: true, tip: 'Invoiced amount still unpaid (not paid/cancelled/void) in this month.' },
-              { label: 'Lag (days)', right: true, tip: 'Outstanding ÷ Total Invoiced × 30 for this month.' }
+              { label: 'Total Invoiced', right: true, tip: 'Sum of invoice totals issued in this month (any status).' },
+              { label: 'Paid', right: true, tip: 'Invoiced amount already marked paid.' },
+              { label: 'Draft / Cancelled', right: true, muted: true, tip: 'Draft, cancelled or void invoices — not owed, so not outstanding.' },
+              { label: 'Outstanding', right: true, tip: 'Invoiced amount still owed (sent / overdue).' },
+              { label: 'Lag (days)', right: true, tip: 'Outstanding ÷ Total Invoiced × 30. The Total row is the card\'s figure.' }
             ],
-            monthEntries2.map(([mk, d]) => [
-              mk,
-              formatEUR(d.invoiced),
-              formatEUR(d.paid),
-              formatEUR(d.outstanding),
-              d.invoiced > 0 ? Math.round(d.outstanding / d.invoiced * 30) + ' days' : '—'
-            ])
+            (() => {
+              const r = autoTotal(monthEntries2.map(([mk, d]) => [
+                mk, num(d.invoiced), num(d.paid), num(d.other), num(d.outstanding),
+                d.invoiced > 0 ? Math.round(d.outstanding / d.invoiced * 30) + ' days' : '—'
+              ]), null);
+              if (monthEntries2.length > 1) r[r.length - 1][5] = el('strong', {}, ccc !== null ? `${ccc} days` : 'N/A');
+              return r;
+            })()
           ));
           body.appendChild(monthSection);
         }
@@ -1602,7 +1579,16 @@ function buildView() {
             { label: 'Cumulative Burn', right: true, tip: 'Running total of operating expenses from the start of the period through this month.' },
             { label: 'Remaining Runway', right: true, tip: 'Cumulative net cash flow through this month ÷ avg monthly OpEx, in months.' }
           ],
-          runwayTrendRows
+          (() => {
+            const r = runwayTrendRows.map(row => [row[0], num(runwayMonthMap.get(row[0]).opOut), row[2], row[3]]);
+            const t = autoTotal(r, null);
+            if (r.length > 1) {
+              t[t.length - 1][2] = el('strong', {}, formatEUR(cumBurn));
+              t[t.length - 1][3] = el('strong', {}, runwayValue);
+              t.push([el('strong', {}, `Runway = Net ${formatEUR(net)} ÷ Avg monthly OpEx ${formatEUR(avgMonthlyOpEx)}`), '', '', el('strong', {}, runwayValue)]);
+            }
+            return t;
+          })()
         ));
 
         const noteBox = el('div', { style: 'padding:10px 12px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);font-size:12px;color:var(--text-muted);line-height:1.6' });
@@ -1663,13 +1649,13 @@ function buildView() {
               { label: 'Status', tip: 'Invoice status — only "sent" and "overdue" invoices count as outstanding here.' },
               { label: 'Amount', right: true, tip: 'Invoice total, in EUR.' }
             ],
-            sorted.map(i => [
+            autoTotal(sorted.map(i => [
               byId('clients', i.clientId)?.name || i.clientId || '—',
               fmtDate(i.issueDate || i.date),
               fmtDate(i.dueDate) || '—',
               i.status || '—',
-              formatEUR(toEUR(i.total, i.currency, i.issueDate))
-            ])
+              num(toEUR(i.total, i.currency, i.issueDate))
+            ]), null)
           ));
         } else {
           body.appendChild(mkEmptyState('No outstanding invoices in the selected period.'));
@@ -1849,24 +1835,9 @@ function renderCumulativeLine({ payments, invoices, opExpenses, capExpenses }, m
       body.appendChild(summaryGrid);
 
       // Stream breakdown for this month
-      const streamMap = new Map();
-      mPay.forEach(p => { const k = STREAMS[cashInStream(p)]?.label || cashInStream(p); const c = streamMap.get(k) || { in: 0, opOut: 0, capOut: 0 }; c.in += toEUR(p.amount, p.currency, p.date); streamMap.set(k, c); });
-      mInv.forEach(i => { const k = STREAMS[cashInStream(i)]?.label || cashInStream(i); const c = streamMap.get(k) || { in: 0, opOut: 0, capOut: 0 }; c.in += toEUR(i.total, i.currency, i.issueDate); streamMap.set(k, c); });
-      mOp .forEach(e => { const k = STREAMS[expStream(e)]?.label || expStream(e) || 'Other'; const c = streamMap.get(k) || { in: 0, opOut: 0, capOut: 0 }; c.opOut += toEUR(e.amount, e.currency, e.date); streamMap.set(k, c); });
-      mCap.forEach(e => { const k = STREAMS[expStream(e)]?.label || expStream(e) || 'Other'; const c = streamMap.get(k) || { in: 0, opOut: 0, capOut: 0 }; c.capOut += toEUR(e.amount, e.currency, e.date); streamMap.set(k, c); });
-      const streamEntries = [...streamMap.entries()].sort((a, b) => (b[1].in - b[1].opOut - b[1].capOut) - (a[1].in - a[1].opOut - a[1].capOut));
       const streamSection = el('div');
-      streamSection.appendChild(mkSectionLabel('Breakdown by Stream'));
-      streamSection.appendChild(mkModalTable(
-        [
-          { label: 'Stream', tip: 'Revenue/expense stream key (e.g. short-term rental, long-term rental).' },
-          { label: 'Cash In', right: true, tip: 'Paid payments + paid invoices for this stream in the month.' },
-          { label: 'Op. Out', right: true, tip: 'Operating (non-CapEx) expenses for this stream in the month.' },
-          { label: 'Invest. Out', right: true, tip: 'CapEx/investment expenses for this stream in the month.' },
-          { label: 'Net', right: true, tip: 'Cash In minus Op. Out minus Invest. Out for this stream and month.' }
-        ],
-        streamEntries.map(([k, d]) => [k, formatEUR(d.in), formatEUR(d.opOut), formatEUR(d.capOut), formatEUR(d.in - d.opOut - d.capOut)])
-      ));
+      streamSection.appendChild(mkSectionLabel(`Breakdown by Stream — ${label}`));
+      streamSection.appendChild(mkFlowTable('Stream', 'Income by its stream; expenses by their (or their property\'s) stream.', flowByStream(mPay, mInv, mOp, mCap)));
       body.appendChild(streamSection);
 
       openModal({ title: `Cumulative CF — ${label}`, body, large: true });
@@ -1931,7 +1902,7 @@ function renderMonthBar({ payments, invoices, opExpenses, capExpenses }, monthKe
             { label: 'Amount', right: true, tip: 'Total cash in from this source in the month, in EUR.' },
             { label: 'Count', right: true, tip: 'Number of records from this source in the month.' }
           ],
-          [['Payments', formatEUR(payTotal), mPay.length], ['Invoices', formatEUR(invTotal), mInv.length]]
+          autoTotal([['Payments', num(payTotal), String(mPay.length)], ['Invoices', num(invTotal), String(mInv.length)]], null)
         ));
         body.appendChild(srcSection);
       } else {
@@ -1951,7 +1922,7 @@ function renderMonthBar({ payments, invoices, opExpenses, capExpenses }, monthKe
             { label: 'Amount', right: true, tip: 'Total expense amount in this category, in EUR.' },
             { label: '% of Total', right: true, tip: "This category's share of the clicked bar segment's total." }
           ],
-          catEntries.map(([k, v]) => [k, formatEUR(v), totalAmt > 0 ? (v / totalAmt * 100).toFixed(1) + '%' : '—'])
+          autoTotal(catEntries.map(([k, v]) => [k, num(v), totalAmt > 0 ? (v / totalAmt * 100).toFixed(1) + '%' : '—']), totalAmt)
         ));
         body.appendChild(catSection);
       }
@@ -2016,30 +1987,12 @@ function renderNetMonthBar({ payments, invoices, opExpenses, capExpenses }, mont
       }));
       body.appendChild(summaryGrid);
 
-      // Property breakdown for this month
-      const propMap = new Map();
-      const addP = (name, inV, opV, capV) => {
-        const c = propMap.get(name) || { in: 0, opOut: 0, capOut: 0 };
-        c.in += inV; c.opOut += opV; c.capOut += capV;
-        propMap.set(name, c);
-      };
-      mPay.forEach(p => { const n = p.propertyId ? (byId('properties', p.propertyId)?.name || p.propertyId) : 'No Property'; addP(n, toEUR(p.amount, p.currency, p.date), 0, 0); });
-      mOp .forEach(e => { const n = e.propertyId ? (byId('properties', e.propertyId)?.name || e.propertyId) : 'No Property'; addP(n, 0, toEUR(e.amount, e.currency, e.date), 0); });
-      mCap.forEach(e => { const n = e.propertyId ? (byId('properties', e.propertyId)?.name || e.propertyId) : 'No Property'; addP(n, 0, 0, toEUR(e.amount, e.currency, e.date)); });
-      const propEntries = [...propMap.entries()].sort((a, b) => (b[1].in - b[1].opOut - b[1].capOut) - (a[1].in - a[1].opOut - a[1].capOut));
+      // Property / client breakdown for this month — adds up to the month's net
+      const propEntries = flowByPropertyClient(mPay, mInv, mOp, mCap);
       if (propEntries.length > 0) {
         const propSection = el('div');
-        propSection.appendChild(mkSectionLabel('By Property'));
-        propSection.appendChild(mkModalTable(
-          [
-            { label: 'Property', tip: 'Property the payments/expenses are linked to (or "No Property").' },
-            { label: 'Cash In', right: true, tip: 'Paid payments linked to this property in the month.' },
-            { label: 'Op. Out', right: true, tip: 'Operating expenses linked to this property in the month.' },
-            { label: 'Invest. Out', right: true, tip: 'CapEx linked to this property in the month.' },
-            { label: 'Net', right: true, tip: 'Cash In minus Op. Out minus Invest. Out for this property.' }
-          ],
-          propEntries.map(([k, d]) => [k, formatEUR(d.in), formatEUR(d.opOut), formatEUR(d.capOut), formatEUR(d.in - d.opOut - d.capOut)])
-        ));
+        propSection.appendChild(mkSectionLabel('By Property / Client'));
+        propSection.appendChild(mkFlowTable('Property / Client', 'Rental payments and expenses by property ("No property" when unlinked); service invoices by client.', propEntries));
         body.appendChild(propSection);
       }
 
