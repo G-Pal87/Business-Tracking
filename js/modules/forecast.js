@@ -118,7 +118,8 @@ function buildPropertySection(wrap) {
   const streamWrapper = el('div', { style: 'position:relative' });
   const streamTrigLabel = el('span', {}, 'All Streams');
   const streamTrigger = el('div', { class: 'select', style: 'cursor:pointer;display:flex;align-items:center;width:auto;min-width:140px;user-select:none' }, streamTrigLabel);
-  const streamMenu = el('div', { style: MENU_STYLE });
+  // 'ms-menu': on phones these open as bottom sheets and the bar scrolls as one row (css/components.css).
+  const streamMenu = el('div', { class: 'ms-menu', style: MENU_STYLE });
   const allStreamChk = el('input', { type: 'checkbox' });
   allStreamChk.checked = selectedStreamIds.size === 0;
   streamMenu.appendChild(el('label', { style: LABEL_STYLE + ';border-bottom:1px solid var(--border)' }, allStreamChk, el('span', {}, 'All Streams')));
@@ -141,7 +142,7 @@ function buildPropertySection(wrap) {
   const propWrapper = el('div', { style: 'position:relative' });
   const trigLabel = el('span', { style: TRIG_LABEL_STYLE }, 'All Properties');
   const propTrigger = el('div', { class: 'select', style: 'cursor:pointer;display:flex;align-items:center;width:auto;min-width:160px;max-width:260px;user-select:none' }, trigLabel);
-  const propMenu = el('div', { style: MENU_STYLE.replace('200px', '240px') + ';max-width:320px' });
+  const propMenu = el('div', { class: 'ms-menu', style: MENU_STYLE.replace('200px', '240px') + ';max-width:320px' });
   const allChk = el('input', { type: 'checkbox' });
   allChk.checked = selectedPropIds.size === props.length;
   propMenu.appendChild(el('label', { style: LABEL_STYLE + ';border-bottom:1px solid var(--border)' }, allChk, el('span', {}, 'All Properties')));
@@ -159,7 +160,7 @@ function buildPropertySection(wrap) {
   const yearWrapper = el('div', { style: 'position:relative' });
   const yearTrigLabel = el('span', {}, String(new Date().getFullYear()));
   const yearTrigger = el('div', { class: 'select', style: 'cursor:pointer;display:flex;align-items:center;width:auto;min-width:90px;user-select:none' }, yearTrigLabel);
-  const yearMenu = el('div', { style: MENU_STYLE.replace('200px', '160px') });
+  const yearMenu = el('div', { class: 'ms-menu', style: MENU_STYLE.replace('200px', '160px') });
 
   // ── Sync helpers ──────────────────────────────────────────────────────────
   const syncYearSel = () => {
