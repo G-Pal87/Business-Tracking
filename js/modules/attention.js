@@ -3,8 +3,9 @@
 // long-term flats, flats idle or in renovation, leases ending soon, and data
 // that contradicts itself (status vs leases, overlapping leases). Shared by
 // the Executive overview and the Properties dashboard.
-import { el, button, fmtDate, toast } from '../core/ui.js';
-import { listActive, listActivePayments, generatePaymentSchedule, currentLeases, expectedPropertyStatus, syncPropertyStatus, formatEUR, toEUR, byId } from '../core/data.js';
+import { el, button, fmtDate, toast, openModal, closeModal, confirmDialog } from '../core/ui.js';
+import { listActive, listActivePayments, generatePaymentSchedule, currentLeases, expectedPropertyStatus, syncPropertyStatus, formatEUR, formatMoney, toEUR, byId, softDelete } from '../core/data.js';
+import { findRentPaymentIssues, dismissRentCheck } from '../core/rent-checks.js';
 import { PROPERTY_STATUSES } from '../core/config.js';
 import { navigate } from '../core/router.js';
 import { todayYmd, diffDaysYmd, addDaysYmd } from '../core/dates.js';
@@ -85,6 +86,8 @@ export function getAttentionItems(props, weight = () => 1, day = todayYmd()) {
   const ea = electricityActions(day);
   for (const c of ea.readings) if (ids.has(c.property.id)) out.electricity.push({ prop: c.property, kind: 'reading', c });
   for (const c of ea.invoices) if (ids.has(c.property.id)) out.electricity.push({ prop: c.property, kind: 'invoice', c });
+  // Rent months paid twice, overpaid, or paid when no rent was due.
+  for (const x of findRentPaymentIssues(live)) out.checks.push({ prop: x.prop, kind: 'rent', issue: x, text: rentIssueText(x) });
   // Airbnb calendars that aren't syncing (or the sync isn't set up).
   for (const x of calendarSyncProblems()) {
     if (x.prop && !ids.has(x.prop.id)) continue;
@@ -95,6 +98,57 @@ export function getAttentionItems(props, weight = () => 1, day = todayYmd()) {
   out.idle.sort((a, b) => (b.days || 0) - (a.days || 0));
   out.ending.sort((a, b) => a.days - b.days);
   return out;
+}
+
+const monthLabel = mk => new Date(`${mk}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+function rentIssueText(x) {
+  const m = v => formatMoney(v, x.currency, { maxFrac: 0 });
+  const n = x.payments.length;
+  if (x.kind === 'duplicate') return `${monthLabel(x.monthKey)} rent recorded ${n}× (${m(x.paid)} paid vs ${m(x.expected)} due) — possible duplicate`;
+  if (x.kind === 'not_due') return `${monthLabel(x.monthKey)}: ${m(x.paid)} rent recorded but no lease covers that month`;
+  if (x.kind === 'part_month') return `${monthLabel(x.monthKey)}: full rent ${m(x.paid)} recorded for a part month (${m(x.expected)} due — the lease starts or ends that month)`;
+  return `${monthLabel(x.monthKey)} overpaid by ${m(x.overBy)} (${m(x.paid)} paid vs ${m(x.expected)} due)`;
+}
+
+// Review one flagged rent month: the payments recorded for it, each with a
+// Delete (to Trash, restorable), or "It's correct" to stop flagging it.
+export function openRentCheckModal(x, onChange) {
+  const m = v => formatMoney(v, x.currency, { maxFrac: 2 });
+  const body = el('div', {});
+  body.appendChild(el('div', { style: 'font-size:13px;margin-bottom:10px;line-height:1.5' },
+    el('strong', {}, `${x.prop.name} · ${monthLabel(x.monthKey)}`), el('br'),
+    `Rent due: ${m(x.expected)} · recorded as paid: ${m(x.paid)}`,
+    x.kind === 'not_due' ? ' · no lease covers this month' : x.overBy > 0 ? ` · ${m(x.overBy)} more than due` : ''));
+  const table = el('table', { class: 'table' });
+  table.appendChild(el('thead', {}, el('tr', {}, el('th', {}, 'Paid on'), el('th', { class: 'right' }, 'Amount'), el('th', {}, 'Tenant / notes'), el('th', {}, ''))));
+  const tb = el('tbody');
+  for (const p of x.payments) {
+    const tenant = p.tenantId ? byId('tenants', p.tenantId)?.name : '';
+    const del = button('Delete', { variant: 'sm ghost', onClick: async () => {
+      const ok = await confirmDialog(`Delete the ${formatMoney(p.amount, p.currency || x.currency, { maxFrac: 2 })} payment of ${fmtDate(p.date)}? It goes to Trash (Settings), where it can be restored.`, { danger: true, okLabel: 'Delete' });
+      if (!ok) return;
+      softDelete('payments', p.id);
+      toast('Payment moved to Trash', 'success');
+      closeModal();
+      onChange?.();
+    } });
+    tb.appendChild(el('tr', {}, el('td', {}, fmtDate(p.date)), el('td', { class: 'right num' }, formatMoney(p.amount, p.currency || x.currency, { maxFrac: 2 })),
+      el('td', { class: 'muted' }, [tenant, p.notes || p.reference || ''].filter(Boolean).join(' · ') || '—'), el('td', { class: 'right' }, del)));
+  }
+  table.appendChild(tb);
+  body.appendChild(el('div', { class: 'table-wrap' }, table));
+  const hint = {
+    duplicate: 'If both payments are real (e.g. one is for another month), set the right month on that payment in Property Payments — otherwise delete the duplicate.',
+    overpaid: 'If part of this was for another month, set the right month on the payment in Property Payments. If the tenant really paid more, mark it as correct.',
+    part_month: 'The lease starts or ends this month, so the app expects pro-rated rent. If the tenant pays a full month on move-in/out, turn off pro-rating on the tenant (Tenants → edit). If this payment is for the next month, set its month in Property Payments.',
+    not_due: 'No lease covers this month. Check the lease dates on the tenant, or set the right month on the payment in Property Payments.'
+  }[x.kind];
+  body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-top:10px;line-height:1.5' },
+    `${hint} You can also mark it as correct; a new payment for the month flags it again.`));
+  openModal({ title: 'Check rent payments', body, footer: [
+    button('Close', { onClick: closeModal }),
+    button('It\'s correct — stop flagging', { variant: 'primary', onClick: () => { dismissRentCheck(x.key); toast('Marked as correct', 'success'); closeModal(); onChange?.(); } })
+  ] });
 }
 
 export function buildAttentionCard(props, { weight = () => 1, onChange = null } = {}) {
@@ -151,7 +205,7 @@ export function buildAttentionCard(props, { weight = () => 1, onChange = null } 
       syncPropertyStatus(c.prop.id);
       toast(`${c.prop.name} is now ${PROPERTY_STATUSES[c.to]?.label || c.to}`, 'success');
       if (onChange) onChange();
-    } }) : null, c.kind === 'calsync' ? () => navigate('str-rates') : null)));
+    } }) : null, c.kind === 'calsync' ? () => navigate('str-rates') : c.kind === 'rent' ? () => openRentCheckModal(c.issue, onChange) : null)));
   if (fixable.length > 1) {
     body.appendChild(el('div', {}, button(`Fix all ${fixable.length} statuses`, { variant: 'sm primary', onClick: () => {
       for (const c of fixable) syncPropertyStatus(c.prop.id);
