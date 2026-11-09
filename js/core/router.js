@@ -136,14 +136,14 @@ export function navigate(id) {
 let _navToken = 0;
 
 function onHashChange() {
-  const id = (location.hash || '#analytics').slice(1);
-  const desc = modules.get(id) || modules.get('analytics');
+  const id = (location.hash || '#home').slice(1);
+  const desc = modules.get(id) || (modules.get('home') || modules.get('analytics'));
   if (!desc) return;
-  if (!modules.has(id) && location.hash && location.hash !== '#analytics') {
+  if (!modules.has(id) && location.hash && location.hash !== '#home') {
     // Unknown route falling back to analytics — keep the address bar
     // consistent with what's actually shown instead of silently disagreeing
     // with it. replaceState doesn't fire another hashchange, so this is safe.
-    history.replaceState(null, '', location.pathname + location.search + '#analytics');
+    history.replaceState(null, '', location.pathname + location.search + '#home');
   }
 
   const myToken = ++_navToken;

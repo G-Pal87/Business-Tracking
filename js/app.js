@@ -59,7 +59,7 @@ async function boot() {
   // Start downloading the landing route's code now, in parallel with the
   // data load / sign-in below, so it's usually ready by router.init().
   {
-    const first = (location.hash || '#analytics').slice(1);
+    const first = (location.hash || '#home').slice(1);
     router.loadRoute(MODULES.some(m => m.id === first) ? first : 'analytics').catch(() => {});
   }
   buildSidebar(MODULES);
@@ -962,7 +962,7 @@ function applyTheme(t) {
   if (t === 'dark') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
   try { localStorage.setItem('bt.theme', t); } catch { /* storage blocked */ }
   // Charts read the theme colours when drawn — redraw the current view.
-  try { router.navigate((location.hash || '#analytics').slice(1)); } catch { /* best-effort */ }
+  try { router.navigate((location.hash || '#home').slice(1)); } catch { /* best-effort */ }
 }
 function buildThemeSwitch() {
   const row = document.createElement('div');

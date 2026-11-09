@@ -760,5 +760,5 @@ function showDisconnectBanner(issuedBy) {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function currentView() {
-  return (location.hash || '#analytics').slice(1);
+  return (location.hash || '#home').slice(1);
 }
